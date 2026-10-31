@@ -911,17 +911,6 @@ impl CloudwatchHandler {
         out
     }
 
-    fn ts_param(params: &Value, key: &str) -> i64 {
-        match params.get(key) {
-            Some(Value::String(s)) => parse_iso_ts(s),
-            // GetMetricStatistics StartTime/EndTime arrive as epoch-seconds
-            // floats on the JSON wire (unit decision: epoch_scalar_to_millis).
-            Some(Value::Number(n)) => n.as_f64().and_then(epoch_scalar_to_millis),
-            _ => None,
-        }
-        .unwrap_or_else(now_millis)
-    }
-
     /// Strict variant: `None` when the member is absent/malformed (moto
     /// answers InvalidParameterValue for a missing StartTime/EndTime — the
     /// old default-to-now silently evaluated the WRONG window).
@@ -1513,6 +1502,18 @@ impl CloudwatchHandler {
                 );
             }
         }
+        // moto get_metric_data (moto/cloudwatch/responses.py:167):
+        // `scan_by = params.get("ScanBy") or "TimestampDescending"` — the
+        // twin previously ignored ScanBy and always returned ascending
+        // timestamps. The reversal pairs values with their timestamps.
+        // moto applies it to MetricStat rows (and Metric Insights SELECT
+        // rows) only, not to Metric Math expressions — mirrored here; the
+        // per-row order stays the caller's query order.
+        let scan_by = str_param(&req.params, "ScanBy");
+        let scan_descends = scan_by.is_empty() || scan_by == "TimestampDescending";
+        let row_descends = |is_stat: bool, is_select: bool| -> bool {
+            scan_descends && (is_stat || is_select)
+        };
         let queries: Vec<Value> = match req.params.get("MetricDataQueries") {
             Some(Value::Array(a)) => a.clone(),
             _ => vec![],
@@ -1549,7 +1550,23 @@ impl CloudwatchHandler {
                 continue;
             }
             let id = field_str(q, "Id");
-            let label = field_str_or(q, "Label", &id);
+            // moto get_metric_data (moto/cloudwatch/models.py): a
+            // MetricStat query's Label defaults to "<MetricName> <Stat>"
+            // (`label = query.get("Label") or f"{query_name} {stat}"`);
+            // expression queries keep the query Id as the default label —
+            // the twin previously defaulted both to the Id.
+            let stat_obj = q.get("MetricStat");
+            let label = if let Some(stat_obj) = stat_obj {
+                let metric = stat_obj.get("Metric").unwrap_or(&Value::Null);
+                let stat_default = format!(
+                    "{} {}",
+                    field_str(metric, "MetricName"),
+                    field_str_or(stat_obj, "Stat", "Average")
+                );
+                field_str_or(q, "Label", &stat_default)
+            } else {
+                field_str_or(q, "Label", &id)
+            };
             let expression = as_str(q.get("Expression"));
 
             let (values, timestamps): (Vec<f64>, Vec<i64>) = if let Some(expr) = &expression {
@@ -1582,6 +1599,17 @@ impl CloudwatchHandler {
                 (vec![], vec![])
             };
 
+            // ScanBy reversal (see the scan_by read above): values keep
+            // their timestamps' order — moto reverses the vectors together.
+            let mut values = values;
+            let mut timestamps = timestamps;
+            let is_select = expression
+                .as_deref()
+                .map_or(false, |e| e.starts_with("SELECT"));
+            if row_descends(stat_obj.is_some(), is_select) && !timestamps.is_empty() {
+                values.reverse();
+                timestamps.reverse();
+            }
             results.push(json!({
                 "Id": id,
                 "Label": label,
@@ -2502,6 +2530,112 @@ mod tests {
         // Statistics not requested must be omitted.
         assert_eq!(dp.get("Minimum"), None);
         assert_eq!(dp.get("Maximum"), None);
+    }
+
+    #[test]
+    fn test_get_metric_data_stat_label_and_scanby_defaults() {
+        // moto get_metric_data: a MetricStat query's Label defaults to
+        // "<MetricName> <Stat>" (`query.get("Label") or
+        // f"{query_name} {stat}"`, moto/cloudwatch/models.py) and ScanBy
+        // defaults to TimestampDescending (responses.py:167) — newest
+        // bucket first. The twin previously defaulted the label to the
+        // query Id and never honored ScanBy.
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [
+                    {"MetricName": "Cpu", "Value": 1.0, "Timestamp": 1_700_000_000},
+                    {"MetricName": "Cpu", "Value": 2.0, "Timestamp": 1_700_000_060},
+                    {"MetricName": "Cpu", "Value": 4.0, "Timestamp": 1_700_000_120}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "GetMetricData",
+            json!({
+                "MetricDataQueries": [{
+                    "Id": "q1",
+                    "MetricStat": {
+                        "Metric": {"Namespace": "NS", "MetricName": "Cpu"},
+                        "Period": 60, "Stat": "Sum"
+                    }
+                }],
+                "StartTime": 1_699_999_980.0, "EndTime": 1_700_000_180.0
+            }),
+        ));
+        let body = parse(&resp);
+        let row = &body["MetricDataResults"][0];
+        assert_eq!(row["Id"], "q1");
+        assert_eq!(row["Label"], "Cpu Sum");
+        let ts = row["Timestamps"].as_array().unwrap();
+        assert_eq!(ts.len(), 3);
+        // Default ScanBy: newest first (descending timestamps).
+        assert!(
+            ts[0].as_str().unwrap() > ts[2].as_str().unwrap(),
+            "expected newest-first, got {ts:?}"
+        );
+
+        // Explicit ScanBy=TimestampAscending restores oldest-first.
+        let resp = handler.handle(make_req(
+            "GetMetricData",
+            json!({
+                "MetricDataQueries": [{
+                    "Id": "q1",
+                    "MetricStat": {
+                        "Metric": {"Namespace": "NS", "MetricName": "Cpu"},
+                        "Period": 60, "Stat": "Sum"
+                    }
+                }],
+                "StartTime": 1_699_999_980.0, "EndTime": 1_700_000_180.0,
+                "ScanBy": "TimestampAscending"
+            }),
+        ));
+        let body = parse(&resp);
+        let ts = body["MetricDataResults"][0]["Timestamps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(ts[0] < ts[2], "expected oldest-first, got {ts:?}");
+    }
+
+    #[test]
+    fn test_get_metric_data_expression_label_default_and_stat_label_override() {
+        // Expression queries keep the Id as the default Label in both moto
+        // and real AWS; a given query Label wins for either row type.
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [
+                    {"MetricName": "Cpu", "Value": 3.0, "Timestamp": 1_700_000_000}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "GetMetricData",
+            json!({
+                "MetricDataQueries": [
+                    {
+                        "Id": "q1",
+                        "MetricStat": {
+                            "Metric": {"Namespace": "NS", "MetricName": "Cpu"},
+                            "Period": 60, "Stat": "Sum"
+                        },
+                        "Label": "ExplicitLabel"
+                    },
+                    {"Id": "total", "Expression": "q1"}
+                ],
+                "StartTime": 1_699_999_980.0, "EndTime": 1_700_000_180.0
+            }),
+        ));
+        let body = parse(&resp);
+        assert_eq!(body["MetricDataResults"][0]["Label"], "ExplicitLabel");
+        assert_eq!(body["MetricDataResults"][1]["Label"], "total");
     }
 
     #[test]
