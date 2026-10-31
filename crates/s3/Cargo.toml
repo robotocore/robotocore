@@ -16,6 +16,10 @@ base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
 md5 = "0.8"
+# aws-chunked trailer checksum verification (already in Cargo.lock via
+# flate2; sha1 mirrors rotocore's direct dependency).
+crc32fast = "1.4"
+sha1 = "0.10"
 hex = "0.4"
 parking_lot = "0.12"
 urlencoding = "2.1"

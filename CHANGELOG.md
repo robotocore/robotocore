@@ -40,6 +40,13 @@ under *Changelog discipline*.
   first; a body whose size disagrees with `x-amz-decoded-content-length` gets
   400 `IncompleteBody`. Affected the .NET SDK's default `PutObject` over plain
   HTTP and SDKs that stream checksummed uploads.
+- **S3 validates the declared `aws-chunked` checksum trailer.** A trailer the
+  request declared through `x-amz-trailer` is checked against the decoded data
+  (`crc32`, `sha1`, `sha256`); a mismatch answers 400 `InvalidRequest` (real S3
+  validates, moto skips the trailer region). `crc32c`/`crc64nvme` pass
+  unverified and the checksum is not yet recorded on the stored object —
+  `ObjectVersion` has no checksum slot; stored as a follow-up in
+  `crates/s3/src/aws_chunked.rs`.
 - **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
   under the metric's namespace and name but looked up by query `Id`, so every
   `MetricStat` query came back with empty `Values` and `Timestamps`, and metric

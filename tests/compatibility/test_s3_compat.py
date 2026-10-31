@@ -3087,18 +3087,26 @@ def _aws_chunked(chunks: list[bytes], signed: bool, trailer: bytes = b"") -> byt
     return body + b"\r\n"
 
 
-def _put_aws_chunked(path: str, body: bytes, content_sha256: str, decoded_length: int):
-    """Sends a SigV4-signed PUT with an aws-chunked body, as an SDK streaming upload does."""
-    request = AWSRequest(
-        method="PUT",
-        url=f"{ENDPOINT_URL}/{path}",
-        data=body,
-        headers={
-            "Content-Encoding": "aws-chunked",
-            "X-Amz-Content-SHA256": content_sha256,
-            "X-Amz-Decoded-Content-Length": str(decoded_length),
-        },
-    )
+def _put_aws_chunked(
+    path: str,
+    body: bytes,
+    content_sha256: str,
+    decoded_length: int,
+    trailer: str | None = None,
+):
+    """Sends a SigV4-signed PUT with an aws-chunked body, as an SDK streaming upload does.
+
+    `trailer` names the checksum header the body declares (the X-Amz-Trailer
+    member real SDKs send alongside a checksum trailer).
+    """
+    headers = {
+        "Content-Encoding": "aws-chunked",
+        "X-Amz-Content-SHA256": content_sha256,
+        "X-Amz-Decoded-Content-Length": str(decoded_length),
+    }
+    if trailer:
+        headers["X-Amz-Trailer"] = trailer
+    request = AWSRequest(method="PUT", url=f"{ENDPOINT_URL}/{path}", data=body, headers=headers)
     SigV4Auth(Credentials("testing", "testing"), "s3", "us-east-1").add_auth(request)
     prepared = request.prepare()
     return urlopen(
@@ -3122,17 +3130,60 @@ class TestS3AwsChunkedUploads:
         assert obj["Body"].read() == b"".join(chunks)
 
     def test_put_object_with_unsigned_chunks_and_checksum_trailer(self, s3, bucket):
+        # crc32("hello world") in padded little-endian base64, declared the
+        # way SDKs do (X-Amz-Trailer alongside the trailer line) and now
+        # validated by the twin against the decoded data (real S3 validates
+        # this; moto skips the trailer region).
         body = _aws_chunked(
-            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32:DUoRhQ=="
+            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32:hRFKDQ=="
         )
         resp = _put_aws_chunked(
-            f"{bucket}/trailer.txt", body, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", 11
+            f"{bucket}/trailer.txt",
+            body,
+            "STREAMING-UNSIGNED-PAYLOAD-TRAILER",
+            11,
+            trailer="x-amz-checksum-crc32",
         )
         assert resp.status == 200
 
         obj = s3.get_object(Bucket=bucket, Key="trailer.txt")
         assert obj["Body"].read() == b"hello world"
         assert "aws-chunked" not in (obj.get("ContentEncoding") or "")
+
+    def test_put_object_with_mismatching_checksum_trailer_is_rejected(self, bucket):
+        body = _aws_chunked(
+            [b"hello world"],
+            signed=False,
+            trailer=b"x-amz-checksum-crc32:AAAAAAAAAA==",
+        )
+        with pytest.raises(HTTPError) as excinfo:
+            _put_aws_chunked(
+                f"{bucket}/bad-trailer.txt",
+                body,
+                "STREAMING-UNSIGNED-PAYLOAD-TRAILER",
+                11,
+                trailer="x-amz-checksum-crc32",
+            )
+        assert excinfo.value.code == 400
+        assert b"InvalidRequest" in excinfo.value.read()
+
+    def test_put_object_with_unverified_checksum_algorithm_stores(self, s3, bucket):
+        # crc32c has no local implementation on the twin yet: the declared
+        # trailer passes through unverified (recorded follow-up in
+        # crates/s3/src/aws_chunked.rs).
+        body = _aws_chunked(
+            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32c:ESIzRA=="
+        )
+        resp = _put_aws_chunked(
+            f"{bucket}/crc32c.txt",
+            body,
+            "STREAMING-UNSIGNED-PAYLOAD-TRAILER",
+            11,
+            trailer="x-amz-checksum-crc32c",
+        )
+        assert resp.status == 200
+        obj = s3.get_object(Bucket=bucket, Key="crc32c.txt")
+        assert obj["Body"].read() == b"hello world"
 
     def test_upload_part_with_signed_chunks(self, s3, bucket):
         upload = s3.create_multipart_upload(Bucket=bucket, Key="multipart.bin")
