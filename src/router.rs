@@ -3,7 +3,8 @@
 //! Port of `src/robotocore/gateway/router.py`.
 //!
 //! Determines which AWS service a request targets by inspecting, in order:
-//! 1. X-Amz-Target header (used by JSON protocol services)
+//! 1. X-Amz-Target header (used by JSON protocol services), then the Smithy
+//!    RPC v2 CBOR path (`/service/{ServiceShape}/operation/{Operation}`)
 //! 2. URL path patterns (e.g., /2015-03-31/functions for Lambda)
 //! 3. Authorization header (credential scope contains service name)
 //! 4. X-Amz-Credential query parameter (SigV4 presigned URLs)
@@ -61,6 +62,26 @@ impl AwsRequest {
         }
         out
     }
+}
+
+/// Smithy RPC v2 CBOR target: `(service shape, operation)` from
+/// `/service/{ServiceShape}/operation/{Operation}`. Only when the request
+/// carries `smithy-protocol: rpc-v2-cbor`, which the protocol requires, so a
+/// path-style S3 key of the same shape keeps routing to S3.
+pub fn rpcv2_cbor_target<'a>(
+    smithy_protocol: Option<&str>,
+    path: &'a str,
+) -> Option<(&'a str, &'a str)> {
+    if !smithy_protocol.is_some_and(|p| p.trim().eq_ignore_ascii_case("rpc-v2-cbor")) {
+        return None;
+    }
+    let rest = path.strip_prefix("/service/")?;
+    let (service, rest) = rest.split_once('/')?;
+    let operation = rest.strip_prefix("operation/")?;
+    if service.is_empty() || operation.is_empty() || operation.contains('/') {
+        return None;
+    }
+    Some((service, operation))
 }
 
 /// Percent-decode a query-string component (also treats `+` as a space).
@@ -360,6 +381,16 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
                     return Some((*svc).to_string());
                 }
             }
+        }
+    }
+
+    // Smithy RPC v2 CBOR names the service shape in the path; its id is the
+    // JSON protocol's target prefix (CloudWatch: GraniteServiceVersion20100801).
+    if let Some((service_shape, _)) =
+        rpcv2_cbor_target(request.header("smithy-protocol"), &request.path)
+    {
+        if let Some(svc) = TARGET_PREFIX_MAP.get(service_shape) {
+            return Some((*svc).to_string());
         }
     }
 
@@ -827,6 +858,49 @@ mod tests {
             "AWS4-HMAC-SHA256 Credential=AKIA/20240101/us-east-1/mobiletargeting/aws4_request";
         let r = req("POST", "/v1/untag/app", "", &[("authorization", auth)]);
         assert_eq!(route_to_service(&r).as_deref(), Some("pinpoint"));
+    }
+
+    // ---- Smithy RPC v2 CBOR ----
+
+    const CBOR_PATH: &str = "/service/GraniteServiceVersion20100801/operation/ListMetrics";
+
+    #[test]
+    fn rpcv2_cbor_cloudwatch_from_path() {
+        let r = req("POST", CBOR_PATH, "", &[("smithy-protocol", "rpc-v2-cbor")]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("cloudwatch"));
+    }
+
+    #[test]
+    fn rpcv2_cbor_target_parses_path() {
+        assert_eq!(
+            rpcv2_cbor_target(Some("rpc-v2-cbor"), CBOR_PATH),
+            Some(("GraniteServiceVersion20100801", "ListMetrics"))
+        );
+        assert_eq!(
+            rpcv2_cbor_target(Some("RPC-V2-CBOR"), CBOR_PATH),
+            Some(("GraniteServiceVersion20100801", "ListMetrics"))
+        );
+    }
+
+    #[test]
+    fn rpcv2_cbor_target_needs_header_and_shape() {
+        assert_eq!(rpcv2_cbor_target(None, CBOR_PATH), None);
+        assert_eq!(rpcv2_cbor_target(Some("rpc-v2-json"), CBOR_PATH), None);
+        for path in [
+            "/service/GraniteServiceVersion20100801/operation/",
+            "/service//operation/ListMetrics",
+            "/service/GraniteServiceVersion20100801/ListMetrics",
+            "/service/GraniteServiceVersion20100801/operation/ListMetrics/extra",
+        ] {
+            assert_eq!(rpcv2_cbor_target(Some("rpc-v2-cbor"), path), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn rpcv2_cbor_path_without_header_is_not_cloudwatch() {
+        // Same path shape, no smithy-protocol header: a path-style S3 key.
+        let r = req("GET", CBOR_PATH, "", &[]);
+        assert_ne!(route_to_service(&r).as_deref(), Some("cloudwatch"));
     }
 
     // ---- Authorization credential scope ----

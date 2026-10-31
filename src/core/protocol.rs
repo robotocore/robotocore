@@ -359,6 +359,15 @@ pub fn extract_operation(
         }
     }
 
+    // Smithy RPC v2 CBOR: the operation is the last path segment
+    // (`/service/{ServiceShape}/operation/{Operation}`); the body is CBOR.
+    if let Some(path) = headers.get("x-robotocore-path") {
+        let smithy_protocol = headers.get("smithy-protocol").and_then(|v| v.to_str().ok());
+        if let Some((_, op)) = crate::router::rpcv2_cbor_target(smithy_protocol, path.to_str()?) {
+            return Ok(op.to_string());
+        }
+    }
+
     // Try form-encoded Action parameter (query/EC2 protocols)
     let body_str = str::from_utf8(body).unwrap_or("");
     if let Some(start) = body_str.find("Action=") {
@@ -516,6 +525,22 @@ mod tests {
         let body = br#"{"foo": "bar", "num": 42}"#;
         let result = parse_json_protocol(body).unwrap();
         assert_eq!(result.get("foo").and_then(|v| v.as_str()), Some("bar"));
+    }
+
+    #[test]
+    fn test_extract_operation_rpcv2_cbor_path() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-robotocore-path",
+            "/service/GraniteServiceVersion20100801/operation/PutMetricData"
+                .parse()
+                .unwrap(),
+        );
+        // Without smithy-protocol the path is not an RPC v2 target.
+        assert!(extract_operation(&Method::POST, &headers, b"\xa0", "cloudwatch", "").is_err());
+        headers.insert("smithy-protocol", "rpc-v2-cbor".parse().unwrap());
+        let op = extract_operation(&Method::POST, &headers, b"\xa0", "cloudwatch", "").unwrap();
+        assert_eq!(op, "PutMetricData");
     }
 
     #[test]

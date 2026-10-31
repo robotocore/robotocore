@@ -1952,7 +1952,7 @@ impl CloudwatchHandler {
             "DashboardArn": format!("arn:aws:cloudwatch:{}:{}:dashboard/{}", req.region, req.account, name),
             "DashboardBody": body.clone(),
             "LastModified": default_ts_str(),
-            "Size": body.len().to_string(),
+            "Size": body.len(),
         });
         state.dashboards.write().insert(name, entry);
         AwsResponse::json(200, json!({}))
@@ -1992,7 +1992,10 @@ impl CloudwatchHandler {
                     "DashboardName": d.get("DashboardName").cloned().unwrap_or(Value::Null),
                     "DashboardArn": d.get("DashboardArn").cloned().unwrap_or(Value::Null),
                     "LastModified": d.get("LastModified").cloned().unwrap_or(Value::Null),
-                    "Size": d.get("Size").cloned().unwrap_or(json!("0"))
+                    // `Size` is a long on the wire. Derived from the body so
+                    // entries restored from older snapshots (which stored it
+                    // as a string) answer a number too.
+                    "Size": field_str(d, "DashboardBody").len()
                 })
             })
             .collect();
@@ -2559,6 +2562,18 @@ mod tests {
             body["CompositeAlarms"][0]["StateValue"],
             "INSUFFICIENT_DATA"
         );
+    }
+
+    #[test]
+    fn list_dashboards_size_is_a_number() {
+        let handler = CloudwatchHandler::new();
+        let body = r#"{"widgets":[]}"#;
+        handler.handle(make_req(
+            "PutDashboard",
+            json!({ "DashboardName": "d", "DashboardBody": body }),
+        ));
+        let list = parse(&handler.handle(make_req("ListDashboards", json!({}))));
+        assert_eq!(list["DashboardEntries"][0]["Size"], json!(body.len()));
     }
 
     #[test]

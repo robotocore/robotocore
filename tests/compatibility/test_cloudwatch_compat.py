@@ -1628,3 +1628,27 @@ class TestCloudWatchMuteRuleCRUD:
         """DeleteAlarmMuteRule with nonexistent name returns 200."""
         resp = cw.delete_alarm_mute_rule(AlarmMuteRuleName="nonexistent-mute-rule-xyz")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudWatchRequestCompression:
+    """PutMetricData carries `requestcompression`: botocore gzips bodies of 10 KiB and up."""
+
+    def test_gzipped_put_metric_data_is_stored(self, cw):
+        ns = f"Gzip-{uuid.uuid4().hex[:8]}"
+        sent = {}
+        cw.meta.events.register(
+            "before-send.cloudwatch.PutMetricData",
+            lambda request, **_: sent.update(encoding=request.headers.get("Content-Encoding")),
+        )
+        data = [
+            {
+                "MetricName": f"m{i:03d}",
+                "Value": float(i),
+                "Dimensions": [{"Name": "pad", "Value": "x" * 200}],
+            }
+            for i in range(60)
+        ]
+        cw.put_metric_data(Namespace=ns, MetricData=data)
+        assert sent["encoding"] == b"gzip"
+        names = {m["MetricName"] for m in cw.list_metrics(Namespace=ns)["Metrics"]}
+        assert names == {f"m{i:03d}" for i in range(60)}

@@ -11,6 +11,27 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **CloudWatch answers Smithy RPC v2 CBOR requests.** Calls sent as
+  `POST /service/GraniteServiceVersion20100801/operation/<Operation>` with
+  `smithy-protocol: rpc-v2-cbor` and a CBOR body reached the CloudWatch
+  handler with no operation name and failed with 400 `ValidationException`
+  ("The operation  is not implemented"). The router now takes the service and
+  operation from that path, the body is decoded from CBOR, and responses
+  are CBOR-encoded with `smithy-protocol: rpc-v2-cbor`, using botocore's
+  output shapes so timestamps go out as tag-1 epochs, blobs as byte strings
+  and doubles/integers with the right major type. Errors name the model shape
+  in `__type` (`com.amazonaws.cloudwatch#DashboardNotFoundError`) and carry the
+  query code in `x-amzn-query-error`, so SDKs raise the modelled exception.
+  Affected aws-sdk-go-v2 (and so the Terraform AWS provider) and the AWS SDK
+  for .NET v4 (`AWSSDK.CloudWatch` 4.x); botocore and the `aws` CLI still use
+  AWS JSON 1.0.
+- **CloudWatch decodes gzip `PutMetricData` bodies.** The operation carries
+  `requestcompression`: boto3 gzips bodies of 10 KiB and up, aws-sdk-go-v2
+  every body. The gateway answered 200 and stored nothing; it now decodes
+  `Content-Encoding: gzip` for CloudWatch before parsing (other services,
+  S3 included, keep the body as sent).
+- **CloudWatch `ListDashboards` returns `Size` as a number.** It was the
+  body length as a string (`"105"`); the model says `long`.
 - **S3 decodes `aws-chunked` upload bodies.** `PutObject`, `UploadPart` and
   replication stored streaming uploads as received, so objects kept the chunk
   headers, chunk signatures and checksum trailer. Bodies sent with
