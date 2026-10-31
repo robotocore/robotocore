@@ -32,6 +32,16 @@ under *Changelog discipline*.
   S3 included, keep the body as sent).
 - **CloudWatch `ListDashboards` returns `Size` as a number.** It was the
   body length as a string (`"105"`); the model says `long`.
+- **DynamoDB unvalidated `TransactWriteItems`/`UpdateTable` shapes answer
+  `ValidationException`.** The probe fills (required-only `{"TransactItems":
+  [{}]}`, and one `GlobalSecondaryIndexUpdates` element carrying
+  Update+Create+Delete) hit moto-crash mirror paths that rendered the raw
+  werkzeug 500 HTML page; both now answer AWS's 400 `ValidationException`
+  with moto's transcribed message text and commit nothing.
+- **CloudWatch `GetMetricData` stat `Label` default and `ScanBy`.** A
+  MetricStat query's `Label` defaults to `<MetricName> <Stat>` (was: the
+  query Id), and `ScanBy` is honored with the real default
+  `TimestampDescending` (was: ignored, always ascending).
 - **S3 decodes `aws-chunked` upload bodies.** `PutObject`, `UploadPart` and
   replication stored streaming uploads as received, so objects kept the chunk
   headers, chunk signatures and checksum trailer. Bodies sent with
