@@ -7,7 +7,7 @@ via an event source mapping.
 import json
 import time
 
-from tests.apps.conftest import make_lambda_zip
+from tests.apps.conftest import ENDPOINT_URL, make_lambda_zip
 
 
 class TestKinesisEsm:
@@ -63,7 +63,7 @@ class TestKinesisEsm:
         )
         role_arn = role_resp["Role"]["Arn"]
 
-        endpoint_url = "http://localhost:4566"
+        endpoint_url = ENDPOINT_URL
         handler_code = f"""\
 import json
 import base64

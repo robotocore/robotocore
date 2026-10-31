@@ -8,7 +8,7 @@ import json
 import time
 import uuid
 
-from tests.apps.conftest import make_lambda_zip
+from tests.apps.conftest import ENDPOINT_URL, make_lambda_zip
 
 
 class TestLiveDispatch:
@@ -53,7 +53,7 @@ class TestLiveDispatch:
         )
         role_arn = role_resp["Role"]["Arn"]
 
-        endpoint_url = "http://localhost:4566"
+        endpoint_url = ENDPOINT_URL
         handler_code = f"""\
 import json
 import boto3
