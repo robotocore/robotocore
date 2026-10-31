@@ -86,5 +86,4 @@ impl AwsResponse {
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
         }
     }
-
 }
