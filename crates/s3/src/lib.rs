@@ -2,6 +2,7 @@
 //!
 //! Implements the core S3 operations using the rest-xml protocol.
 
+pub mod aws_chunked;
 pub mod bridge;
 pub mod error;
 pub mod handler;
