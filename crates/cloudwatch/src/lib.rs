@@ -34,10 +34,13 @@ impl DefaultCloudwatchHandler {
         let operation = req.operation.clone();
         let resp = match cbor::decode_request(&req.body) {
             Ok(params) => self.inner.handle(AwsRequest { params, ..req }),
-            Err(e) => AwsResponse::error(
+            // The message is the stable one SDKs expect to see for an
+            // unparseable body; the underlying decode detail (ciborium's
+            // Display) is not surfaced — SDKs key off the error code.
+            Err(_) => AwsResponse::error(
                 400,
                 "SerializationException",
-                &format!("Unable to parse the CBOR request body: {e}"),
+                "Unable to parse the CBOR request body",
             ),
         };
         cbor::encode_response(&operation, resp)

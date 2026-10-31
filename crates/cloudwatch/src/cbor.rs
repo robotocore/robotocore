@@ -617,4 +617,38 @@ mod tests {
             check(output_shape(op).unwrap());
         }
     }
+
+    #[test]
+    fn an_unparseable_body_answers_the_stable_serialization_exception_message() {
+        use crate::protocol::AwsRequest;
+        use crate::DefaultCloudwatchHandler;
+        // Constructed without `new()` on purpose: `new` auto-registers the
+        // process-global kinesis-ingest handler, and a second registrant
+        // here would race the bridge.rs sole-registrant test.
+        let handler = DefaultCloudwatchHandler {
+            inner: std::sync::Arc::new(crate::handler::CloudwatchHandler::new()),
+        };
+        let resp = handler.handle_cbor(AwsRequest {
+            service: "cloudwatch".to_string(),
+            operation: "ListMetrics".to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params: serde_json::Value::Null,
+            // Valid CBOR, but not a map — decode_request rejects it.
+            body: bytes::Bytes::from_static(&[0x03]),
+        });
+        assert_eq!(resp.status, 400);
+        let envelope = decode(&resp.body);
+        assert_eq!(
+            get(&envelope, "__type"),
+            // SerializationException is a protocol framework exception, not a
+            // CloudWatch model shape: error_shape does not resolve it, so the
+            // fallback emits the bare code.
+            &text("SerializationException")
+        );
+        assert_eq!(
+            get(&envelope, "message"),
+            &text("Unable to parse the CBOR request body")
+        );
+    }
 }
