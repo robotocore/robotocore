@@ -285,6 +285,11 @@ pub fn get_s3_routing_config() -> S3RoutingConfig {
 mod tests {
     use super::*;
 
+    /// env::set_var and the routing-config OnceLock are process-global: the
+    /// tests that touch either serialize on this guard, or a parallel test's
+    /// read wins the OnceLock and sees stale env values.
+    static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn reset_cache() {
         let mut cache = CUSTOM_PATTERN_CACHE.write();
         *cache = None;
@@ -408,6 +413,7 @@ mod tests {
 
     #[test]
     fn test_custom_s3_hostname_env() {
+        let _env = ENV_GUARD.lock();
         reset_cache();
         env::set_var("S3_HOSTNAME", "s3.custom.local");
         let result = parse_s3_vhost(Some("testbucket.s3.custom.local"));
@@ -621,6 +627,7 @@ mod tests {
 
     #[test]
     fn test_config_default() {
+        let _env = ENV_GUARD.lock();
         reset_cache();
         env::remove_var("S3_HOSTNAME");
         let config = get_s3_routing_config();
@@ -634,6 +641,7 @@ mod tests {
 
     #[test]
     fn test_config_custom_hostname() {
+        let _env = ENV_GUARD.lock();
         reset_cache();
         env::set_var("S3_HOSTNAME", "s3.mycompany.dev");
         let config = get_s3_routing_config();

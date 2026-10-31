@@ -140,8 +140,13 @@ class TestS3ToSqs:
         messages = wait_for_messages(sqs, queue_url, timeout=10, expected=1)
         assert len(messages) >= 1, "No SQS message received from S3 notification"
 
+        # The S3 → SQS contract delivers a real Records envelope naming the
+        # bucket and key (the cross-service suite pins the same shape).
         body = json.loads(messages[0]["Body"])
-        # S3 notification sends Records array
-        records = body.get("Records", [body])
-        record = records[0] if records else body
-        assert record.get("eventSource") == "aws:s3" or "s3" in str(body).lower()
+        records = body["Records"]
+        assert len(records) == 1
+        record = records[0]
+        assert record["eventSource"] == "aws:s3"
+        assert record["eventName"].startswith("ObjectCreated")
+        assert record["s3"]["bucket"]["name"] == bucket
+        assert record["s3"]["object"]["key"] == "data/report.csv"

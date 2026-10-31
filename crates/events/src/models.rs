@@ -73,6 +73,9 @@ pub struct EventsState {
     pub tags: Arc<RwLock<HashMap<String, Vec<Value>>>>,
     /// Archives keyed by archive name.
     pub archives: Arc<RwLock<HashMap<String, Value>>>,
+    /// Archived events keyed by archive name (PutEvents capture, replayed
+    /// by StartReplay).
+    pub archived_events: Arc<RwLock<HashMap<String, Vec<Value>>>>,
     /// Connections keyed by connection name.
     pub connections: Arc<RwLock<HashMap<String, Value>>>,
     /// API destinations keyed by destination name.

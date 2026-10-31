@@ -36,9 +36,11 @@ pub struct ExecuteTarget<'a> {
 /// Config comes from the in-process apigateway backend (the py executor's
 /// semantics: ANY-method fallback, `{param+}` path parameters, clientId-less
 /// authorizer pass-through), then AWS_PROXY integrations invoke the native
-/// lambda crate and mock integrations answer `{}`.
+/// lambda crate and mock integrations answer `{}`. Synchronous by
+/// construction (nothing inside awaits) — callers run it on the blocking
+/// pool so the in-process lambda invoke never pins an async worker.
 #[allow(clippy::too_many_arguments)]
-pub async fn execute(
+pub fn execute(
     lambda: &crate::core::server::NativeHandlers,
     method: &Method,
     target: ExecuteTarget<'_>,

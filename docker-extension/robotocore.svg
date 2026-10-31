@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a19e6a"/>
+      <stop offset="50%" stop-color="#d69e63"/>
+      <stop offset="100%" stop-color="#e94560"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="128" height="128" rx="24" fill="url(#bg)"/>
+  <!-- stylized container stack: three AWS-ish service blocks -->
+  <rect x="30" y="30" width="68" height="14" rx="4" fill="url(#accent)"/>
+  <rect x="30" y="57" width="52" height="14" rx="4" fill="#4caf50" opacity="0.85"/>
+  <rect x="30" y="84" width="60" height="14" rx="4" fill="#ff9800" opacity="0.85"/>
+  <text x="64" y="66" font-family="monospace" font-size="13" font-weight="bold"
+        fill="#eee" text-anchor="middle" dy="-14">robotocore</text>
+</svg>

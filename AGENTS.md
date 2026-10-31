@@ -34,11 +34,11 @@ docker rm -f robotocore 2>/dev/null || true
 docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
-### CLI shortcuts (installed in the container and as pip console scripts)
+### Container lifecycle
 
 ```bash
-awsroboto s3 ls                  # awslocal-style CLI: `aws <service> <op>` against the twin
-robotocore start|stop|restart|logs|status   # container lifecycle wrapper
+docker restart robotocore   # reset container state (or `docker stop`/`start`)
+docker logs robotocore      # container logs
 ```
 
 `/_robotocore/state/reset` wipes in-memory state without a container restart (see [Health & introspection endpoints](#health-introspection-endpoints)).
@@ -201,7 +201,8 @@ Lessons from the 2026-10-24 review waves, now mechanical:
    `make error-census` live-calls every manifest deny row from an isolated
    account and fails on any row answering anything but the twin-wide 501
    `NotImplemented` envelope (crash-mirrors are the recorded exception).
-   Run it in the nightly lane and after any envelope change.
+   No CI lane runs it today — run it manually at wave boundaries and after
+   any envelope change.
 4. **Every port lane ships its own adversary.** A lane is review-sized only
    if another agent re-derives the lane's claims against the oracle and the
    running twin (the wave practice this AGENTS.md section exists for), before
@@ -353,10 +354,13 @@ the running server can actually execute:
 The Docker image model mirrors this: the default image is a distroless
 python3 runner (`gcr.io/distroless/python3-debian12`, bookworm — carries
 `/usr/bin/python3`, Python 3.11) so the in-process python family really runs
-from the image itself (202MB with the bundled boto3 site riding along (158MB before the lambda-site addition, 119MB when the base was python-free)
-and python-family invocations failed with `Runtime.InternalError`); a
-`runtimes` target bakes node+ruby into the server's runtime (node 18/20/22
-execute for real, ~764MB with the versioned binaries + boto3 bundle, node v20.19.2 in trixie); a `java-and-dotnet`
+from the image itself (202MB with the bundled boto3 site riding along; it
+was 158MB when the base gained python, 119MB when it was python-free and
+advertised the python family on `/_robotocore/runtimes` while invocations
+failed with `Runtime.InternalError` — the move to python3-debian12 fixed
+that). A `runtimes` target bakes node+ruby into the server's runtime (node
+18/20/22 execute for real, ~764MB with the versioned binaries + boto3
+bundle, node v20.19.2 in trixie); a `java-and-dotnet`
 variant target adds OpenJDK 21 + .NET SDK 8 (`docker build --target
 java-and-dotnet .`, `docker compose --profile java-dotnet up`).
 
@@ -432,7 +436,7 @@ curl http://localhost:4566/_robotocore/health
 # Version info
 curl http://localhost:4566/_robotocore/config
 
-# All services with status (status is "running" | "disabled"; type is "native" | "moto")
+# All services with status (status is always "running"; type is "native" | "absent")
 curl -s http://localhost:4566/_robotocore/health | python3 -c "
 import json, sys
 h = json.load(sys.stdin)
@@ -534,7 +538,7 @@ Only `501` is a gap.
 
 Runtime state lives in memory and is isolated per account and region. By default, restarting container resets that state.
 
-Optional persistence and snapshots exist when you configure `ROBOTOCORE_STATE_DIR` or use `/_robotocore/state/save` and `/_robotocore/state/load`. `PERSISTENCE=1` enables auto-save after every mutating request into `ROBOTOCORE_STATE_DIR` (default `/tmp/robotocore/state`) on a worker thread. Native SQS and EventBridge state now participate in that save/load path too.
+Optional persistence: set `ROBOTOCORE_STATE_DIR` (no default — the env value must be set) and use `/_robotocore/state/save` / `/_robotocore/state/load` (named in-memory snapshots when no `path` is given). Native SQS and EventBridge state participate in that save/load path. There is no auto-save worker; restarts without a save lose in-memory state.
 
 Reset all in-memory state by restarting:
 
@@ -555,7 +559,6 @@ Reset a single account's state without restarting: use a new account ID (new 12-
 | `NoCredentialsError` | No credentials set | Set `aws_access_key_id` and `aws_secret_access_key` |
 | Can't find a resource you just created | Wrong account or region | Call `sts.get_caller_identity()` and check `Account` |
 | Resources bleed between tests | Shared account ID | Use a unique 12-digit ID per test |
-| `InvalidClientTokenId` | Non-numeric access key | Use a 12-digit number: `"123456789012"` |
 | S3 `CreateBucket` fails in non-`us-east-1` region | Missing location constraint | Add `CreateBucketConfiguration={"LocationConstraint": region}` |
 | S3 POST upload answers `403 SignatureDoesNotMatch` | POST-form (presigned-POST) uploads verify the SigV4 policy signature with the pinned secret `test` | Generate the form with secret `test`, or send a plain unsigned form |
 | `ResourceNotFoundException` right after `create_table` | Table not ready | Call `table.wait_until_exists()` before use |
@@ -566,7 +569,8 @@ Reset a single account's state without restarting: use a new account ID (new 12-
 ## Running in CI
 
 ```yaml
-# GitHub Actions
+# GitHub Actions — no curl in the distroless image, so omit `options`
+# entirely (the container's own HEALTHCHECK, wget-based, is inherited).
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -575,11 +579,6 @@ jobs:
         image: ghcr.io/robotocore/robotocore:latest
         ports:
           - 4566:4566
-        options: >-
-          --health-cmd "curl -f http://localhost:4566/_robotocore/health"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - run: pytest tests/
@@ -598,7 +597,7 @@ services:
     ports:
       - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
+      test: ["CMD", "/busybox", "wget", "-q", "--spider", "-T", "2", "http://127.0.0.1:4566/_robotocore/health"]
       interval: 5s
       retries: 10
 ```

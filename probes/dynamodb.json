@@ -1,6 +1,6 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-30T03:28:54.722490+00:00",
+  "generated_at": "2026-10-30T23:55:36.018303+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 54,
@@ -233,7 +233,7 @@
     {
       "operation": "TransactGetItems",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "TransactWriteItems",

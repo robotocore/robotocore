@@ -8,7 +8,7 @@ import json
 import time
 import uuid
 
-from tests.apps.conftest import make_lambda_zip
+from tests.apps.conftest import ENDPOINT_URL, make_lambda_zip
 
 
 class TestStreamChanges:
@@ -72,13 +72,12 @@ class TestStreamChanges:
         )
         role_arn = role_resp["Role"]["Arn"]
 
-        endpoint_url = "http://localhost:4566"
         handler_code = f"""\
 import json
 import boto3
 
 def handler(event, context):
-    ddb = boto3.client("dynamodb", endpoint_url="{endpoint_url}")
+    ddb = boto3.client("dynamodb", endpoint_url="{ENDPOINT_URL}")
     for record in event.get("Records", []):
         event_name = record.get("eventName", "")
         new_image = record.get("dynamodb", {{}}).get("NewImage", {{}})
@@ -139,12 +138,20 @@ def handler(event, context):
                 break
             time.sleep(1)
 
-        assert item is not None, "Stream Lambda did not track content change"
-        assert item["action"]["S"] == "INSERT"
-
-        # Cleanup
-        lambda_client.delete_event_source_mapping(UUID=esm_uuid)
-        lambda_client.delete_function(FunctionName=fn_name)
-        dynamodb.delete_table(TableName=content_table)
-        dynamodb.delete_table(TableName=tracker_table)
-        iam.delete_role(RoleName=f"cm-role-{suffix}")
+        try:
+            assert item is not None, "Stream Lambda did not track content change"
+            assert item["action"]["S"] == "INSERT"
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+                lambda: lambda_client.delete_function(FunctionName=fn_name),
+                lambda: dynamodb.delete_table(TableName=content_table),
+                lambda: dynamodb.delete_table(TableName=tracker_table),
+                lambda: iam.delete_role(RoleName=f"cm-role-{suffix}"),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup

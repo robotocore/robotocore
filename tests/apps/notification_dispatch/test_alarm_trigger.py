@@ -63,17 +63,25 @@ class TestAlarmTrigger:
 
         # Wait for alarm evaluation (10s daemon interval + processing)
         messages = wait_for_messages(sqs, queue_url, timeout=30, expected=1)
-        assert len(messages) >= 1, "No alarm notification received within 30s"
+        try:
+            assert len(messages) >= 1, "No alarm notification received within 30s"
 
-        body = json.loads(messages[0]["Body"])
-        if "Message" in body:
-            alarm_msg = json.loads(body["Message"])
-        else:
-            alarm_msg = body
+            body = json.loads(messages[0]["Body"])
+            if "Message" in body:
+                alarm_msg = json.loads(body["Message"])
+            else:
+                alarm_msg = body
 
-        assert "ALARM" in str(alarm_msg)
-
-        # Cleanup
-        cloudwatch.delete_alarms(AlarmNames=[alarm_name])
-        sqs.delete_queue(QueueUrl=queue_url)
-        sns.delete_topic(TopicArn=topic_arn)
+            assert "ALARM" in str(alarm_msg)
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: cloudwatch.delete_alarms(AlarmNames=[alarm_name]),
+                lambda: sqs.delete_queue(QueueUrl=queue_url),
+                lambda: sns.delete_topic(TopicArn=topic_arn),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup

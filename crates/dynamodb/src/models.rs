@@ -358,7 +358,19 @@ pub fn compute_key_from_attrs(
     let mut parts = Vec::new();
     for key in key_schema {
         let val = attrs.get(&key.attribute_name)?;
-        parts.push(format!("{}={}", key.attribute_name, val));
+        // Numeric keys canonicalize through the exact decimal renderer so
+        // {"N":"1"}, {"N":"1.0"} and {"N":"1e0"} are ONE logical item —
+        // real AWS keys numeric-equal values alike, and moto's DynamoType
+        // equality is Decimal-based.
+        let rendered = match val.get("N").and_then(Value::as_str) {
+            Some(n) => format!(
+                "{}={}",
+                key.attribute_name,
+                crate::expr::canonical_decimal(n)
+            ),
+            None => format!("{}={}", key.attribute_name, val),
+        };
+        parts.push(rendered);
     }
     Some(parts.join(","))
 }

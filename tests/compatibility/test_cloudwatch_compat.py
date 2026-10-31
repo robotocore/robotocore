@@ -668,9 +668,39 @@ class TestCloudWatchOperations:
             StartTime=now - timedelta(minutes=5),
             EndTime=now + timedelta(minutes=5),
         )
-        assert "MetricDataResults" in response
         results = {r["Id"]: r for r in response["MetricDataResults"]}
-        assert "total" in results
+        # ReturnData=False queries feed the expression but are not returned.
+        assert set(results) == {"total"}
+        assert results["total"]["Label"] == "TotalOps"
+        assert results["total"]["Values"] == [150.0]
+        assert len(results["total"]["Timestamps"]) == 1
+
+    def test_get_metric_data_metric_stat_values(self, cw):
+        """GetMetricData answers each MetricStat query under its own Id."""
+        ns = f"GmdStat-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC).replace(second=0, microsecond=0)
+        dims = [{"Name": "Svc", "Value": "api"}]
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {"MetricName": "Latency", "Value": 10.0, "Dimensions": dims, "Timestamp": now},
+                {"MetricName": "Latency", "Value": 30.0, "Dimensions": dims, "Timestamp": now},
+            ],
+        )
+        metric = {"Namespace": ns, "MetricName": "Latency", "Dimensions": dims}
+        response = cw.get_metric_data(
+            MetricDataQueries=[
+                {"Id": "avg", "MetricStat": {"Metric": metric, "Period": 60, "Stat": "Average"}},
+                {"Id": "peak", "MetricStat": {"Metric": metric, "Period": 60, "Stat": "Maximum"}},
+            ],
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=5),
+        )
+        results = {r["Id"]: r for r in response["MetricDataResults"]}
+        assert results["avg"]["Values"] == [20.0]
+        assert results["peak"]["Values"] == [30.0]
+        assert results["avg"]["Timestamps"] == [now]
+        assert results["avg"]["StatusCode"] == "Complete"
 
     def test_list_metrics_metric_name_filter(self, cw):
         """ListMetrics filtered by MetricName."""

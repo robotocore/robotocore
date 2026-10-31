@@ -29,7 +29,7 @@ serde = { version = "1.0", features = ["derive"] }
 
 # Web server and async runtime
 axum = "0.8"
-tower = "0.4"
+tower = "0.5"
 hyper = "1.0"
 tokio = { version = "1", features = ["full"] }
 http = "1.0"
@@ -77,6 +77,7 @@ ecs = { path = "crates/ecs" }
 stepfunctions = { path = "crates/stepfunctions" }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 strip = "symbols"
