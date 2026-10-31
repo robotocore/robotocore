@@ -27,6 +27,7 @@ import importlib.util
 import json
 import random
 import sys
+import urllib.parse as _urllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -69,8 +70,15 @@ BOTOCORE_NAME_MAP = {
 
 
 def make_client(service: str):
-    """Same client recipe the probe runner uses for every service."""
-    return boto3.client(
+    """Same client recipe the probe runner uses for every service.
+
+    Includes the probe runner's hostPrefix collapse hook
+    (scripts/probe_service.py make_client): deny-row models that decorate
+    the endpoint with a required prefix (s3control's AccountId hostPrefix
+    yields "probe-account-id-127.0.0.1") produce unresolvable hosts that
+    macOS DNS hangs on — the collapse recomposes them onto the endpoint.
+    """
+    client = boto3.client(
         BOTOCORE_NAME_MAP.get(service, service),
         endpoint_url=ENDPOINT,
         region_name="us-east-1",
@@ -78,6 +86,19 @@ def make_client(service: str):
         aws_secret_access_key="test",
         config=botocore.config.Config(retries={"max_attempts": 1}),
     )
+    base_netloc = _urllib.urlparse(ENDPOINT).netloc
+    base_path = _urllib.urlparse(ENDPOINT).path.rstrip("/")
+
+    def _collapse_hostprefix(request, **kwargs):
+        p = _urllib.urlparse(request.url)
+        if p.netloc != base_netloc and p.netloc.endswith(base_netloc):
+            print(f"[census] hostPrefix collapse: {p.netloc} -> {base_netloc}", flush=True)
+            request.url = _urllib.urlunparse(
+                (p.scheme, base_netloc, base_path + p.path, p.params, p.query, p.fragment)
+            )
+
+    client.meta.events.register("request-created", _collapse_hostprefix)
+    return client
 
 
 def load_deny_rows() -> list[tuple[str, str, str]]:
