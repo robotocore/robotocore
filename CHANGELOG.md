@@ -32,6 +32,14 @@ under *Changelog discipline*.
   S3 included, keep the body as sent).
 - **CloudWatch `ListDashboards` returns `Size` as a number.** It was the
   body length as a string (`"105"`); the model says `long`.
+- **S3 decodes `aws-chunked` upload bodies.** `PutObject`, `UploadPart` and
+  replication stored streaming uploads as received, so objects kept the chunk
+  headers, chunk signatures and checksum trailer. Bodies sent with
+  `Content-Encoding: aws-chunked` or an `x-amz-content-sha256` of `STREAMING-*`
+  (signed chunks, and unsigned chunks with a checksum trailer) are now decoded
+  first; a body whose size disagrees with `x-amz-decoded-content-length` gets
+  400 `IncompleteBody`. Affected the .NET SDK's default `PutObject` over plain
+  HTTP and SDKs that stream checksummed uploads.
 - **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
   under the metric's namespace and name but looked up by query `Id`, so every
   `MetricStat` query came back with empty `Values` and `Timestamps`, and metric

@@ -1041,6 +1041,10 @@ impl S3Handler {
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         let mut req = req;
         Self::normalize_virtual_host(&mut req);
+        // Streaming uploads arrive aws-chunked framed; store only the chunk data.
+        if let Err(response) = crate::aws_chunked::decode_request_body(&mut req) {
+            return response;
+        }
         let operation = req.operation.as_str();
         match operation {
             "ListBuckets" => self.list_buckets(&req),
