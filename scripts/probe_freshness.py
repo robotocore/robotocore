@@ -187,9 +187,7 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"could not parse {probe_file.name}: {exc}", file=sys.stderr)
                 continue
-            if "impl_fingerprint" in data and not fingerprint_matches(
-                name, data
-            ):
+            if "impl_fingerprint" in data and not fingerprint_matches(name, data):
                 # The arm's PRE-EXISTING fingerprint does not match this
                 # tree: the implementation content changed since the corpus
                 # was genuinely generated. Stamping today's fingerprint
