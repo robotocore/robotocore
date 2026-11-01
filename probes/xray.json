@@ -200,5 +200,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/xray.rs": "95fe13012e296f4fd7a2c448ab50dbda4dac71d68ac36aad27b3705b3fdea1cf",
+    "rotocore/src/services/xray/": "absent",
+    "crates/xray/src/": "absent"
+  }
 }

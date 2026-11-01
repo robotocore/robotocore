@@ -35,5 +35,16 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mediastore-data.rs": "absent",
+    "rotocore/src/services/mediastore-data/": "absent",
+    "crates/mediastore-data/src/": "absent",
+    "rotocore/src/services/mediastore_data.rs": "6d49b48f11d98f2bdcec2b5da8df9af25966f4ec0a4760dd9c0acb13737dd55a",
+    "rotocore/src/services/mediastore_data/": "absent",
+    "crates/mediastore_data/src/": "absent",
+    "rotocore/src/services/mediastoredata.rs": "absent",
+    "rotocore/src/services/mediastoredata/": "absent",
+    "crates/mediastoredata/src/": "absent"
+  }
 }

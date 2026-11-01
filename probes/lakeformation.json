@@ -315,5 +315,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/lakeformation.rs": "505497ab0263f32a1585b662c12f12194fbfc808e0060606f2251131b48c0c61",
+    "rotocore/src/services/lakeformation/": "absent",
+    "crates/lakeformation/src/": "absent"
+  }
 }

@@ -1,6 +1,11 @@
 {
   "service": "backup",
-  "generated_at": "2026-11-01T17:42:41.077767+00:00",
+  "generated_at": "2026-11-01T17:59:46.914270+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/backup.rs": "c404f0802d35806c89df0e3ac85fb9356971f5fbf0d3446cb96d7a4b31dda66c",
+    "rotocore/src/services/backup/": "absent",
+    "crates/backup/src/": "absent"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 99,

@@ -325,5 +325,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/eks.rs": "a1e210b8fbf1260b62be32791b633de60196b87f14d8d220013da3788a9c52ed",
+    "rotocore/src/services/eks/": "absent",
+    "crates/eks/src/": "absent"
+  }
 }

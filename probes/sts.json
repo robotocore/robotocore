@@ -65,5 +65,8 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "src/core/services/sts.rs": "0818b064d19dfcebecef88ff02d7adbe6ff58598a87816c1283aac8e2d4bb622"
+  }
 }

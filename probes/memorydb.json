@@ -230,5 +230,10 @@
       "status": "working",
       "message": "likely implemented (UserNotFoundFault: User probe-test-value not found.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/memorydb.rs": "74254fa73085e9cfc82e3a985d99af8f0488c5313b6963a9b7468c1090c0c98a",
+    "rotocore/src/services/memorydb/": "absent",
+    "crates/memorydb/src/": "absent"
+  }
 }

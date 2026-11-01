@@ -325,5 +325,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/forecast.rs": "absent",
+    "rotocore/src/services/forecast/": "2a53dc1bf11f3465280381ed006e4a85f4a94a11d30490dd3fee035cb89ed99a",
+    "crates/forecast/src/": "absent"
+  }
 }

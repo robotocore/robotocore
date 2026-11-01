@@ -375,5 +375,10 @@
       "status": "working",
       "message": "likely implemented (404: )"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/vpclattice.rs": "15e4530bb590b680f75b16ca5044b29d8e51e37cca2d5fbb96d14fe15fbed5d2",
+    "rotocore/src/services/vpclattice/": "absent",
+    "crates/vpclattice/src/": "absent"
+  }
 }

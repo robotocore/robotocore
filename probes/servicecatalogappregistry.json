@@ -130,5 +130,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/servicecatalogappregistry.rs": "absent",
+    "rotocore/src/services/servicecatalogappregistry/": "7913b90718f48f0fc9778a74d350d54847d0bf8166e44a088270c6c1056c79cb",
+    "crates/servicecatalogappregistry/src/": "absent"
+  }
 }

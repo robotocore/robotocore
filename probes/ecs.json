@@ -1,6 +1,11 @@
 {
   "service": "ecs",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-01T17:59:48.118628+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/ecs.rs": "absent",
+    "rotocore/src/services/ecs/": "absent",
+    "crates/ecs/src/": "d2ec56948ddcaa5f9d8666edebfbe87eb4367ae451e97b5509a560cdcccabeaf"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 63,
@@ -43,7 +48,7 @@
     {
       "operation": "DeleteAttributes",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TargetNotFoundException: Could not find probe-target-id-id)"
     },
     {
       "operation": "DeleteCapacityProvider",
@@ -78,7 +83,7 @@
     {
       "operation": "DeregisterTaskDefinition",
       "status": "working",
-      "message": "likely implemented (ClientException: Unable to deregister task definition probe-test-value.)"
+      "message": "likely implemented (ClientException: Revision is missing.)"
     },
     {
       "operation": "DescribeCapacityProviders",
@@ -118,7 +123,7 @@
     {
       "operation": "DescribeTaskDefinition",
       "status": "working",
-      "message": "likely implemented (ClientException: Unable to describe task definition probe-test-value.)"
+      "message": "likely implemented (ClientException: Unable to describe task definition.)"
     },
     {
       "operation": "DescribeTaskSets",
@@ -213,7 +218,7 @@
     {
       "operation": "PutAttributes",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TargetNotFoundException: Could not find probe-target-id-id)"
     },
     {
       "operation": "PutClusterCapacityProviders",

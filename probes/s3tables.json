@@ -250,5 +250,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/s3tables.rs": "absent",
+    "rotocore/src/services/s3tables/": "d9d3290a1b0907198e79b6f6c865cae0f9318338111ca7435a8d6e9e9b8f230a",
+    "crates/s3tables/src/": "absent"
+  }
 }

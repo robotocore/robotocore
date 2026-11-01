@@ -145,5 +145,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/managedblockchain.rs": "fde862a3b718950a4cde19bb3d383e707351757bf2104933d71ac283bf001cad",
+    "rotocore/src/services/managedblockchain/": "f82594e6a1afd07d695e8b2351c4d7db7e5ed50b93eb1a211dd2d890eef35e7f",
+    "crates/managedblockchain/src/": "absent"
+  }
 }

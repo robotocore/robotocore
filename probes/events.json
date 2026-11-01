@@ -295,5 +295,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/events.rs": "absent",
+    "rotocore/src/services/events/": "absent",
+    "crates/events/src/": "737aa7e4c2be8c3371d2905637e44deba108a079c277de10ffbd88100d1e709f"
+  }
 }

@@ -155,5 +155,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/elb.rs": "e538bd01b7fa217c6e00aedbc7d7fbadf43380f2e203287d729faa97e8839e4e",
+    "rotocore/src/services/elb/": "absent",
+    "crates/elb/src/": "absent"
+  }
 }

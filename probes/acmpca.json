@@ -125,5 +125,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/acmpca.rs": "0f1061739786648578f8aeac6100292d9a58b4f0abba223b56b88f7e8919c9fa",
+    "rotocore/src/services/acmpca/": "absent",
+    "crates/acmpca/src/": "absent"
+  }
 }

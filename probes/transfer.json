@@ -365,5 +365,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/transfer.rs": "absent",
+    "rotocore/src/services/transfer/": "c708c7b5190aa31e0b102c68ea36e6305178cbb6bf0546617ee114c425c1b6ab",
+    "crates/transfer/src/": "absent"
+  }
 }

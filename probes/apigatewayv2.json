@@ -520,5 +520,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/apigatewayv2.rs": "aa0fe94cc6cca17aee690cd826cdfebda4d3cf5bf8b85868e26ebe580156aa17",
+    "rotocore/src/services/apigatewayv2/": "absent",
+    "crates/apigatewayv2/src/": "absent"
+  }
 }

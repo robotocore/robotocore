@@ -70,5 +70,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/scheduler.rs": "absent",
+    "rotocore/src/services/scheduler/": "d452479b5d72132da9fccc4d2d860b085f8704b204b10e29c852e235294be4f5",
+    "crates/scheduler/src/": "absent"
+  }
 }

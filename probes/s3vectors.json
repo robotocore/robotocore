@@ -105,5 +105,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/s3vectors.rs": "f011791c7f0c079d54a833ec83b494ff12ca813c93772acb5b6ea6712a156e0c",
+    "rotocore/src/services/s3vectors/": "absent",
+    "crates/s3vectors/src/": "absent"
+  }
 }

@@ -230,5 +230,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/codepipeline.rs": "172d1ac02e1ae437017bb02007f31a51c2b4d95347f6131bed7a7960602787ac",
+    "rotocore/src/services/codepipeline/": "absent",
+    "crates/codepipeline/src/": "absent"
+  }
 }

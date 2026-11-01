@@ -360,5 +360,10 @@
       "status": "working",
       "message": "implemented (InvalidRequestException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/athena.rs": "f756f611f975d55fc88a104676f04ff28783cf121fc0bb8cf2c7cff35cde8b50",
+    "rotocore/src/services/athena/": "absent",
+    "crates/athena/src/": "absent"
+  }
 }

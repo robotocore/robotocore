@@ -435,5 +435,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/comprehend.rs": "7306d1789e270866b745fff3db6c29de125789e344a468a65091901dcec299b4",
+    "rotocore/src/services/comprehend/": "absent",
+    "crates/comprehend/src/": "absent"
+  }
 }

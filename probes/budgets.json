@@ -140,5 +140,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/budgets.rs": "2d9952dfe43954d13ec3e4cbb71640b47a7e49bbdf6c65c032be46c0d307ee9f",
+    "rotocore/src/services/budgets/": "absent",
+    "crates/budgets/src/": "absent"
+  }
 }

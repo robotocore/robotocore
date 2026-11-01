@@ -40,5 +40,16 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/kinesis-video-archived-media.rs": "absent",
+    "rotocore/src/services/kinesis-video-archived-media/": "absent",
+    "crates/kinesis-video-archived-media/src/": "absent",
+    "rotocore/src/services/kinesis_video_archived_media.rs": "absent",
+    "rotocore/src/services/kinesis_video_archived_media/": "7f69efabeb579bc90503c3818f73ee17e6ee96b09684d69aefb0da2bf5038a61",
+    "crates/kinesis_video_archived_media/src/": "absent",
+    "rotocore/src/services/kinesisvideoarchivedmedia.rs": "absent",
+    "rotocore/src/services/kinesisvideoarchivedmedia/": "absent",
+    "crates/kinesisvideoarchivedmedia/src/": "absent"
+  }
 }

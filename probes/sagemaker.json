@@ -1910,5 +1910,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sagemaker.rs": "a7d6d3dbad60dad1badf30ae9cf28dd3313e2946587bbd596a2a85ef5a5bc125",
+    "rotocore/src/services/sagemaker/": "absent",
+    "crates/sagemaker/src/": "absent"
+  }
 }

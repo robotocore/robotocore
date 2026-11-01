@@ -130,5 +130,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mq.rs": "absent",
+    "rotocore/src/services/mq/": "ef6b15b41c2a6b4123d181a84d6a6844c0638858867bf7ab2245aa7c0a4c23d2",
+    "crates/mq/src/": "absent"
+  }
 }

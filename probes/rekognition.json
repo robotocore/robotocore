@@ -385,5 +385,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/rekognition.rs": "1a71ea98909a3c3daad57065114f9b9b917be2234368378f5af88f1f91302da5",
+    "rotocore/src/services/rekognition/": "absent",
+    "crates/rekognition/src/": "absent"
+  }
 }

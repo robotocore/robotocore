@@ -60,5 +60,16 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/bedrock-runtime.rs": "absent",
+    "rotocore/src/services/bedrock-runtime/": "absent",
+    "crates/bedrock-runtime/src/": "absent",
+    "rotocore/src/services/bedrock_runtime.rs": "absent",
+    "rotocore/src/services/bedrock_runtime/": "ef47d7f341efd458a56a5df1b2b18c08a9c11876a68dd5e08f7cf94b705cb39f",
+    "crates/bedrock_runtime/src/": "absent",
+    "rotocore/src/services/bedrockruntime.rs": "absent",
+    "rotocore/src/services/bedrockruntime/": "absent",
+    "crates/bedrockruntime/src/": "absent"
+  }
 }

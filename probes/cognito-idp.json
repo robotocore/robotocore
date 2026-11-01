@@ -620,5 +620,16 @@
       "status": "working",
       "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cognito-idp.rs": "absent",
+    "rotocore/src/services/cognito-idp/": "absent",
+    "crates/cognito-idp/src/": "absent",
+    "rotocore/src/services/cognito_idp.rs": "2339f234203c99a8424aabe30820520ec70d7c05b25ffdaf9cbd1ee583eb3768",
+    "rotocore/src/services/cognito_idp/": "absent",
+    "crates/cognito_idp/src/": "absent",
+    "rotocore/src/services/cognitoidp.rs": "absent",
+    "rotocore/src/services/cognitoidp/": "absent",
+    "crates/cognitoidp/src/": "absent"
+  }
 }

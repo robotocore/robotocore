@@ -115,5 +115,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sqs.rs": "absent",
+    "rotocore/src/services/sqs/": "absent",
+    "crates/sqs/src/": "62097e8e9036acf66ef6ae61163ddf5d323e9c0a16a6656266426f7ce6a61286"
+  }
 }

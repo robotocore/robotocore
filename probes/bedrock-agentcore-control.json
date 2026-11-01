@@ -440,5 +440,8 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/bedrockagentcore/": "b73d09dd45b7b2799371a9f113a6ddd4ff3de2c3dae79f2b8db9e6eb69fd3b67"
+  }
 }

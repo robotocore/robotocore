@@ -120,5 +120,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/synthetics.rs": "454fd5ce13594f294459a82c996652c3f51437aa9779e356b534041fb70bf221",
+    "rotocore/src/services/synthetics/": "absent",
+    "crates/synthetics/src/": "absent"
+  }
 }

@@ -195,5 +195,16 @@
       "status": "needs_params",
       "message": "client-side validation (never contacted server)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/bedrock-agentcore.rs": "absent",
+    "rotocore/src/services/bedrock-agentcore/": "absent",
+    "crates/bedrock-agentcore/src/": "absent",
+    "rotocore/src/services/bedrock_agentcore.rs": "absent",
+    "rotocore/src/services/bedrock_agentcore/": "absent",
+    "crates/bedrock_agentcore/src/": "absent",
+    "rotocore/src/services/bedrockagentcore.rs": "absent",
+    "rotocore/src/services/bedrockagentcore/": "b73d09dd45b7b2799371a9f113a6ddd4ff3de2c3dae79f2b8db9e6eb69fd3b67",
+    "crates/bedrockagentcore/src/": "absent"
+  }
 }

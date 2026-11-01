@@ -495,5 +495,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/config.rs": "eae0f871c9fa360016ccd6c66b5389492b6062b2593ae09baf25f50fe259d154",
+    "rotocore/src/services/config/": "absent",
+    "crates/config/src/": "absent"
+  }
 }

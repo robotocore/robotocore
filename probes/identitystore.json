@@ -105,5 +105,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/identitystore.rs": "c34e2b28117cdb1768a787548727211d71f66d5aa2a127103a286f1e0b97d386",
+    "rotocore/src/services/identitystore/": "absent",
+    "crates/identitystore/src/": "absent"
+  }
 }

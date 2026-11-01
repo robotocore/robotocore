@@ -365,5 +365,10 @@
       "status": "working",
       "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/route53.rs": "22686402730b1b4a2dbb3d5daf5e7c376f2307b309440689e4c45a1c4de354e1",
+    "rotocore/src/services/route53/": "absent",
+    "crates/route53/src/": "absent"
+  }
 }

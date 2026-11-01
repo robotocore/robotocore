@@ -1,6 +1,11 @@
 {
   "service": "ssm",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-01T18:00:03.457205+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/ssm.rs": "absent",
+    "rotocore/src/services/ssm/": "absent",
+    "crates/ssm/src/": "759abde3b0b9dac4b654f006f905a658f1c6a99aaed045daa958c7251c7eb2ba"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 146,
@@ -108,7 +113,7 @@
     {
       "operation": "DeleteOpsMetadata",
       "status": "working",
-      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+      "message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)"
     },
     {
       "operation": "DeleteParameter",
@@ -413,7 +418,7 @@
     {
       "operation": "GetOpsMetadata",
       "status": "working",
-      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+      "message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)"
     },
     {
       "operation": "GetOpsSummary",
@@ -588,7 +593,7 @@
     {
       "operation": "RegisterPatchBaselineForPatchGroup",
       "status": "working",
-      "message": "likely implemented (DoesNotExistException: probe-baseline-id-id does not exist)"
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-baseline-id-id does not exist)"
     },
     {
       "operation": "RegisterTargetWithMaintenanceWindow",
@@ -723,7 +728,7 @@
     {
       "operation": "UpdateOpsMetadata",
       "status": "working",
-      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+      "message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)"
     },
     {
       "operation": "UpdatePatchBaseline",

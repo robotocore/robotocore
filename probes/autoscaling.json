@@ -340,5 +340,10 @@
       "status": "working",
       "message": "implemented (ValidationError)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/autoscaling.rs": "d74f6bf37f061c053fce619430477d27e26ea9c42626462bdb02e9131a50436d",
+    "rotocore/src/services/autoscaling/": "absent",
+    "crates/autoscaling/src/": "absent"
+  }
 }

@@ -370,5 +370,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/bedrockagent.rs": "absent",
+    "rotocore/src/services/bedrockagent/": "f3209e8917d1f589d771c28c6d96904a89f8a267e338a660c93571bbd77aa77c",
+    "crates/bedrockagent/src/": "absent"
+  }
 }

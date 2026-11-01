@@ -240,5 +240,10 @@
       "status": "working",
       "message": "implemented (InvalidParameterValue)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/elasticbeanstalk.rs": "absent",
+    "rotocore/src/services/elasticbeanstalk/": "a7d1d4404f5f0fcea1895840de1ec11a7c485af565cf27cab92f88684b1b8907",
+    "crates/elasticbeanstalk/src/": "absent"
+  }
 }

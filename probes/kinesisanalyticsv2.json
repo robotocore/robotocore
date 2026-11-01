@@ -175,5 +175,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/kinesisanalyticsv2.rs": "bc6c3e753af438c9eb14c5b0b0a075280e7cebb0775aa799e1747782cbe74caa",
+    "rotocore/src/services/kinesisanalyticsv2/": "absent",
+    "crates/kinesisanalyticsv2/src/": "absent"
+  }
 }

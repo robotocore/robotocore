@@ -275,5 +275,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/datasync.rs": "3956f831ebad314d520ac13a2e6e37c5e99fb5bd60597d7c8faae1973b490f56",
+    "rotocore/src/services/datasync/": "absent",
+    "crates/datasync/src/": "absent"
+  }
 }

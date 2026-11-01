@@ -485,5 +485,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/networkmanager.rs": "absent",
+    "rotocore/src/services/networkmanager/": "d57a4dfcc46e90c810c06b105df2b1f78524d785dea5b230a88a00030ef4c0a9",
+    "crates/networkmanager/src/": "absent"
+  }
 }

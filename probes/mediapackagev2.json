@@ -160,5 +160,10 @@
       "status": "working",
       "message": "implemented via required-only (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mediapackagev2.rs": "absent",
+    "rotocore/src/services/mediapackagev2/": "ad94d75f219fdffbe53c27afe0cbcd39cf59cdc79d94fdc038d0a01d17e46e08",
+    "crates/mediapackagev2/src/": "absent"
+  }
 }

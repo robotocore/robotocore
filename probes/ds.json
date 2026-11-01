@@ -410,5 +410,10 @@
       "status": "working",
       "message": "likely implemented (EntityDoesNotExistException: Trust probe-trust-id-id does not exist)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ds.rs": "4a31a4aa91736ac93a38b72616ecf66eed4405898bdc18e82c63b58683d3dcbc",
+    "rotocore/src/services/ds/": "absent",
+    "crates/ds/src/": "absent"
+  }
 }
