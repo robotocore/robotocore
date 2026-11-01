@@ -436,11 +436,12 @@ impl IamHandler {
     }
 
     /// UpdateUser's rename moves everything moto keys by user name: login
-    /// profiles, SSH keys, server certs, and the virtual-MFA assignment
-    /// (moto mutates `user.name` in place, models.py:2691-2706, so its map
-    /// keys move implicitly — the twin keys these side tables by name and
-    /// must re-key them itself, or a rename strands them under a deleted
-    /// user's name).
+    /// profiles, SSH keys, server certs, the virtual-MFA assignment AND the
+    /// group member lists (moto mutates `user.name` in place and holds
+    /// object references so membership follows the rename, models.py:2691-2706
+    /// and 2821-2822 — the twin's string-keyed side tables must be re-keyed
+    /// themselves, or the rename strands them under the deleted user's name
+    /// and re-opens the delete_user ghost-group brick).
     fn rekey_user_side_tables(&self, state: &IamState, old: &str, new: &str) {
         let mut profiles = state.login_profiles.write();
         if let Some(v) = profiles.remove(old) {
@@ -455,6 +456,12 @@ impl IamHandler {
         let mut creds = state.ssc_creds.write();
         if let Some(v) = creds.remove(old) {
             creds.insert(new.to_string(), v);
+        }
+        for group in state.groups.read().values() {
+            let mut members = group.users.write();
+            if let Some(pos) = members.iter().position(|u| u == old) {
+                members[pos] = new.to_string();
+            }
         }
         for device in state.virtual_mfas.read().values() {
             let mut assigned = device.assigned_user.write();
@@ -1882,48 +1889,55 @@ impl IamHandler {
         bool_param(req, &mut map, "AllowUsersToChangePassword", false);
         bool_param(req, &mut map, "HardExpiry", false);
         // moto defaults MinimumPasswordLength to 6 (responses.py:1123) and
-        // validates the member ranges (models.py:1697-1730).
+        // validates ONLY the upper bounds, aggregating every violation in
+        // one ValidationError whose `Value "{v}" at "{k}"` segments are
+        // double-quoted and joined "; " (models.py:1700-1728). There is NO
+        // <6 rejection — moto accepts length 3 (boto3 blocks <6
+        // client-side; the twin must not false-reject other callers).
         let minimum = get_param(req, "MinimumPasswordLength")
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(6);
-        if !(6..=128).contains(&minimum) {
+        let reuse_prevention =
+            get_param(req, "PasswordReusePrevention").and_then(|v| v.parse::<i64>().ok());
+        let max_password_age = get_param(req, "MaxPasswordAge").and_then(|v| v.parse::<i64>().ok());
+        let mut errors: Vec<String> = Vec::new();
+        if minimum > 128 {
+            errors.push(format!(
+                "Value \"{minimum}\" at \"minimumPasswordLength\" failed to satisfy constraint: Member must have value less than or equal to 128"
+            ));
+        }
+        if reuse_prevention.unwrap_or(0) > 24 {
+            errors.push(format!(
+                "Value \"{}\" at \"passwordReusePrevention\" failed to satisfy constraint: Member must have value less than or equal to 24",
+                reuse_prevention.unwrap()
+            ));
+        }
+        if max_password_age.unwrap_or(0) > 1095 {
+            errors.push(format!(
+                "Value \"{}\" at \"maxPasswordAge\" failed to satisfy constraint: Member must have value less than or equal to 1095",
+                max_password_age.unwrap()
+            ));
+        }
+        if !errors.is_empty() {
+            let count = errors.len();
+            let plural = if count > 1 { "s" } else { "" };
             return err(
                 400,
                 "ValidationError",
                 &format!(
-                    "1 validation error detected: Value '{}' at 'minimumPasswordLength' failed to satisfy constraint: Member must have value greater than or equal to 6 and less than or equal to 128",
-                    minimum
+                    "{} validation error{} detected: {}",
+                    count,
+                    plural,
+                    errors.join("; ")
                 ),
             );
         }
         map.insert("MinimumPasswordLength".into(), json!(minimum));
-        if let Some(v) = get_param(req, "MaxPasswordAge").and_then(|v| v.parse::<i64>().ok()) {
-            if !(1..=1095).contains(&v) {
-                return err(
-                    400,
-                    "ValidationError",
-                    &format!(
-                        "1 validation error detected: Value '{}' at 'maxPasswordAge' failed to satisfy constraint: Member must have value greater than or equal to 1 and less than or equal to 1095",
-                        v
-                    ),
-                );
-            }
+        if let Some(v) = max_password_age {
             map.insert("MaxPasswordAge".into(), json!(v));
             map.insert("ExpirePasswords".into(), json!(true));
         }
-        if let Some(v) =
-            get_param(req, "PasswordReusePrevention").and_then(|v| v.parse::<i64>().ok())
-        {
-            if !(1..=24).contains(&v) {
-                return err(
-                    400,
-                    "ValidationError",
-                    &format!(
-                        "1 validation error detected: Value '{}' at 'passwordReusePrevention' failed to satisfy constraint: Member must have value greater than or equal to 1 and less than or equal to 24",
-                        v
-                    ),
-                );
-            }
+        if let Some(v) = reuse_prevention {
             map.insert("PasswordReusePrevention".into(), json!(v));
         }
         *state.password_policy.write() = Some(Value::Object(map));
@@ -1933,15 +1947,13 @@ impl IamHandler {
     fn delete_account_password_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account);
         // moto raises NoSuchEntity when no policy exists (models.py:3294-3298)
-        // — the unconditional 200 masked a delete of nothing.
+        // — the unconditional 200 masked a delete of nothing. moto's
+        // delete-missing text differs from GET's (S-12).
         if state.password_policy.read().is_none() {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!(
-                    "The Password Policy with domain {} cannot be found.",
-                    req.account
-                ),
+                "The account policy with name PasswordPolicy cannot be found.",
             );
         }
         *state.password_policy.write() = None;
@@ -2813,9 +2825,26 @@ impl IamHandler {
     // ---------------- Instance profiles ----------------
 
     fn instance_profile_xml(&self, state: &IamState, account: u64, name: &str) -> String {
-        // AWS stamps CreateDate as RFC3339 with seconds precision,
-        // e.g. 2026-10-17T12:00:00Z.
-        let create_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        // CreatedDate is stamped ONCE at creation (instance_profile_created,
+        // RFC3339 seconds precision like AWS — e.g. 2026-10-17T12:00:00Z)
+        // and rendered from the store: per-read `Utc::now()` gave a
+        // different CreateDate on every Get/List (wave-4 finding 15).
+        let create_date = state
+            .instance_profile_created
+            .read()
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| {
+                // Profiles created before the store existed (snapshot
+                // round-trip edge): stamp and persist now instead of
+                // leaving a per-read date.
+                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                state
+                    .instance_profile_created
+                    .write()
+                    .insert(name.to_string(), now.clone());
+                now
+            });
         let ip_id = state
             .instance_profile_ids
             .read()
@@ -4989,5 +5018,161 @@ mod tests {
         assert!(resp
             .body
             .contains("<SourcePolicyId>AttachedPolicy1</SourcePolicyId>"));
+    }
+
+    /// UpdateUser's rename moves `Group.users` with it (moto's membership
+    /// follows the in-place rename, models.py:2821-2822): GetGroup and
+    /// ListGroupsForUser keep seeing the user under the new name, the old
+    /// name lingers nowhere, and the group deletes cleanly after the user
+    /// leaves — a stranded string member would brick DeleteGroup with a
+    /// DeleteConflict.
+    #[test]
+    fn update_user_rename_moves_group_membership_and_delete_group_works() {
+        let handler = IamHandler::new();
+        handler.handle(make_req("CreateGroup", json!({ "GroupName": "team" })));
+        handler.handle(make_req("CreateUser", json!({ "UserName": "worker" })));
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "team", "UserName": "worker" }),
+        ));
+        let before = handler.handle(make_req("GetGroup", json!({ "GroupName": "team" })));
+        assert_eq!(before.status, 200);
+        assert!(
+            before.body.contains("worker"),
+            "pre-rename: {}",
+            before.body
+        );
+
+        let renamed = handler.handle(make_req(
+            "UpdateUser",
+            json!({ "UserName": "worker", "NewUserName": "worker2" }),
+        ));
+        assert_eq!(renamed.status, 200, "body: {}", renamed.body);
+
+        let after = handler.handle(make_req("GetGroup", json!({ "GroupName": "team" })));
+        assert_eq!(after.status, 200, "body: {}", after.body);
+        assert!(
+            after.body.contains("worker2"),
+            "membership follows the rename: {}",
+            after.body
+        );
+        assert!(
+            !after.body.contains(">worker<"),
+            "the old name must not linger in group member lists: {}",
+            after.body
+        );
+
+        let for_user = handler.handle(make_req(
+            "ListGroupsForUser",
+            json!({ "UserName": "worker2" }),
+        ));
+        assert_eq!(for_user.status, 200, "body: {}", for_user.body);
+        assert!(
+            for_user.body.contains("team"),
+            "group membership reachable under the new name: {}",
+            for_user.body
+        );
+
+        handler.handle(make_req(
+            "RemoveUserFromGroup",
+            json!({ "GroupName": "team", "UserName": "worker2" }),
+        ));
+        let deleted = handler.handle(make_req("DeleteGroup", json!({ "GroupName": "team" })));
+        assert_eq!(
+            deleted.status, 200,
+            "a stale member would brick DeleteGroup with DeleteConflict: {}",
+            deleted.body
+        );
+    }
+
+    /// moto validates ONLY the >128 / >24 / >1095 upper bounds and
+    /// aggregates every violation in one ValidationError, `Value "{v}" at
+    /// "{k}"` members double-quoted and joined "; " (models.py:1700-1728).
+    /// There is NO <6 minimum-password-length rejection — moto accepts 3
+    /// (boto3 blocks <6 client-side; the twin must not false-reject
+    /// curl-level callers).
+    #[test]
+    fn password_policy_aggregates_all_bound_violations() {
+        let handler = IamHandler::new();
+        let resp = handler.handle(make_req(
+            "UpdateAccountPasswordPolicy",
+            json!({
+                "MinimumPasswordLength": "200",
+                "MaxPasswordAge": "5000",
+                "PasswordReusePrevention": "30"
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("3 validation errors detected"),
+            "aggregate count: {}",
+            resp.body
+        );
+        for segment in [
+            "Value \"200\" at \"minimumPasswordLength\"",
+            "Value \"30\" at \"passwordReusePrevention\"",
+            "Value \"5000\" at \"maxPasswordAge\"",
+        ] {
+            assert!(
+                resp.body.contains(segment),
+                "missing `{segment}`: {}",
+                resp.body
+            );
+        }
+        assert!(resp.body.contains("; "), "joined segments: {}", resp.body);
+
+        // Sub-6 lengths are legal here.
+        let small = handler.handle(make_req(
+            "UpdateAccountPasswordPolicy",
+            json!({ "MinimumPasswordLength": "3" }),
+        ));
+        assert_eq!(small.status, 200, "moto accepts <6: {}", small.body);
+        let got = handler.handle(make_req("GetAccountPasswordPolicy", json!({})));
+        assert_eq!(got.status, 200, "body: {}", got.body);
+        assert!(
+            got.body
+                .contains("<MinimumPasswordLength>3</MinimumPasswordLength>"),
+            "the length must persist: {}",
+            got.body
+        );
+    }
+
+    /// The instance-profile CreateDate is stamped once at creation
+    /// (instance_profile_created) and never drifts across reads — the
+    /// per-read `now()` rendering made every Get/List differ.
+    #[test]
+    fn instance_profile_createdate_is_stable_across_reads() {
+        let handler = IamHandler::new();
+        handler.handle(make_req(
+            "CreateInstanceProfile",
+            json!({ "InstanceProfileName": "ip-date" }),
+        ));
+        let date = |resp: &AwsResponse| {
+            let start = resp
+                .body
+                .split("<CreateDate>")
+                .nth(1)
+                .and_then(|t| t.split("</CreateDate>").next())
+                .expect("CreateDate rode the response");
+            start.to_string()
+        };
+        let first = handler.handle(make_req(
+            "GetInstanceProfile",
+            json!({ "InstanceProfileName": "ip-date" }),
+        ));
+        assert_eq!(first.status, 200, "body: {}", first.body);
+        let list1 = handler.handle(make_req("ListInstanceProfiles", json!({})));
+        let date1 = date(&first);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let second = handler.handle(make_req(
+            "GetInstanceProfile",
+            json!({ "InstanceProfileName": "ip-date" }),
+        ));
+        let date2 = date(&second);
+        let _ = list1;
+        assert_eq!(
+            date1, date2,
+            "the CreateDate must be identical across reads (≥1s apart)"
+        );
     }
 }

@@ -46,10 +46,10 @@ pub struct Key {
     /// Persisted scheduled deletion (ms epoch) — moto stores `deletion_date`
     /// at schedule time (models.py:580-587) and Describes it from the store;
     /// a describe-time recompute drifted the date on every call.
-    #[serde(with = "crate::snapshot::rw")]
+    #[serde(default, with = "crate::snapshot::rw")]
     pub deletion_ms: RwLock<Option<u64>>,
     /// The requested PendingWindowInDays from the schedule call.
-    #[serde(with = "crate::snapshot::rw")]
+    #[serde(default, with = "crate::snapshot::rw")]
     pub pending_window_days: RwLock<Option<u64>>,
     /// RSA private key for asymmetric RSA specs.
     #[serde(skip)]

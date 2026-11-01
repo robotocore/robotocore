@@ -265,7 +265,13 @@ impl KmsHandler {
                     .map(|ms| ms as f64 / 1000.0)
                     .unwrap_or_else(|| now_epoch_f64() + 7.0 * 24.0 * 3600.0)),
             );
-            meta.insert("PendingWindowInDays".into(), json!(window.unwrap_or(30)));
+            // botocore's KeyMetadata member is PendingDeletionWindowInDays;
+            // the ScheduleKeyDeletion RESPONSE keeps its modeled
+            // PendingWindowInDays extra (the schedule arm).
+            meta.insert(
+                "PendingDeletionWindowInDays".into(),
+                json!(window.unwrap_or(30)),
+            );
         }
         if *key.origin.read() == "EXTERNAL" && *key.has_imported_material.read() {
             meta.insert(

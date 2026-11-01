@@ -172,6 +172,13 @@ pub(crate) fn run_timed_out_result(timeout_secs: u32, logs: &str) -> ExecResult 
 pub(crate) fn loose_result(out: SubprocessOutput, timeout_secs: u32) -> ExecResult {
     let stdout = out.stdout.trim().to_string();
     let logs = out.stderr;
+    // Fail-loud at the response budget, same contract as the local lanes:
+    // the drain keeps a bounded tail, so a >=6MB docker-bridge result
+    // cannot be trusted (moto enforces the response cap independent of
+    // execution mode).
+    if out.stdout.len() >= crate::runtime::FAMILY_RESULT_CAP - 1 {
+        return crate::runtime::response_too_large_result(logs);
+    }
     if out.status_code == Some(0) {
         let payload = if stdout.is_empty() {
             json!("null").to_string()
@@ -2124,6 +2131,14 @@ impl DockerLambdaExecutor {
             // plain-text body; surface the shim's Task.TimedOut shape (the
             // suites assert FunctionError + "timed out" in the message).
             return run_timed_out_result(timeout_secs, "Task timed out after emulator cap");
+        }
+
+        // Fail-loud at the response budget (the local lanes' contract; moto
+        // enforces the cap regardless of execution mode): the drain keeps a
+        // bounded tail, so a >=6MB runtime-interface result cannot be
+        // trusted as JSON.
+        if result_stdout.len() >= crate::runtime::FAMILY_RESULT_CAP - 1 {
+            return crate::runtime::response_too_large_result(logs);
         }
 
         // Parse successful response: JSON data verbatim; non-JSON output as a

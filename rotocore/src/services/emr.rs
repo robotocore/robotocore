@@ -1579,7 +1579,10 @@ fn add_instance_groups(state: &mut EmrState, body: &Value) -> OpResult {
 /// duplicate MASTER/CORE is moto's uncaught `Exception("Cannot add another
 /// master instance group")` (the werkzeug HTML 500 the crash page
 /// reproduces), and an HA-cluster master count other than 3 raises
-/// ValidationException.
+/// ValidationException. Raising up front diverges slightly from moto's
+/// literal order (it stamps `master_instance_group_id` before the HA
+/// raise), but is the deliberate contract: on a rejected group no state
+/// lands at all, whereas moto would leave the stamped id behind.
 fn link_group(
     state: &mut EmrState,
     cluster_id: &str,

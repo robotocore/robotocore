@@ -976,26 +976,16 @@ impl EcsHandler {
         };
         if let Some(count) = req.params.get("desiredCount") {
             service["desiredCount"] = count.clone();
-            // moto's update syncs the counts into the rollout (models.py:
-            // 1721-1735) — running=desired, pending=0, deployments echo —
-            // so a scaled service no longer reports runningCount 0 IN_PROGRESS
-            // forever.
+            // moto's update syncs the service-level counts (models.py:
+            // 1721-1735) — running=desired, pending=0 — so a scaled service
+            // no longer reports runningCount 0 IN_PROGRESS forever. The
+            // DEPLOYMENT row is left stale on purpose: moto never rewrites
+            // deployments in update_service either, and botocore's
+            // Deployment member is `status` (not `lastStatus`) — the old
+            // `lastStatus == "PRIMARY"` gate never matched anything and
+            // rewrote nothing (dead code, member name wrong).
             service["runningCount"] = count.clone();
             service["pendingCount"] = json!(0);
-            service["stabilityStatus"] = json!("STEADY_STATE");
-            if let Some(deployments) = service
-                .get_mut("deployments")
-                .and_then(|d| d.as_array_mut())
-            {
-                for d in deployments.iter_mut() {
-                    if d["lastStatus"] == json!("PRIMARY") {
-                        d["desiredCount"] = count.clone();
-                        d["runningCount"] = count.clone();
-                        d["pendingCount"] = json!(0);
-                        d["rolloutState"] = json!("COMPLETED");
-                    }
-                }
-            }
         }
         if let Some(td) = req.params.get("taskDefinition") {
             service["taskDefinition"] = td.clone();
@@ -1981,16 +1971,16 @@ impl EcsHandler {
 
     fn list_account_settings(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("name").and_then(|v| v.as_str());
-        // moto raises UnknownAccountSettingException for an unknown name in
-        // the list path too (models.py:2315-2334) — put_account_setting_default
-        // already validated while list silently answered an empty 200, an
-        // inverted trust boundary.
+        // moto raises UnknownAccountSettingException — a Client-side
+        // InvalidParameterException with the literal one-line member list
+        // (ecs/exceptions.py:51-55, models.py:2315-2334) — for an unknown
+        // name on the list path.
         if let Some(n) = name {
             if !ACCOUNT_SETTING_NAMES.contains(&n) {
                 return AwsResponse::error(
                     400,
-                    "ClientException",
-                    "The account setting is unknown",
+                    "InvalidParameterException",
+                    &unknown_account_setting_message(),
                 );
             }
         }
@@ -2042,11 +2032,16 @@ impl EcsHandler {
             .get("value")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        // Same moto oracle as list_account_settings:
+        // UnknownAccountSettingException text (moto has no
+        // PutAccountSettingDefault route; the twin carries it because real
+        // AWS does, so the literalUnknownAccountSettingException member
+        // list is the only modeled surface for the error shape).
         if !ACCOUNT_SETTING_NAMES.contains(&name) {
             return AwsResponse::error(
                 400,
                 "InvalidParameterException",
-                &format!("Unknown account setting {}", name),
+                &unknown_account_setting_message(),
             );
         }
         let state = self.get_state(req.account, &req.region);
@@ -2553,6 +2548,11 @@ fn cluster_not_found(name: &str) -> AwsResponse {
         "ClusterNotFoundException",
         &format!("Cluster {} not found.", name),
     )
+}
+
+/// moto's UnknownAccountSettingException literal (ecs/exceptions.py:51-55).
+fn unknown_account_setting_message() -> String {
+    "unknown should be one of [serviceLongArnFormat,taskLongArnFormat,containerInstanceLongArnFormat,containerLongArnFormat,awsvpcTrunking,containerInsights,dualStackIPv6]".to_string()
 }
 
 fn service_not_found(name: &str) -> AwsResponse {

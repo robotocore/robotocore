@@ -674,11 +674,16 @@ impl KinesisHandler {
         let shard = match stream.shard_by_id(&shard_id) {
             Some(s) => s,
             None => {
+                // moto/real AWS: ResourceNotFoundException with the id +
+                // stream + account triple (kinesis exceptions.py:25-29).
                 return AwsResponse::error(
                     400,
                     "ResourceNotFoundException",
-                    &format!("Shard {shard_id} not found."),
-                )
+                    &format!(
+                        "Could not find shard {shard_id} in stream {stream_name} under account {}.",
+                        req.account
+                    ),
+                );
             }
         };
 
@@ -738,10 +743,31 @@ impl KinesisHandler {
             .unwrap_or_default();
         let s1 = stream.shard_by_id(shard1_id);
         let s2 = stream.shard_by_id(shard2_id);
-        let (s1, s2) = match (s1, s2) {
-            (Some(a), Some(b)) => (a, b),
-            _ => return AwsResponse::error(400, "ResourceNotFoundException", "Shard not found"),
+        let (Some(s1), Some(s2)) = (s1, s2) else {
+            // moto/real text names the id + stream + account (kinesis
+            // exceptions.py:25-29), for whichever side is missing — moto
+            // resolves the pair independently.
+            let missing = {
+                let have1 = stream.shard_by_id(&shard1_id).is_some();
+                if have1 {
+                    &shard2_id
+                } else {
+                    &shard1_id
+                }
+            };
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!(
+                    "Could not find shard {missing} in stream {name} under account {}.",
+                    req.account
+                ),
+            );
         };
+        // moto has NO closed-shard rejection here (add_instance_group's
+        // merge path would happily re-merge closed parents, models.py:296-
+        // 302) and its non-adjacent message is literally the raw shard id
+        // — real-AWS-style rejections are deliberate twin divergences.
         if !s1.is_open() || !s2.is_open() {
             return AwsResponse::error(
                 400,
@@ -829,11 +855,16 @@ impl KinesisHandler {
         let target = match stream.shard_by_id(shard_id) {
             Some(s) => s,
             None => {
+                // moto/real AWS: id + stream + account
+                // (kinesis exceptions.py:25-29).
                 return AwsResponse::error(
                     400,
                     "ResourceNotFoundException",
-                    &format!("Shard {shard_id} not found"),
-                )
+                    &format!(
+                        "Could not find shard {shard_id} in stream {name} under account {}.",
+                        req.account
+                    ),
+                );
             }
         };
         // moto validates the hash key twice (models.py:806 regex
@@ -866,6 +897,9 @@ impl KinesisHandler {
             .get("NewStartingHashKey")
             .and_then(|v| v.as_str())
         else {
+            // moto 500s this arm (re.match(.., None) TypeError) and real AWS
+            // 400s — the twin rides real AWS's member-must-not-be-null
+            // shade, a recorded moto divergence.
             return AwsResponse::error(
                 400,
                 "ValidationException",
@@ -1036,6 +1070,11 @@ impl KinesisHandler {
             .unwrap_or(0)
             + 1;
         let next = next_id;
+        // Grow-layout divergence (recorded): moto midpoint-splits each OPEN
+        // shard (2→4 yields ranges like [0, 2^126-2]), the twin mints
+        // uniform build_shards ranges ([0, 2^126-1]) — ListShards ranges
+        // differ byte-for-byte from moto on grow; shrink matches moto's
+        // adjacent-pair merge exactly.
         let ranges = build_shards(target as u32);
         let new_shards: Vec<Arc<Shard>> = ranges
             .into_iter()

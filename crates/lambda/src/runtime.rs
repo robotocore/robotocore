@@ -251,15 +251,17 @@ const LOCAL_OUTPUT_CAP: usize = 128 * 1024;
 /// the kept tail no longer parses as JSON and the caller received a
 /// garbage wrapped string with no function error. Real Lambda responses
 /// reach 6 MB; keep the whole result window up to that budget.
-const FAMILY_RESULT_CAP: usize = 6 * 1024 * 1024;
+pub(crate) const FAMILY_RESULT_CAP: usize = 6 * 1024 * 1024;
 
 /// The moto ResponseSizeTooLarge failure (moto/awslambda/responses.py:66-68):
 /// moto's exact message with its 6291556 bound, `Function.ResponseSizeTooLarge`
 /// errorType and the `x-amz-function-error: Unhandled` header (the handler
-/// maps `function_error` onto that header). Shared by every stdout-riding
-/// result channel so a handler whose output hit the capture budget fails
-/// loudly instead of delivering a tail fragment as data.
-fn response_too_large_result(logs: String) -> ExecResult {
+/// maps `function_error` onto that header). Shared by every result channel —
+/// local family/node/custom lanes AND the docker lanes (per moto, which
+/// enforces the response cap regardless of execution mode) — so a handler
+/// whose output hit the capture budget fails loudly instead of delivering a
+/// tail fragment as data.
+pub(crate) fn response_too_large_result(logs: String) -> ExecResult {
     ExecResult {
         payload: json!({
             "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",

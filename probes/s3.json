@@ -1,6 +1,6 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-01T05:25:06.779577+00:00",
+  "generated_at": "2026-11-01T06:36:55.072566+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 108,

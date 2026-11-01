@@ -23,6 +23,14 @@ pub struct DeliveryStream {
     /// two flavors apart, models.py:146-164).
     #[serde(default)]
     pub s3_config_is_extended: bool,
+    /// The last failed delivery's reason, surfaced in DescribeDelivery-
+    /// Stream (real-AWS async-failure semantics: the PutRecord itself
+    /// answers 200, the failure shows in the stream's status description;
+    /// moto 500s its own crash page instead — the twin keeps the 200 and
+    /// surfaces the reason here, MissingBucket text rides moto's literal
+    /// `MissingBucket` message).
+    #[serde(default)]
+    pub last_failure: Option<String>,
     pub encryption: Option<Value>,
 }
 
