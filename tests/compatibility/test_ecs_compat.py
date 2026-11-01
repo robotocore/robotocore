@@ -883,10 +883,11 @@ class TestDeleteTaskDefinitions:
         )
         resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
         assert resp["taskDefinitions"] == []
-        assert (
-            resp["failures"][0]["reason"]
-            == "The specified task definition is still in ACTIVE status. Please deregister the target and try again."
+        reason = (
+            "The specified task definition is still in ACTIVE status. "
+            "Please deregister the target and try again."
         )
+        assert resp["failures"][0]["reason"] == reason
 
 
 class TestContainerInstanceOperations:

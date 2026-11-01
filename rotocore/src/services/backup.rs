@@ -2877,7 +2877,7 @@ mod tests {
 
     #[test]
     fn settings_resources_and_misc() {
-        let ctx = Ctx::new("us-east-1");
+        let ctx = Ctx::new("us-east-1-w8-settings");
         let global = ctx.result(&ctx.call("GET", "/global-settings", json!({})));
         assert_eq!(
             global["GlobalSettings"]["isCrossAccountBackupEnabled"],
@@ -2955,7 +2955,7 @@ mod tests {
 
     #[test]
     fn recovery_point_ops_report_jobs_and_empty_settings() {
-        let ctx = Ctx::new("us-east-1");
+        let ctx = Ctx::new("us-east-1-w8-recovery");
         ctx.vault();
 
         // Recovery points never materialize (StartBackupJob leaves none), so
