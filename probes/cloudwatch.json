@@ -1,7 +1,7 @@
 {
   "service": "cloudwatch",
-  "generated_at": "2026-10-30T23:18:41.895001+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-11-01T00:50:35.779460+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 43,
     "needs_params": 0,
