@@ -1,7 +1,7 @@
 {
   "service": "s3",
-  "generated_at": "2026-10-31T17:52:04.674327+00:00",
-  "endpoint": "http://localhost:4573",
+  "generated_at": "2026-10-31T19:33:12.337011+00:00",
+  "endpoint": "http://127.0.0.1:4590",
   "counts": {
     "working": 108,
     "needs_params": 0,

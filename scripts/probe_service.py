@@ -29,6 +29,7 @@ one probes/<service>.json artifact per service.
 
 import argparse
 import json
+import os
 import socket
 import sys
 import time
@@ -448,8 +449,8 @@ def main():
     )
     parser.add_argument(
         "--endpoint",
-        default="http://localhost:4566",
-        help="Endpoint URL",
+        default=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+        help="Endpoint URL (default: $ENDPOINT_URL or http://localhost:4566)",
     )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument(

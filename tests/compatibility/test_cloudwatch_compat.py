@@ -702,6 +702,61 @@ class TestCloudWatchOperations:
         assert results["avg"]["Timestamps"] == [now]
         assert results["avg"]["StatusCode"] == "Complete"
 
+    def test_get_metric_data_stat_label_default_and_scanby(self, cw):
+        """MetricStat GetMetricData: Label defaults to "<MetricName> <Stat>"
+        (moto/cloudwatch/models.py get_metric_data) and the datapoints are
+        reachable; ScanBy defaults to TimestampDescending (newest bucket
+        first), which the twin previously ignored."""
+        import uuid
+
+        ns = f"StatLabel-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {
+                    "MetricName": "Cpu",
+                    "Value": float(v),
+                    "Unit": "Count",
+                    "Timestamp": now - timedelta(seconds=v * 60),
+                }
+                for v in range(3, 0, -1)
+            ],
+        )
+        stat_query = {
+            "Id": "cpu_stat",
+            "MetricStat": {
+                "Metric": {"Namespace": ns, "MetricName": "Cpu"},
+                "Period": 60,
+                "Stat": "Sum",
+            },
+        }
+        response = cw.get_metric_data(
+            MetricDataQueries=[stat_query],
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=1),
+        )
+        (row,) = response["MetricDataResults"]
+        assert row["Id"] == "cpu_stat"
+        # AWS-correct default label for stat queries (was: the query Id).
+        assert row["Label"] == "Cpu Sum"
+        assert len(row["Timestamps"]) == 3
+        # Default ScanBy: newest bucket first (value 1.0 lives in the
+        # newest bucket, 3.0 in the oldest).
+        assert row["Timestamps"][0] > row["Timestamps"][2]
+        assert row["Values"] == [1.0, 2.0, 3.0]
+
+        # Explicit ScanBy=TimestampAscending restores oldest-first.
+        response = cw.get_metric_data(
+            MetricDataQueries=[stat_query],
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=1),
+            ScanBy="TimestampAscending",
+        )
+        (row,) = response["MetricDataResults"]
+        assert row["Timestamps"][0] < row["Timestamps"][2]
+        assert row["Values"] == [3.0, 2.0, 1.0]
+
     def test_list_metrics_metric_name_filter(self, cw):
         """ListMetrics filtered by MetricName."""
         import uuid

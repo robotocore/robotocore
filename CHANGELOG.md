@@ -32,6 +32,16 @@ under *Changelog discipline*.
   S3 included, keep the body as sent).
 - **CloudWatch `ListDashboards` returns `Size` as a number.** It was the
   body length as a string (`"105"`); the model says `long`.
+- **DynamoDB unvalidated `TransactWriteItems`/`UpdateTable` shapes answer
+  `ValidationException`.** The probe fills (required-only `{"TransactItems":
+  [{}]}`, and one `GlobalSecondaryIndexUpdates` element carrying
+  Update+Create+Delete) hit moto-crash mirror paths that rendered the raw
+  werkzeug 500 HTML page; both now answer AWS's 400 `ValidationException`
+  with moto's transcribed message text and commit nothing.
+- **CloudWatch `GetMetricData` stat `Label` default and `ScanBy`.** A
+  MetricStat query's `Label` defaults to `<MetricName> <Stat>` (was: the
+  query Id), and `ScanBy` is honored with the real default
+  `TimestampDescending` (was: ignored, always ascending).
 - **S3 decodes `aws-chunked` upload bodies.** `PutObject`, `UploadPart` and
   replication stored streaming uploads as received, so objects kept the chunk
   headers, chunk signatures and checksum trailer. Bodies sent with
@@ -40,6 +50,13 @@ under *Changelog discipline*.
   first; a body whose size disagrees with `x-amz-decoded-content-length` gets
   400 `IncompleteBody`. Affected the .NET SDK's default `PutObject` over plain
   HTTP and SDKs that stream checksummed uploads.
+- **S3 validates the declared `aws-chunked` checksum trailer.** A trailer the
+  request declared through `x-amz-trailer` is checked against the decoded data
+  (`crc32`, `sha1`, `sha256`); a mismatch answers 400 `InvalidRequest` (real S3
+  validates, moto skips the trailer region). `crc32c`/`crc64nvme` pass
+  unverified and the checksum is not yet recorded on the stored object —
+  `ObjectVersion` has no checksum slot; stored as a follow-up in
+  `crates/s3/src/aws_chunked.rs`.
 - **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
   under the metric's namespace and name but looked up by query `Id`, so every
   `MetricStat` query came back with empty `Values` and `Timestamps`, and metric

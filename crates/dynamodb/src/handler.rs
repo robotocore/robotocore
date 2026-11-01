@@ -754,20 +754,24 @@ impl DynamoDbHandler {
 
         // 2. GlobalSecondaryIndexUpdates. moto's
         // update_table_global_indexes (models/__init__.py:207-247) walks
-        // each member's verbs in Delete → Update → Create order and
-        // raises ValueError — a plain werkzeug 500 through moto_server —
+        // each member's verbs in Delete → Update → Create order and raises
+        // ValueError — a plain werkzeug 500 through moto_server —
         // when a verb names an index that does not exist ("Global
         // Secondary Index does not exist, but tried to delete/update:
         // {name}") or re-creates a name that exists ("Global Secondary
         // Index already exists: {name}"), plus a KeyError 500 when a
         // Create lacks one of its required IndexName/KeySchema/Projection
         // members (an empty KeySchema ARRAY is accepted — live-transcribed
-        // moto 5.2.4, 2026-10-26). Deletes and creates mutate a staging
-        // list committed only when every member succeeded (moto assigns
-        // table.global_indexes after the loop); Updates mutate the live
-        // entry and survive a later member's failure (live-transcribed:
-        // Update g1x→9/1 then Delete ghost answered the 500 and g1x kept
-        // 9/1).
+        // moto 5.2.4, 2026-10-26). The twin answers those with AWS's
+        // ValidationException instead of moto's raw 500: the probe canon
+        // reserves 500_error for genuine server crashes, and an
+        // unvalidated UpdateTable shape (the full-shape probe fill puts
+        // Update+Create+Delete in ONE element) must not crash. Deletes and
+        // creates mutate a staging list committed only when every member
+        // succeeded (moto assigns table.global_indexes after the loop);
+        // Updates mutate the live entry and survive a later member's
+        // failure (live-transcribed: Update g1x→9/1 then Delete ghost
+        // answered the 500 and g1x kept 9/1).
         let index_updates = req
             .params
             .get("GlobalSecondaryIndexUpdates")
@@ -778,19 +782,43 @@ impl DynamoDbHandler {
         for update in index_updates {
             if let Some(delete) = update.get("Delete") {
                 let Some(name) = delete.get("IndexName").and_then(Value::as_str) else {
-                    return AwsResponse::werkzeug_500();
+                    // The twin's ValidationException posture for this section:
+                    // moto 500s on a missing IndexName (KeyError, live 2026-10-26).
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "One or more parameter values were invalid: \
+                         Missing required member IndexName in GlobalSecondaryIndexUpdates.Delete",
+                    );
                 };
                 let Some(pos) = staged.iter().position(|g| g.name == name) else {
-                    return AwsResponse::werkzeug_500();
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "Global Secondary Index does not exist, but tried to delete/update: {name}"
+                        ),
+                    );
                 };
                 staged.remove(pos);
             }
             if let Some(gsi_update) = update.get("Update") {
                 let Some(name) = gsi_update.get("IndexName").and_then(Value::as_str) else {
-                    return AwsResponse::werkzeug_500();
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "One or more parameter values were invalid: \
+                         Missing required member IndexName in GlobalSecondaryIndexUpdates.Update",
+                    );
                 };
                 let Some(pos) = staged.iter().position(|g| g.name == name) else {
-                    return AwsResponse::werkzeug_500();
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "Global Secondary Index does not exist, but tried to delete/update: {name}"
+                        ),
+                    );
                 };
                 // moto's IndexDefinition.update replaces the members the
                 // update carries (dynamodb/models/table.py:149-155).
@@ -837,11 +865,25 @@ impl DynamoDbHandler {
                 ) {
                     (Some(name), Some(ks), Some(p)) if !name.is_empty() => (name, ks, p),
                     // moto's GlobalSecondaryIndex.create does dct[...] — a
-                    // missing required member IndexErrors out.
-                    _ => return AwsResponse::werkzeug_500(),
+                    // missing required member IndexErrors out (KeyError 500
+                    // live-transcribed 2026-10-26); the twin answers AWS's
+                    // ValidationException for that unvalidated shape.
+                    _ => {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "One or more parameter values were invalid: \
+                             Global Secondary Index create requires IndexName, \
+                             KeySchema and Projection",
+                        )
+                    }
                 };
                 if staged.iter().any(|g| g.name == index_name) {
-                    return AwsResponse::werkzeug_500();
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!("Global Secondary Index already exists: {index_name}"),
+                    );
                 }
                 let key_schema = Self::parse_key_schema(Some(key_schema_json));
                 let projection = projection_json
@@ -2316,14 +2358,19 @@ impl DynamoDbHandler {
         }
 
         for entry in &transact_items {
-            // moto's response layer crashes on a row that parses to no
-            // operation: `item_values = list(item.values())[0]` raises
-            // IndexError (dynamodb/responses.py:1478) before the model's
-            // row loop (models/__init__.py:635) could ever raise
+            // A row that parses to no modeled operation: moto's response
+            // layer crashes on it (`item_values = list(item.values())[0]`
+            // raises IndexError, dynamodb/responses.py:1478) before the
+            // model's row loop (models/__init__.py:635) could ever raise
             // StopIteration, so moto_server answers the plain werkzeug 500
-            // page instead of a cancellation envelope. Whole-request, and
-            // atomically writes nothing (mirror: live transcript
-            // 2026-10-26, moto 5.2.4).
+            // page — whole-request, atomically writes nothing (live
+            // transcript 2026-10-26, moto 5.2.4). The twin answers AWS's
+            // ValidationException instead (2026-10-31 wave review: the
+            // probe canon reserves 500_error for genuine server crashes,
+            // and the required-only probe fill for TransactWriteItems is
+            // exactly `{"TransactItems": [{}]}`): same message the >1-op
+            // row above carries. Validation still sits ahead of phase 2,
+            // so nothing is committed either way.
             //
             // moto's parse (moto/core/parse.py BaseJSONParser
             // ._parse_structure) keeps ONLY the modeled Put/Update/Delete/
@@ -2335,7 +2382,7 @@ impl DynamoDbHandler {
             // check and op selection (live-transcribed 2026-10-26):
             //   Put + Get          -> executes as a plain Put (200)
             //   Put + Delete + Get -> single-op ValidationException
-            //   Get only           -> parses to {} -> werkzeug 500
+            //   Get only           -> parses to {} -> ValidationException
             let modeled: Vec<(&str, &Value)> = ["Put", "Update", "Delete", "ConditionCheck"]
                 .iter()
                 .filter_map(|k| entry.get(*k).map(|o| (*k, o)))
@@ -2349,7 +2396,13 @@ impl DynamoDbHandler {
             }
             let (op_name, op) = match modeled.into_iter().next() {
                 Some(t) => t,
-                None => return AwsResponse::werkzeug_500(),
+                None => {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "TransactItems can only contain one of Check, Put, Update or Delete",
+                    )
+                }
             };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
             let table = match self
@@ -4614,7 +4667,6 @@ fn compare_seq(candidate: &str, after: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::MOTO_SERVER_WERKZEUG_500;
     use bytes::Bytes;
 
     fn make_req(operation: &str, params: Value) -> AwsRequest {
@@ -5608,12 +5660,13 @@ mod tests {
     // (dynamodb/responses.py:1478) before the model's row loop
     // (models/__init__.py:635 next(iter(item.items())) → StopIteration)
     // could ever build a cancellation envelope, so moto_server answers the
-    // werkzeug plain 500 page. Verified live against moto 5.2.4
-    // (moto_server, 2026-10-26): HTTP 500, text/html, the exact bytes
-    // below, and — because the crash happens before any row runs — the
-    // transaction writes nothing.
+    // werkzeug plain 500 page (verified live against moto 5.2.4,
+    // moto_server, 2026-10-26). The twin answers AWS's ValidationException
+    // for that input instead (2026-10-31 wave review: 500_error is reserved
+    // for genuine crashes and the probe's required-only fill is exactly
+    // this shape) — with the same single-op message the >1-op row carries.
     #[test]
-    fn transact_zero_op_row_renders_moto_server_werkzeug_500() {
+    fn transact_zero_op_row_answers_validation_exception() {
         let handler = DynamoDbHandler::new();
         handler.handle(make_req(
             "CreateTable",
@@ -5628,20 +5681,17 @@ mod tests {
             "TransactWriteItems",
             json!({"TransactItems": [{}]}),
         ));
-        assert_eq!(resp.status, 500);
-        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
-        assert_eq!(resp.body.len(), 265);
-        let content_type = resp
-            .headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
-        assert_eq!(content_type, "text/html; charset=utf-8");
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "ValidationException");
+        assert_eq!(
+            body["message"],
+            "TransactItems can only contain one of Check, Put, Update or Delete"
+        );
 
-        // The moto 500 sits ahead of the single-op validation in moto's
-        // response layer, so a valid Put row sharing the request with the
-        // zero-op row is NOT committed either.
+        // The validation sits ahead of phase 2 (where moto's crash sits
+        // ahead of its row loop), so a valid Put row sharing the request
+        // with the zero-op row is NOT committed either.
         let resp = handler.handle(make_req(
             "TransactWriteItems",
             json!({"TransactItems": [
@@ -5649,8 +5699,9 @@ mod tests {
                 {}
             ]}),
         ));
-        assert_eq!(resp.status, 500);
-        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "ValidationException");
         let resp = handler.handle(make_req(
             "GetItem",
             json!({"TableName": "zeroop", "Key": {"pk": {"S": "p"}}}),
@@ -5663,13 +5714,15 @@ mod tests {
     // ._parse_structure keeps only the modeled Put/Update/Delete/
     // ConditionCheck members), so:
     //   - a row keyed only by an unknown op ("Get") parses to {} and
-    //     crashes the validation (`list(item.values())[0]` IndexError,
+    //     crashes moto's validation (`list(item.values())[0]` IndexError,
     //     dynamodb/responses.py:1478) -> werkzeug 500 page. The
     //     model-level ValueError("Unsupported transaction operation")
     //     branch (models/__init__.py:636-637) is unreachable over HTTP
     //     because the key never reaches the backend — no
     //     TransactionCancelled envelope with a per-row "ValueError" code
-    //     is produced for this input;
+    //     is produced for this input. The twin answers AWS's
+    //     ValidationException for that shape instead (2026-10-31 wave
+    //     review, same posture as the zero-op row);
     //   - a Put row carrying an extra unmodeled "Get" key executes as a
     //     plain single-op Put;
     //   - two modeled ops sharing the row with unmodeled junk still
@@ -5688,15 +5741,16 @@ mod tests {
             }),
         ));
 
-        // "Get"—only write row -> moto's werkzeug 500 page.
+        // "Get"—only write row -> ValidationException (moto 500s here).
         let resp = handler.handle(make_req(
             "TransactWriteItems",
             json!({"TransactItems": [
                 {"Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r1"}}}}
             ]}),
         ));
-        assert_eq!(resp.status, 500);
-        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "ValidationException");
 
         // Put + Get executes as a plain Put, and the row commits.
         let resp = handler.handle(make_req(

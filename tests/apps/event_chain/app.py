@@ -15,6 +15,7 @@ Services used: S3, Lambda, DynamoDB, DynamoDB Streams, SNS, SQS, EventBridge,
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from .models import ChainStage
@@ -37,7 +38,10 @@ class EventChainOrchestrator:
         events_client: Any,
         cloudwatch_client: Any,
         iam_client: Any,
-        endpoint_url: str = "http://localhost:4566",
+        # localhost:4566 is only the no-env default (tests/apps/event_chain/conftest.py).
+        endpoint_url: str = os.environ.get("ENDPOINT_URL")
+        or os.environ.get("AWS_ENDPOINT_URL")
+        or "http://localhost:4566",
         region: str = "us-east-1",
         account_id: str = "123456789012",
     ) -> None:
