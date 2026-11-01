@@ -570,7 +570,12 @@ impl KinesisHandler {
                 return AwsResponse::error(
                     400,
                     "ResourceNotFoundException",
-                    &format!("Shard {shard_id} in stream {name} not found."),
+                    &format!(
+                        // moto models.py:660 (GetShardIterator's shard lookup),
+                        // period-free like the oracle.
+                        "Shard {shard_id} in stream {name} under account {} does not exist",
+                        req.account
+                    ),
                 )
             }
         };

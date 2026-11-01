@@ -209,6 +209,13 @@ pub struct Group {
     pub arn: String,
     pub path: String,
     pub created: u64,
+    /// Process-global creation sequence — moto's groups dict iterates in
+    /// INSERTION order (models.py:2586-2593), which a HashMap-keyed store
+    /// cannot give; ListGroupsForUser sorts on this. `default` is the
+    /// w6-crate F1 serde pattern: a pre-field snapshot restores groups with
+    /// seq 0, which sorts them (per-tap by name) ahead of fresh creates.
+    #[serde(default)]
+    pub created_seq: u64,
     #[serde(with = "crate::snapshot::rw")]
     pub users: RwLock<Vec<String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -235,6 +242,7 @@ impl Group {
             group_name,
             path,
             created: chrono::Utc::now().timestamp_millis() as u64,
+            created_seq: NEXT_GROUP_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
             users: RwLock::new(Vec::new()),
             tags: RwLock::new(Vec::new()),
             attached_policies: RwLock::new(Vec::new()),
@@ -244,6 +252,10 @@ impl Group {
         }
     }
 }
+
+/// Monotonic creation sequence for `Group::with_path` (insertion order for
+/// ListGroupsForUser, aligned with moto's dict-iteration order).
+static NEXT_GROUP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// An IAM policy.
 #[derive(Debug, Serialize, Deserialize)]
@@ -436,8 +448,11 @@ pub struct IamState {
     pub instance_profile_ids: Arc<RwLock<HashMap<String, String>>>,
     /// Instance-profile CreateDate (RFC3339 seconds) stamped once at
     /// creation and rendered from this store (wave: per-read now() dates
-    /// drifted on every Get/List).
-    #[serde(with = "crate::snapshot::arc_rw")]
+    /// drifted on every Get/List). `default` is load-bearing forward-compat:
+    /// a snapshot saved by a pre-fix binary lacks the key and a struct-wide
+    /// parse (without a default) fails whole → restore falls back to an
+    /// EMPTY state (w6-crate F1's live-proven data loss).
+    #[serde(default, with = "crate::snapshot::arc_rw")]
     pub instance_profile_created: Arc<RwLock<HashMap<String, String>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub virtual_mfas: Arc<RwLock<HashMap<String, Arc<VirtualMfa>>>>,

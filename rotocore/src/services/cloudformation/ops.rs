@@ -4235,24 +4235,42 @@ mod catchup_fx5_last_updated_tests {
 
     #[test]
     fn list_stack_resources_returns_last_updated_timestamp() {
+        // Seeded directly (the cfnresponse module's harness pattern): a real
+        // CreateStack deploys through the HTTP self-mirror, which only
+        // answers while a live twin sits at the fallback port — an
+        // env-dependent outcome that flaked the suite (w6-crate F7). The
+        // seeded stack is deterministic and pins the same moto contract:
+        // ListStackResources renders LastUpdatedTimestamp sourced from the
+        // stack's creation time.
         let acct = ACCOUNT_NUM;
         let template = r#"{"Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
-        let resp = run(
-            acct,
-            &cfx_req(
-                "CreateStack",
-                &format!(
-                    "StackName=f5x-lsrs-stack&TemplateBody={}",
-                    form_encode(template)
-                ),
-            ),
-        );
-        assert_eq!(
-            resp.status,
-            200,
-            "got {}",
-            String::from_utf8_lossy(&resp.body)
-        );
+        with_store(acct, REGION, |store| {
+            let stack_id = store::new_stack_id("f5x-lsrs-stack", REGION, &acct.to_string());
+            let mut stack = CfnStack::new(
+                stack_id.clone(),
+                "f5x-lsrs-stack".to_string(),
+                template.to_string(),
+            );
+            stack.status = "CREATE_COMPLETE".to_string();
+            add_event(
+                &mut stack,
+                "f5x-lsrs-stack",
+                "AWS::CloudFormation::Stack",
+                &stack_id,
+                "CREATE_IN_PROGRESS",
+                None,
+            );
+            stack.resources.push(CfnResource {
+                logical_id: "Queue".to_string(),
+                resource_type: "AWS::SQS::Queue".to_string(),
+                properties: json!({}),
+                physical_id: Some("f5x-lsrs-queue".to_string()),
+                attributes: HashMap::new(),
+                status: "CREATE_COMPLETE".to_string(),
+                deletion_policy: "Delete".to_string(),
+            });
+            store.stacks.push(stack);
+        });
 
         let describe = run(acct, &cfx_req("DescribeStacks", "StackName=f5x-lsrs-stack"));
         assert_eq!(

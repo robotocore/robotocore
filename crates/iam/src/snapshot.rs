@@ -159,4 +159,77 @@ mod tests {
         st.roles.write().clear();
         st.users.write().clear();
     }
+
+    /// Forward-compat: a snapshot saved by a binary that predates
+    /// `instance_profile_created` (no `#[serde(default)]` then) must NOT
+    /// wipe live state on load (w6-crate F1 live-proved the empty-restore
+    /// data loss). Everything else restores; the CreateDate falls back to
+    /// stamp-on-first-read via the render-time fallback.
+    #[test]
+    fn test_snapshot_restore_tolerates_missing_instance_profile_created() {
+        use bytes::Bytes;
+        fn req(operation: &str, params: serde_json::Value) -> crate::protocol::AwsRequest {
+            crate::protocol::AwsRequest {
+                service: "iam".to_string(),
+                operation: operation.to_string(),
+                account: 123456789012,
+                region: "us-east-1".to_string(),
+                params,
+                body: Bytes::new(),
+                query: String::new(),
+            }
+        }
+        let handler = IamHandler::new();
+        handler.handle(req(
+            "CreateUser",
+            serde_json::json!({ "UserName": "fc-user" }),
+        ));
+        handler.handle(req(
+            "CreateRole",
+            serde_json::json!({ "RoleName": "fc-role", "AssumeRolePolicyDocument": "{}" }),
+        ));
+        handler.handle(req(
+            "CreateInstanceProfile",
+            serde_json::json!({ "InstanceProfileName": "fc-ip" }),
+        ));
+
+        let snap = handler.snapshot_json();
+        let mut stripped = snap.clone();
+        if let Some(state) = stripped
+            .as_object_mut()
+            .and_then(|o| o.get_mut("123456789012"))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            state.remove("instance_profile_created");
+        }
+        assert!(
+            stripped.to_string().contains("fc-user"),
+            "the strip must leave the rest of the snapshot intact"
+        );
+
+        // Nuke live state first, so only the snapshot can repopulate it.
+        handler.reset();
+        assert!(handler
+            .get_state(123456789012)
+            .get_user("fc-user")
+            .is_none());
+        handler.restore_json(&stripped);
+
+        let st = handler.get_state(123456789012);
+        assert!(st.get_user("fc-user").is_some(), "user restored");
+        assert!(st.get_role("fc-role").is_some(), "role restored");
+        assert!(
+            st.instance_profiles.read().contains_key("fc-ip"),
+            "instance profile restored"
+        );
+        // CreateDate falls back to the render-time stamp-and-persist.
+        let resp = handler.handle(req(
+            "GetInstanceProfile",
+            serde_json::json!({ "InstanceProfileName": "fc-ip" }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        assert!(resp.body.contains("<CreateDate>"), "body: {}", resp.body);
+        // Cleanup: do not leak state into other tests in this process.
+        handler.reset();
+    }
 }

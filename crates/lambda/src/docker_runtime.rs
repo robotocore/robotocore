@@ -50,7 +50,9 @@
 //! possible: those images carry no SDK (verified with `dotnet --list-sdks`
 //! in public.ecr.aws/lambda/dotnet:6/8).
 
-use crate::runtime::{collect_by, drain_thread, ExecResult, DOCKER_OUTPUT_CAP};
+use crate::runtime::{
+    collect_by, drain_thread, ExecResult, DOCKER_OUTPUT_CAP, DOCKER_RESULT_CAP, FAMILY_RESULT_CAP,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write;
@@ -173,10 +175,12 @@ pub(crate) fn loose_result(out: SubprocessOutput, timeout_secs: u32) -> ExecResu
     let stdout = out.stdout.trim().to_string();
     let logs = out.stderr;
     // Fail-loud at the response budget, same contract as the local lanes:
-    // the drain keeps a bounded tail, so a >=6MB docker-bridge result
+    // the result channels drain at DOCKER_RESULT_CAP = FAMILY_RESULT_CAP
+    // (the w6 fix raised the docker result drains — the checks sat beyond a
+    // 4MB drain and were unreachable), so a >=6MB docker-bridge result
     // cannot be trusted (moto enforces the response cap independent of
     // execution mode).
-    if out.stdout.len() >= crate::runtime::FAMILY_RESULT_CAP - 1 {
+    if out.stdout.len() >= FAMILY_RESULT_CAP - 1 {
         return crate::runtime::response_too_large_result(logs);
     }
     if out.status_code == Some(0) {
@@ -742,6 +746,7 @@ pub fn docker_available(timeout_secs: u64) -> bool {
         &[DOCKER.to_string(), "info".to_string()],
         None,
         timeout_secs,
+        DOCKER_OUTPUT_CAP,
     )
     .map(|out| out.status_code == Some(0))
     .unwrap_or(false)
@@ -1332,6 +1337,7 @@ pub(crate) fn run_subprocess(
     argv: &[String],
     input: Option<&[u8]>,
     timeout_secs: u64,
+    cap: usize,
 ) -> Result<SubprocessOutput, DockerRunError> {
     if argv.is_empty() {
         return Err(DockerRunError::Io);
@@ -1354,8 +1360,8 @@ pub(crate) fn run_subprocess(
     // any write and the input fed from a dedicated thread, so a chatty
     // container (or one that never reads stdin) cannot wedge the invoke
     // thread — the deadline loop below kills the child either way.
-    let stdout_rx = drain_thread(child.stdout.take(), DOCKER_OUTPUT_CAP);
-    let stderr_rx = drain_thread(child.stderr.take(), DOCKER_OUTPUT_CAP);
+    let stdout_rx = drain_thread(child.stdout.take(), cap);
+    let stderr_rx = drain_thread(child.stderr.take(), cap);
     if let Some(bytes) = input {
         if let Some(mut stdin) = child.stdin.take() {
             let bytes = bytes.to_vec();
@@ -1568,7 +1574,12 @@ impl DockerCli for RealCli {
         event_json: &str,
         timeout_secs: u64,
     ) -> Result<SubprocessOutput, DockerRunError> {
-        run_subprocess(argv, Some(event_json.as_bytes()), timeout_secs)
+        run_subprocess(
+            argv,
+            Some(event_json.as_bytes()),
+            timeout_secs,
+            DOCKER_RESULT_CAP,
+        )
     }
 
     fn invoke_via_runtime_interface(
@@ -1601,6 +1612,7 @@ impl DockerCli for RealCli {
             // Grace beyond the function timeout for the runtime round-trip,
             // as in the python-era `_invoke_via_runtime_interface`.
             u64::from(timeout.max(1)) + 5,
+            DOCKER_RESULT_CAP,
         )
     }
 
@@ -1615,6 +1627,7 @@ impl DockerCli for RealCli {
             ],
             None,
             10,
+            DOCKER_OUTPUT_CAP,
         );
     }
 
@@ -1627,6 +1640,7 @@ impl DockerCli for RealCli {
             ],
             None,
             10,
+            DOCKER_OUTPUT_CAP,
         ) {
             Ok(out) => {
                 let mut logs = out.stdout;
@@ -1643,7 +1657,7 @@ impl DockerCli for RealCli {
     }
 
     fn lambda_straggler_containers(&self) -> Vec<String> {
-        match run_subprocess(&sweep_list_cmd(), None, 10) {
+        match run_subprocess(&sweep_list_cmd(), None, 10, DOCKER_OUTPUT_CAP) {
             Ok(out) => straggler_names(&out.stdout),
             Err(_) => Vec::new(),
         }
@@ -2134,10 +2148,12 @@ impl DockerLambdaExecutor {
         }
 
         // Fail-loud at the response budget (the local lanes' contract; moto
-        // enforces the cap regardless of execution mode): the drain keeps a
-        // bounded tail, so a >=6MB runtime-interface result cannot be
-        // trusted as JSON.
-        if result_stdout.len() >= crate::runtime::FAMILY_RESULT_CAP - 1 {
+        // enforces the cap regardless of execution mode): the EMI result
+        // channel drains at DOCKER_RESULT_CAP = FAMILY_RESULT_CAP, so this
+        // check is reachable (a 4MB log-side drain would have made it dead
+        // code — w6-lambda F1) and a >=6MB runtime-interface result cannot
+        // be trusted as JSON.
+        if result_stdout.len() >= FAMILY_RESULT_CAP - 1 {
             return crate::runtime::response_too_large_result(logs);
         }
 
@@ -2845,26 +2861,38 @@ mod tests {
     #[test]
     fn test_run_subprocess_missing_binary_maps_to_not_found() {
         let _g = GUARD.lock();
-        let result = run_subprocess(&["definitely-not-a-real-binary-xyz".to_string()], None, 5);
+        let result = run_subprocess(
+            &["definitely-not-a-real-binary-xyz".to_string()],
+            None,
+            5,
+            DOCKER_OUTPUT_CAP,
+        );
         // python-era FileNotFoundError → fallback trigger.
         assert!(matches!(result, Err(DockerRunError::NotFound)));
     }
 
     #[test]
     fn test_run_subprocess_nonzero_status_not_available() {
-        let result = run_subprocess(&["/bin/false".to_string()], None, 5).unwrap();
+        let result =
+            run_subprocess(&["/bin/false".to_string()], None, 5, DOCKER_OUTPUT_CAP).unwrap();
         assert_eq!(result.status_code, Some(1));
     }
 
     #[test]
     fn test_run_subprocess_timeout_returns_timeout() {
-        let result = run_subprocess(&["sleep".to_string(), "30".to_string()], None, 1);
+        let result = run_subprocess(
+            &["sleep".to_string(), "30".to_string()],
+            None,
+            1,
+            DOCKER_OUTPUT_CAP,
+        );
         assert!(matches!(result, Err(DockerRunError::Timeout)));
     }
 
     #[test]
     fn test_run_subprocess_success_status_zero() {
-        let result = run_subprocess(&["/bin/true".to_string()], None, 5).unwrap();
+        let result =
+            run_subprocess(&["/bin/true".to_string()], None, 5, DOCKER_OUTPUT_CAP).unwrap();
         assert_eq!(result.status_code, Some(0));
     }
 
@@ -3195,6 +3223,24 @@ mod tests {
         assert_eq!(payload["errorMessage"], "bad");
     }
 
+    /// The EMI lane's response-budget fail-loud through the full executor:
+    /// a >=6MB runtime-interface result answers Function.ResponseSizeTooLarge
+    /// instead of riding truncated (w6-lambda F1: the 4MB log-side drain
+    /// kept this check dead).
+    #[test]
+    fn test_emi_response_over_the_budget_fails_loud() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        let six_mb: String = "x".repeat(FAMILY_RESULT_CAP + 8);
+        cli.exec_results(&[Ok(mock_output(0, &six_mb, ""))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "nodejs20.x", r#"{}"#);
+        assert_eq!(res.function_error.as_deref(), Some("Unhandled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Function.ResponseSizeTooLarge");
+    }
+
     #[test]
     fn test_unhandled_error_when_container_dies() {
         let _g = GUARD.lock();
@@ -3352,6 +3398,54 @@ mod tests {
         assert_eq!(payload["errorMessage"], "boom");
     }
 
+    /// The docker fail-loud must be REACHABLE: the result channels drain at
+    /// `DOCKER_RESULT_CAP = FAMILY_RESULT_CAP`, so a >=6MB stdout trips the
+    /// Function.ResponseSizeTooLarge contract while sub-cap results still
+    /// ride (w6-lambda F1: the checks sat beyond a 4MB drain — dead code —
+    /// and 4–6MB docker results tail-truncated silently as data).
+    #[test]
+    fn loose_result_fails_loud_at_the_family_result_cap() {
+        // 5 MB: inside the drain, outside the moto cap — rides as data.
+        let five_mb = "x".repeat(5 * 1024 * 1024);
+        let out = loose_result(mock_output(0, &five_mb, ""), 3);
+        assert_eq!(out.function_error, None, "5MB rides as data");
+        // 6 MB: unparsable wall of data past the moto budget → fail-loud.
+        let six_mb = "x".repeat(FAMILY_RESULT_CAP + 8);
+        let out = loose_result(mock_output(0, &six_mb, "log"), 3);
+        assert_eq!(out.function_error.as_deref(), Some("Unhandled"));
+        let payload: Value = serde_json::from_str(&out.payload).unwrap();
+        assert_eq!(payload["errorType"], "Function.ResponseSizeTooLarge");
+        assert_eq!(
+            payload["errorMessage"],
+            "Response payload size exceeded maximum allowed payload size (6291556 bytes)."
+        );
+    }
+
+    /// The drain wiring itself: a child that prints 7MB on stdout is kept
+    /// tail-bounded exactly at the RESULT cap — reachable past the
+    /// 6,291,555-byte fail-loud threshold, which the old 4MB log cap
+    /// silently made unreachable (head of a 4–6MB result lost as data).
+    #[test]
+    fn run_subprocess_result_drain_holds_the_family_budget() {
+        let argv = vec![
+            "head".to_string(),
+            "-c".to_string(),
+            "7200000".to_string(),
+            "/dev/zero".to_string(),
+        ];
+        let out = run_subprocess(&argv, None, 15, DOCKER_RESULT_CAP).unwrap();
+        assert_eq!(out.status_code, Some(0));
+        assert!(
+            out.stdout.len() >= FAMILY_RESULT_CAP - 1,
+            "the >= 6291555-byte response-oversized check must be reachable through the real drain"
+        );
+        assert_eq!(
+            out.stdout.len(),
+            DOCKER_RESULT_CAP,
+            "the kept tail is bounded at the cap"
+        );
+    }
+
     /// The loose families build a one-shot `docker run --rm -i ...` — no
     /// detached container, no runtime-interface POST (that is for the EMI
     /// families only).
@@ -3490,7 +3584,7 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
-        if run_subprocess(&inspect, None, 30)
+        if run_subprocess(&inspect, None, 30, DOCKER_OUTPUT_CAP)
             .map(|out| out.status_code == Some(0))
             .unwrap_or(false)
         {
@@ -3500,7 +3594,7 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
-        let _ = run_subprocess(&pull, None, 900);
+        let _ = run_subprocess(&pull, None, 900, DOCKER_OUTPUT_CAP);
     }
 
     fn e2e_code_dir(code: &str) -> std::path::PathBuf {

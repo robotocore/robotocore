@@ -14,10 +14,11 @@
 //!   tracks the last delivered SequenceNumber per mapping.
 //! - Failed deliveries are budgeted: after MAX_CONSECUTIVE_FAILURES failed
 //!   deliveries of the same batch the mapping's redelivery is parked (no
-//!   invokes, cursor pinned) until the source produces new content beyond
-//!   the failed watermark (one probe per arrival — the kinesis shard
-//!   frontier drives this), the invocation succeeds again, or the mapping
-//!   config changes (an operator update resets the budget).
+//!   invokes, cursor pinned) until the source assigns content beyond the
+//!   failed batch's READ position (one probe per arrival — the kinesis
+//!   shard frontier vs. the gate's pinned read position drives this), the
+//!   invocation succeeds again, or the mapping config changes (an operator
+//!   update resets the budget).
 //!
 //! The engine runs on a dedicated thread started by the server binary; the
 //! service crates stay decoupled (they only expose operation handlers and
@@ -86,8 +87,8 @@ type MappingKey = (u64, String, String);
 
 /// Consecutive-failure budget for one mapping cursor. Redelivering the same
 /// batch is allowed while the budget lasts, then parked until the delivery
-/// content changes (new records beyond the failed watermark) or the mapping
-/// config changes (operator update — the enable/disable lever).
+/// content changes (assignment beyond the pinned read position) or the
+/// mapping config changes (operator update — the enable/disable lever).
 #[derive(Default)]
 struct RedeliveryGate {
     consecutive_failures: u32,
@@ -95,16 +96,23 @@ struct RedeliveryGate {
     failed_fingerprint: Option<String>,
     /// Salient mapping config as last seen; a change resets the budget.
     config_state: Option<String>,
+    /// Highest READ position this mapping has attempted to advance past —
+    /// the failed window's would-advance end (one past its last record),
+    /// absorbing the shard's observed frontier so a batch-cap-hidden
+    /// arrival can't keep the parked arm open. Strictly-greater shard
+    /// assignments earn exactly one probe each.
+    read_frontier: Option<u128>,
 }
 
 impl RedeliveryGate {
     /// Whether this poll may deliver the batch named by `fingerprint`.
     ///
     /// `new_content` is the parked-mapping survival signal: the shard's
-    /// newest sequence moved past the failed watermark (a new record
-    /// landed). While parked, ONE probe is allowed per new-arrival — a
-    /// permanently broken batch retries only once per record put (bounded
-    /// retry), and a recovered function delivers and advances the cursor.
+    /// newest sequence moved past the gate's pinned READ position (a new
+    /// record landed beyond everything this cursor has attempted). While
+    /// parked, ONE probe is allowed per new-arrival — a permanently broken
+    /// batch retries only once per record put (bounded retry), and a
+    /// recovered function delivers and advances the cursor.
     fn may_deliver(&mut self, fingerprint: &str, config_state: &str, new_content: bool) -> bool {
         if self.config_state.as_deref() != Some(config_state) {
             // ESM update — the operator's enable/disable lever. Reset.
@@ -142,6 +150,29 @@ impl RedeliveryGate {
     fn record_success(&mut self) {
         self.consecutive_failures = 0;
         self.failed_fingerprint = None;
+    }
+
+    /// Engine-facing read of the pinned position (`None` = nothing
+    /// attempted yet).
+    fn pinned_frontier(&self) -> Option<u128> {
+        self.read_frontier
+    }
+
+    /// One failed KINESIS delivery cycle: the budget bookkeeping of
+    /// `record_failure` plus pinning the READ position this attempt
+    /// advanced past (`read_upto` ≈ the would-advance window end, absorbing
+    /// the observed shard frontier). The delivered-record watermark could
+    /// not source this: a batch-capped window (backlog > batch_size) or a
+    /// filter-dropped tail left it below the read position, so the parked
+    /// arm opened structurally with zero new arrivals and re-invoked a dead
+    /// consumer every poll. Pinning on failure and absorbing the frontier
+    /// keep the arm open only for assignments strictly beyond everything
+    /// attempted — each later arrival earns exactly one probe.
+    fn record_kinesis_failure(&mut self, fingerprint: &str, read_upto: Option<u128>) {
+        if let Some(upto) = read_upto {
+            self.read_frontier = Some(self.read_frontier.map_or(upto, |pinned| pinned.max(upto)));
+        }
+        self.record_failure(fingerprint);
     }
 }
 
@@ -303,14 +334,18 @@ fn parse_watermark(s: &str) -> u128 {
 }
 
 /// Parked-mapping survival signal: the shard's last-ASSIGNED frontier is
-/// strictly past the failed batch's watermark. The next-to-assign form
-/// (`counter+1`) sat one past every delivered batch and made this
-/// permanently true — re-reading the frontier as `counter+1` anywhere
-/// re-deadens the RedeliveryGate's parked arm. No frontier entry never
-/// probes; a frontier read with an unparsable watermark errs toward one
-/// probe (it could only be a parsing failure on a live shard).
-fn has_new_content(frontier: Option<u128>, failed_watermark: Option<u128>) -> bool {
-    match (frontier, failed_watermark) {
+/// strictly past the gate's pinned READ position (`attempted_upto` — the
+/// would-advance end of the failed window, absorbing the observed
+/// frontier; NOT the delivered record's own watermark, which sits below
+/// the read position whenever the window is batch-capped or filter-cut).
+/// The next-to-assign frontier form (`counter+1`) would sit one past
+/// every delivered batch and keep this permanently true — re-reading the
+/// frontier as `counter+1` anywhere re-deadens the parked arm. No
+/// frontier entry never probes; a frontier read with nothing pinned yet
+/// errs toward one probe (harmless: a fresh gate delivers via the
+/// fingerprint/budget arms anyway).
+fn has_new_content(frontier: Option<u128>, attempted_upto: Option<u128>) -> bool {
+    match (frontier, attempted_upto) {
         (Some(f), Some(w)) => f > w,
         (Some(_), None) => true,
         (None, _) => false,
@@ -581,19 +616,24 @@ impl Engine {
                     shard.clone(),
                 ))
                 .or_default();
-            // New-content signal for the parked-cursor survival rule: any
-            // ASSIGNED sequence beyond the failed batch's watermark means a
-            // record landed after the failure, so the stalled cursor gets
-            // one retry (the retry loop below re-reads the pinned window
-            // and now includes the arrival). shard_frontiers returns the
-            // last-ASSIGNED counter per shard — `counter+1` (the
-            // iterator-binding form) sat one past every delivered batch,
-            // which kept `latest > watermark` true forever and made the
-            // parking arm dead.
-            let failed_watermark = delivered
+            // New-content signal for the parked-cursor survival rule: the
+            // shard's last-ASSIGNED counter must sit strictly beyond the
+            // gate's pinned READ position — where this mapping's attempts
+            // have already reached (one past the failed window's last
+            // record, absorbing the frontier at failure time). A
+            // batch-capped window (backlog > batch_size) or a
+            // filter-dropped tail leaves the read position BELOW the
+            // shard's counter through no arrival, so keying on the
+            // delivered record's own watermark made the arm structurally
+            // open and re-invoked dead consumers every poll. shard_frontiers
+            // reports the last-ASSIGNED counter (`counter+1` — the
+            // iterator-binding form — sat one past every delivered batch
+            // and kept the arm permanently open).
+            let window_upto = window
                 .last()
-                .and_then(|r| r["kinesis"]["sequenceNumber"].as_str())
-                .and_then(|s| s.parse::<u128>().ok());
+                .and_then(|r| r["SequenceNumber"].as_str())
+                .and_then(|s| s.parse::<u128>().ok())
+                .map(|last| last + 1);
             let shard_frontier = native
                 .kinesis
                 .shard_frontiers(entry.account, &entry.region, &stream_name)
@@ -603,7 +643,7 @@ impl Engine {
             if !gate.may_deliver(
                 &fingerprint,
                 &config_signature(mapping),
-                has_new_content(shard_frontier, failed_watermark),
+                has_new_content(shard_frontier, gate.pinned_frontier()),
             ) {
                 continue;
             }
@@ -635,7 +675,13 @@ impl Engine {
                     payload = result.payload.get(0..300).unwrap_or(&result.payload),
                     "esm: kinesis batch invoke FAILED"
                 );
-                gate.record_failure(&fingerprint);
+                gate.record_kinesis_failure(
+                    &fingerprint,
+                    match (window_upto, shard_frontier) {
+                        (Some(upto), Some(frontier)) => Some(upto.max(frontier)),
+                        (upto, frontier) => upto.or(frontier),
+                    },
+                );
             }
             // On failure: keep the old iterator so the next poll re-delivers.
         }
@@ -1489,6 +1535,251 @@ mod tests {
         assert!(
             layers.is_empty(),
             "the frontier must drain: no half ever re-joins a full batch"
+        );
+    }
+
+    // -- engine-level park wiring (N-1 residual + N-2) ------------------------
+
+    fn test_native() -> Arc<NativeHandlers> {
+        Arc::new(NativeHandlers {
+            sqs: Arc::new(sqs::DefaultSqsHandler::new()),
+            s3: Arc::new(s3::DefaultS3Handler::new()),
+            dynamodb: Arc::new(dynamodb::DefaultDynamoDbHandler::new()),
+            sns: Arc::new(sns::DefaultSnsHandler::new()),
+            secretsmanager: Arc::new(secretsmanager::DefaultSecretsManagerHandler::new()),
+            kms: Arc::new(kms::DefaultKmsHandler::new()),
+            ssm: Arc::new(ssm::DefaultSsmHandler::new()),
+            iam: Arc::new(iam::DefaultIamHandler::new()),
+            lambda: Arc::new(lambda::DefaultLambdaHandler::new()),
+            logs: Arc::new(cloudwatch_logs::DefaultLogsHandler::new()),
+            events: Arc::new(events::DefaultEventsHandler::new()),
+            kinesis: Arc::new(kinesis::DefaultKinesisHandler::new()),
+            firehose: Arc::new(firehose::DefaultFirehoseHandler::new()),
+            cloudwatch: Arc::new(cloudwatch::DefaultCloudwatchHandler::new()),
+            ecr: Arc::new(ecr::DefaultEcrHandler::new()),
+            ecs: Arc::new(ecs::DefaultEcsHandler::new()),
+            stepfunctions: Arc::new(stepfunctions::DefaultStepfunctionsHandler::new()),
+        })
+    }
+
+    /// The helper/wiring pins left the ENGINE-level park contract unpinned
+    /// (w6-esm N-2), and nothing pinned the saturated-backlog shape (N-1):
+    /// a permanently failing consumer with a backlog deeper than
+    /// batch_size must reconcile to budgeted retries and a parked gate —
+    /// NOT an invoke every 300ms poll. Drives the real
+    /// `poll_snapshot` against real native handlers: budget cycles (5
+    /// failures), parked polls record zero further attempts, one fresh
+    /// arrival earns exactly one probe, and a successful delivery clears
+    /// the budget. Sole probe registrant in this binary (no other test
+    /// touches CreateEventSourceMapping), so the global bridge probe race
+    /// does not apply.
+    #[test]
+    fn kinesis_park_engages_on_saturated_backlog() {
+        let native = test_native();
+        lambda::bridge::register_kinesis_stream_probe(Arc::new({
+            let native = native.clone();
+            move |account, region, stream_name| {
+                native.kinesis.has_stream(account, region, stream_name)
+            }
+        }));
+        let acct = 154700000017u64;
+        let kreq = |op: &str, params: serde_json::Value| kinesis::AwsRequest {
+            service: "kinesis".into(),
+            operation: op.into(),
+            account: acct,
+            region: "us-east-1".into(),
+            params,
+            body: Bytes::new(),
+        };
+        native.kinesis.handle(kreq(
+            "CreateStream",
+            json!({"StreamName": "park-stream", "ShardCount": 1}),
+        ));
+        for i in 0..7 {
+            native.kinesis.handle(kreq(
+                "PutRecord",
+                json!({"StreamName": "park-stream", "Data": "aGVsbG8=",
+                       "PartitionKey": format!("pk-{i}")}),
+            ));
+        }
+
+        // Permanently failing consumer: an unknown runtime + non-empty code
+        // never spawns anything (execute answers Runtime.InvalidRuntime).
+        native.lambda.handle(lambda::AwsRequest {
+            service: "lambda".into(),
+            operation: "CreateFunction".into(),
+            account: acct,
+            region: "us-east-1".into(),
+            params: json!({"FunctionName": "park-fn", "Runtime": "bogus99",
+                           "Handler": "index.handler",
+                           "Code": {"ZipFile": "UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA=="}}),
+            body: Bytes::new(),
+            method: "POST".into(),
+            path: "/2015-03-31/functions".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        });
+        native.lambda.handle(lambda::AwsRequest {
+            service: "lambda".into(),
+            operation: "CreateEventSourceMapping".into(),
+            account: acct,
+            region: "us-east-1".into(),
+            params: json!({"EventSourceArn":
+                               "arn:aws:kinesis:us-east-1:154700000017:stream/park-stream",
+                           "FunctionName": "park-fn", "StartingPosition": "TRIM_HORIZON",
+                           "BatchSize": 5}),
+            body: Bytes::new(),
+            method: "POST".into(),
+            path: "/2015-03-31/event-source-mappings".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        });
+
+        let key = |mapping_uuid: &str, shard: &str| {
+            (
+                acct,
+                "us-east-1".to_string(),
+                mapping_uuid.to_string(),
+                shard.to_string(),
+            )
+        };
+        let uuid = |arn_part: &str| {
+            native
+                .lambda
+                .esm_snapshot()
+                .iter()
+                .find(|e| e.mapping.event_source_arn.contains(arn_part))
+                .expect("mapping created")
+                .mapping
+                .uuid
+                .clone()
+        };
+        let failures_after = |engine: &Engine, gkey: &BudgetKey| {
+            engine
+                .gates
+                .get(gkey)
+                .map(|g| g.consecutive_failures)
+                .unwrap_or_default()
+        };
+
+        // Budget cycle: the window is capped at 5 with 7 on the shard —
+        // polls 1..=5 all attempt, then the gate parks.
+        let mut engine = Engine::default();
+        poll_snapshot(&native, &mut engine);
+        let gkey = key(&uuid("park-stream"), "shardId-000000000000");
+        assert_eq!(failures_after(&engine, &gkey), 1, "first attempt recorded");
+        assert_eq!(
+            engine.gates.get(&gkey).and_then(|g| g.read_frontier),
+            Some(7),
+            "the failed attempt pins the READ position (window end 5 → +1) \
+             and absorbs the shard frontier (7) — the N-1 fix; the delivered \
+             record's own watermark (5) would have left the arm open"
+        );
+        for _ in 0..4 {
+            poll_snapshot(&native, &mut engine);
+        }
+        assert_eq!(
+            failures_after(&engine, &gkey),
+            5,
+            "the budget engages after MAX_CONSECUTIVE_FAILURES attempts"
+        );
+
+        // Parked: further polls must make ZERO further attempts even though
+        // the shard frontier (7) sits above the delivered watermark (5) —
+        // the pre-N-1 shape re-invoked here forever.
+        for _ in 0..5 {
+            poll_snapshot(&native, &mut engine);
+        }
+        assert_eq!(
+            failures_after(&engine, &gkey),
+            5,
+            "parked polls must not re-invoke the dead consumer"
+        );
+        // The failing path re-mints the iterator from the start position
+        // each poll (no stored cursor on the failure arm), so the same
+        // capped window keeps re-delivering — at-least-once.
+        assert!(
+            !engine.kinesis_iterators.contains_key(&gkey),
+            "a never-succeeded cursor has no continuation to store"
+        );
+
+        // One fresh arrival earns exactly one probe (the overflow records
+        // behind the batch cap started the stream past the pinned position;
+        // only a NEW assignment re-arms).
+        native.kinesis.handle(kreq(
+            "PutRecord",
+            json!({"StreamName": "park-stream", "Data": "aGVsbG8=",
+                   "PartitionKey": "pk-new"}),
+        ));
+        poll_snapshot(&native, &mut engine);
+        assert_eq!(
+            failures_after(&engine, &gkey),
+            1,
+            "the arrival probe attempts once (budget restarted)"
+        );
+        assert_eq!(
+            engine.gates.get(&gkey).and_then(|g| g.read_frontier),
+            Some(8),
+            "the probe failure re-pins past the arrival"
+        );
+        // The restarted budget cycles again and re-parks.
+        for _ in 0..4 {
+            poll_snapshot(&native, &mut engine);
+        }
+        assert_eq!(failures_after(&engine, &gkey), 5, "re-parked");
+
+        // A successful delivery clears everything: a code-less function
+        // resolves through moto's simple-mode happy path, so its mapping's
+        // gate reports zero failures, no fingerprint and nothing pinned.
+        native.kinesis.handle(kreq(
+            "CreateStream",
+            json!({"StreamName": "park-ok-stream", "ShardCount": 1}),
+        ));
+        native.kinesis.handle(kreq(
+            "PutRecord",
+            json!({"StreamName": "park-ok-stream", "Data": "aGVsbG8=", "PartitionKey": "pk"}),
+        ));
+        native.lambda.handle(lambda::AwsRequest {
+            service: "lambda".into(),
+            operation: "CreateFunction".into(),
+            account: acct,
+            region: "us-east-1".into(),
+            params: json!({"FunctionName": "park-ok-fn", "Runtime": "python3.12",
+                           "Handler": "index.handler"}),
+            body: Bytes::new(),
+            method: "POST".into(),
+            path: "/2015-03-31/functions".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        });
+        native.lambda.handle(lambda::AwsRequest {
+            service: "lambda".into(),
+            operation: "CreateEventSourceMapping".into(),
+            account: acct,
+            region: "us-east-1".into(),
+            params: json!({"EventSourceArn":
+                               "arn:aws:kinesis:us-east-1:154700000017:stream/park-ok-stream",
+                           "FunctionName": "park-ok-fn", "StartingPosition": "TRIM_HORIZON"}),
+            body: Bytes::new(),
+            method: "POST".into(),
+            path: "/2015-03-31/event-source-mappings".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        });
+        poll_snapshot(&native, &mut engine);
+        let ok_key = key(&uuid("park-ok-stream"), "shardId-000000000000");
+        let ok_gate = engine.gates.get(&ok_key).expect("the ok gate exists");
+        assert_eq!(
+            ok_gate.consecutive_failures, 0,
+            "a successful delivery leaves no failure budget behind"
+        );
+        assert!(
+            ok_gate.failed_fingerprint.is_none(),
+            "a successful delivery clears the failed fingerprint"
+        );
+        assert_eq!(
+            ok_gate.read_frontier, None,
+            "a never-failed mapping pins nothing"
         );
     }
 
