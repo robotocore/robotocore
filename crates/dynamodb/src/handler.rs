@@ -1176,11 +1176,14 @@ fn number_validity_error(
 /// the NULL-type check): numeric-claim failures and a non-true NULL are
 /// ValidationExceptions on every write path, with moto's per-failure text
 /// (unparseable/whitespace = "cannot be converted", overflow/underflow the
-/// Number {over,under}flow messages). Deliberate divergence: moto's checks
-/// do NOT descend into `M`/`L` members (models/table.py's validation only
-/// inspects top-level members, so moto stores a bad `N` inside a list),
-/// while this recursion rejects the same literal nested anywhere — real-AWS
-/// posture, so callers get the same 400 they'd see at the top level.
+/// Number {over,under}flow messages). Divergence from moto is *only* the
+/// `L` arm: moto recurses through nested `M` dicts (its validator runs
+/// itself on every dict member) so a bad `N` inside a map 400s in moto
+/// too, but its loop never descends into `L` lists (models/table.py
+/// `_validate_item_types` iterates dict items only, so moto stores a bad
+/// `N` inside a list). This recursion rejects the same literal nested
+/// anywhere — real-AWS posture, so callers get the same 400 they'd see
+/// at the top level.
 fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     if let Some(n) = value.get("N").and_then(Value::as_str) {
         return number_validity_error(expr_engine::number_validity(n), n);
