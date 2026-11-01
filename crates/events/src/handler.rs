@@ -73,10 +73,23 @@ fn now_rfc3339() -> String {
 /// later. Shared by the PutEvents entry loop and `publish_event_to_bus` (S3
 /// notifications, CloudTrail bridge events and other cross-crate emitters
 /// land here, attributed by their source-bus ARN).
+///
+/// Attribution model vs moto: real AWS auto-captures every event delivered
+/// to an archive's source bus; moto 5.2.4 implements the same outcome only
+/// when a rule targets the archive INSIDE put_events (models.py:212-227,
+/// `_send_to_events_archive` — the engine's single `archive.events.append`).
+/// The twin captures on the bus entry itself (no archive-target rule
+/// needed), which is the real-AWS shape; entry points are PutEvents and the
+/// cross-crate default-bus surface — the SAME rule surface moto's put_events
+/// dispatches over (`event_bus.rules`, models.py:1500-1502).
 fn capture_to_archives(state: &EventsState, bus_arn: &str, event: &Value) {
-    let capture: Vec<String> = state
-        .archives
-        .read()
+    // TOCTOU guard: the archives READ guard is held across the corpus write
+    // so delete_archive's corpus removal (taken under the matching WRITE
+    // guard) can never interleave — a delete between collect and push would
+    // otherwise resurrect a deleted archive's corpus for a same-name
+    // re-create.
+    let archives = state.archives.read();
+    let capture: Vec<String> = archives
         .iter()
         .filter(|(_, a)| {
             a.get("EventSourceArn").and_then(|s| s.as_str()) == Some(bus_arn)
@@ -104,13 +117,19 @@ fn capture_to_archives(state: &EventsState, bus_arn: &str, event: &Value) {
 pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
     let state = global_state(account, region);
     // Cross-crate highways deliver into the (account, region)'s default bus
-    // surface, so its archives capture the delivery the same way a PutEvents
-    // on that bus would.
-    capture_to_archives(&state, &state.bus_arn(account, region, "default"), event);
+    // surface exactly like moto's put_events: the event's ONE bus owns both
+    // the archives and the rules that see it (moto models.py:1490-1509 —
+    // `for rule in event_bus.rules.values()`). Scoping the fan-out to that
+    // same default bus keeps the capture above and the delivery in one
+    // contract; a rule attached to a custom bus only ever sees events put
+    // on that bus.
+    let default_bus_arn = state.bus_arn(account, region, "default");
+    capture_to_archives(&state, &default_bus_arn, event);
     let matching: Vec<Arc<Rule>> = {
         let rules = state.rules.read();
         rules
             .values()
+            .filter(|rule| rule.bus_name == "default")
             .filter(|rule| *rule.state.read() == "ENABLED")
             .filter(|rule| {
                 serde_json::from_str::<Value>(&rule.event_pattern)
@@ -626,6 +645,18 @@ impl EventsHandler {
             let state = global_state(bus_account, bus_region);
             let event_value =
                 serde_json::from_str::<Value>(payload).unwrap_or_else(|_| event.clone());
+            // moto routes a cross-bus rule target through the DESTINATION
+            // backend's put_events (models.py:173-183), so the forwarded
+            // event is an entry into that bus — its archives capture it and
+            // only its rules see it. Capture rides the destination bus
+            // before the rule fan-out; each hop archives once on its own
+            // destination bus and the same MAX_BUS_RECURSION cap bounds the
+            // corpus writes in a cycle.
+            capture_to_archives(
+                &state,
+                &state.bus_arn(bus_account, bus_region, &bus_name),
+                &event_value,
+            );
             let matching: Vec<Arc<Rule>> = state
                 .rules
                 .read()
@@ -1214,7 +1245,13 @@ impl EventsHandler {
     fn delete_archive(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["ArchiveName"]);
         let state = self.get_state(req.account, &req.region);
-        if state.archives.write().remove(&name).is_none() {
+        // The corpus removal happens while the archives WRITE guard is still
+        // held: capture_to_archives collects under the READ guard and writes
+        // the corpus before releasing it, so no capture can interleave
+        // between the config removal and the corpus removal (a resurrected
+        // entry would replay pre-delete events into a same-name re-create).
+        let mut archives = state.archives.write();
+        if archives.remove(&name).is_none() {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
@@ -1224,6 +1261,7 @@ impl EventsHandler {
         // Drop the captured events with the archive config (keep-alive: the
         // event store must not outlive its archive).
         state.archived_events.write().remove(&name);
+        drop(archives);
         state.tags.write().remove(&format!(
             "arn:aws:events:{}:{}:archive/{}",
             req.region, req.account, name
@@ -1299,6 +1337,16 @@ impl EventsHandler {
             .next()
             .unwrap_or_default()
             .to_string();
+        // Real AWS raises ResourceNotFoundException for an unknown/deleted
+        // archive (API validation resolves EventSourceArn first); without
+        // this a silent COMPLETED(0) would paper over a typo.
+        if !state.archives.read().contains_key(&archive_name) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Archive {archive_name} not found"),
+            );
+        }
         let dest_bus = req
             .params
             .get("Destination")
@@ -2982,5 +3030,72 @@ mod tests {
             json!({"ReplayName": format!("{replay}-empty")}),
         )));
         assert_eq!(desc["EventsReplayed"], 0);
+    }
+
+    /// Direct coverage for the wave-2 capture + the wave-3 bus scoping:
+    /// `publish_event_to_bus` (the S3/CloudTrail cross-crate surface)
+    /// captures into DEFAULT-bus archives exactly once, and a rule on a
+    /// CUSTOM bus never fires for a cross-crate event (moto's put_events
+    /// runs only the event's own bus rules — models.py:1500-1502). The
+    /// custom bus rule here targets the default bus, so a fired rule would
+    /// forward-re-enter and capture a SECOND copy: the single stored event
+    /// proves both the capture and the bus scoping.
+    #[test]
+    fn publish_event_to_bus_captures_default_bus_only() {
+        let handler = EventsHandler::new();
+        let account = (uuid::Uuid::new_v4().as_u128() % 800_000_000_000) as u64;
+        let req = |operation: &str, params: Value| req_acc(operation, params, account);
+        let archive = format!("cb-archive-{}", uuid::Uuid::new_v4().simple());
+        let custom = format!("cb-bus-{}", uuid::Uuid::new_v4().simple());
+        let rule = format!("cb-rule-{}", uuid::Uuid::new_v4().simple());
+        let bus_arn = format!("arn:aws:events:us-east-1:{account}:event-bus/default");
+        handler.handle(req(
+            "CreateArchive",
+            json!({"ArchiveName": archive, "EventSourceArn": bus_arn}),
+        ));
+        handler.handle(req("CreateEventBus", json!({"Name": &custom})));
+        handler.handle(req(
+            "PutRule",
+            json!({
+                "Name": &rule, "EventBusName": &custom,
+                "EventPattern": json!({"source": ["test.emit"]}).to_string(),
+            }),
+        ));
+        handler.handle(req(
+            "PutTargets",
+            json!({
+                "EventBusName": &custom, "Rule": &rule,
+                "Targets": [{"Id": "fwd", "Arn": bus_arn}],
+            }),
+        ));
+
+        publish_event_to_bus(
+            &json!({
+                "source": "test.emit",
+                "detail-type": "CrossCrate",
+                "detail": {"n": 1},
+                "region": "us-east-1",
+                "account": account.to_string(),
+                "time": chrono::Utc::now().to_rfc3339(),
+                "resources": [],
+                "version": "0",
+                "id": uuid::Uuid::new_v4().to_string(),
+            }),
+            account,
+            "us-east-1",
+        );
+
+        let stored = handler
+            .get_state(account, "us-east-1")
+            .archived_events
+            .read()
+            .get(&archive)
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            stored.len(),
+            1,
+            "one capture; a custom-bus rule fire would double-capture via the forward: {stored:?}"
+        );
     }
 }

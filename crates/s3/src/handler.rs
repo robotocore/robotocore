@@ -8308,4 +8308,74 @@ mod catchup_fx5_object_attributes_tests {
         assert_eq!(resp.status, 403);
         assert!(String::from_utf8_lossy(&resp.body).contains("AccessDenied"));
     }
+
+    /// The real-response arm (wave-2 gateway finding 14):
+    /// `cors_rule_response_headers` resolves the bucket's rules for a
+    /// non-preflight request — Some(headers) on a rule match, Some(empty)
+    /// when the rule set exists but rejects this origin/method (real S3
+    /// answers no CORS headers), None for an unknown/rule-less bucket (the
+    /// gateway's generic CORS headers stay eligible).
+    #[test]
+    fn cors_rule_response_headers_resolves_bucket_rules() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cors-real"), None, b""));
+        let with_rules = make_req(
+            "PutBucketCors",
+            Some("cors-real"),
+            None,
+            br#"<CORSConfiguration><CORSRule><AllowedOrigin>https://app</AllowedOrigin><AllowedMethod>GET</AllowedMethod></CORSRule></CORSConfiguration>"#,
+        );
+        assert_eq!(handler.handle(with_rules).status, 200);
+
+        // Matched rule → the rule's headers.
+        let headers = handler
+            .cors_rule_response_headers(
+                424242222222,
+                "us-fx5-catchup",
+                Some("cors-real"),
+                "https://app",
+                "GET",
+            )
+            .expect("existing rule set");
+        let allow = headers
+            .iter()
+            .find(|(k, _)| k == "Access-Control-Allow-Origin")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(allow, Some("https://app"));
+
+        // Rule set rejects the origin → Some(empty) = append nothing (no
+        // wildcard leak onto a restricted bucket).
+        let rejected = handler
+            .cors_rule_response_headers(
+                424242222222,
+                "us-fx5-catchup",
+                Some("cors-real"),
+                "https://other",
+                "GET",
+            )
+            .expect("rules exist but none match");
+        assert!(rejected.is_empty(), "reject renders as empty: {rejected:?}");
+
+        // Unknown bucket → None (the gateway's generic headers stay
+        // eligible); a rule-less bucket behaves the same.
+        assert!(handler
+            .cors_rule_response_headers(
+                424242222222,
+                "us-fx5-catchup",
+                Some("no-such-bucket"),
+                "https://app",
+                "GET",
+            )
+            .is_none());
+        handler.handle(make_req("CreateBucket", Some("no-rules"), None, b""));
+        assert!(handler
+            .cors_rule_response_headers(
+                424242222222,
+                "us-fx5-catchup",
+                Some("no-rules"),
+                "https://app",
+                "GET",
+            )
+            .is_none());
+    }
 }

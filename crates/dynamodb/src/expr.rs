@@ -299,9 +299,11 @@ fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
     // allocations. Digits stay exact within the ±256 shift window; the
     // write path (number_validity) rejects the out-of-band magnitudes
     // before anything reaches the store, so the clamp can only ever see the
-    // in-band values moto would accept (moto itself 400s both |x|>9.99…e126
-    // and sub-1e-130). Padding beyond the bound falls back to an inexact
-    // (f64) value in the callers.
+    // in-band values moto would accept (moto itself 400s both |x|>9.99…E+125
+    // and sub-1e-130). A canonicalization whose truth needs a larger shift
+    // (huge mantissa at the band edges) can still merge DIFFERENT in-band
+    // numbers onto one key — hostile-precision-only, but not bit-exact;
+    // moto stores raw instead.
     const MAX_SCALE_SHIFT: i64 = 256;
     if scale >= 0 {
         Some((neg, digits, scale.min(MAX_SCALE_SHIFT)))

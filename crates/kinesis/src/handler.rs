@@ -105,18 +105,16 @@ impl KinesisHandler {
             .and_then(|s| s.as_str())
             .unwrap_or("PROVISIONED")
             .to_string();
-        let shard_count = req
-            .params
-            .get("ShardCount")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(if stream_mode == "ON_DEMAND" {
-                // moto: on-demand streams default to four shards
-                // (moto/kinesis/models.py:219-221), which is what makes the
-                // ON_DEMAND UpdateShardCount rejection reachable.
-                4
-            } else {
-                1
-            }) as u32;
+        let shard_count = if stream_mode == "ON_DEMAND" {
+            // moto forces four shards on on-demand streams regardless of any
+            // explicit ShardCount member (moto/kinesis/models.py:219-221).
+            4
+        } else {
+            req.params
+                .get("ShardCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as u32
+        };
         let state = self.get_state(req.account, &req.region);
         if state.streams.read().contains_key(&name) {
             return AwsResponse::error(
@@ -838,22 +836,13 @@ impl KinesisHandler {
                 )
             }
         };
-        if !target.is_open() {
-            return AwsResponse::error(
-                400,
-                "InvalidArgumentException",
-                &format!(
-                    "Shard {shard_id} in stream {name} has been merged or split, and cannot \
-                     be split any further"
-                ),
-            );
-        }
         // moto validates the hash key twice (models.py:806 regex
         // `0|([1-9]\d{0,38})` → ValidationException at the value, then the
         // model range check raising InvalidArgumentError
-        // InvalidArgumentException, models.py:252-257). The missing member
-        // is a required-member ValidationException the same way (moto's
-        // int(None) dies, real AWS answers the constraint).
+        // InvalidArgumentException, models.py:252-257) BEFORE the closed-
+        // shard rejection (models.py:259-261) — the whole grammar/range
+        // family precedes is_open, and the closed-shard text is moto's
+        // exact account-scoped sentence.
         let grammar_err = |v: &str| -> Option<AwsResponse> {
             if v.len() > 39
                 || !(v == "0"
@@ -884,19 +873,13 @@ impl KinesisHandler {
                  satisfy constraint: Member must not be null",
             );
         };
-        if !target.is_open() {
-            return AwsResponse::error(
-                400,
-                "InvalidArgumentException",
-                &format!(
-                    "Shard {shard_id} in stream {name} has been merged or split, and cannot \
-                     be split any further"
-                ),
-            );
-        }
         if let Some(err) = grammar_err(new_hash) {
             return err;
         }
+        // moto's message carries the PARSED integer and prints the shard's
+        // borne bound as `ending_hash - 1` (models.py:255-256; moto's stored
+        // ends are already inclusive, so its printed bound reads 1 lower
+        // than the twin's — match it byte for byte).
         let mid = match new_hash.parse::<u128>() {
             // Smaller hash values compare numerically even with more digits,
             // so parse first and range-check on u128 (moto's ordering).
@@ -909,11 +892,25 @@ impl KinesisHandler {
                         "NewStartingHashKey {new_hash} used in SplitShard() on shard {} in \
                          stream {name} under account {} is not both greater than one plus the \
                          shard's StartingHashKey {} and less than the shard's EndingHashKey {}.",
-                        target.shard_id, req.account, target.hash_key_start, target.hash_key_end,
+                        target.shard_id,
+                        req.account,
+                        target.hash_key_start,
+                        target.hash_key_end.saturating_sub(1),
                     ),
                 )
             }
         };
+        if !target.is_open() {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!(
+                    "Shard {} in stream {name} under account {} has already been merged or \
+                     split, and thus is not eligible for merging or splitting.",
+                    target.shard_id, req.account
+                ),
+            );
+        }
         let mut shards = stream.shards.write();
         // Allocate the successor shard ids numerically greater than every
         // existing id (moto's scheme) — computed from the already-held write
@@ -937,30 +934,16 @@ impl KinesisHandler {
         ));
         *shard1.parent_id.write() = Some(target.shard_id.clone());
         *shard2.parent_id.write() = Some(target.shard_id.clone());
-        // Records already stored here land on the shard that covers the
-        // hash they route by — the record's pinned ExplicitHashKey when it
-        // carries one (moto re-fires through put_record with the explicit
-        // key), the partition-key MD5 otherwise. The re-fire COPIES: the
-        // parent stays with its records readable (same copy-not-drain
-        // contract as merge/update).
-        for r in target.records_snapshot() {
-            let h = r.refire_hash();
-            if h < mid {
-                shard1.put_record(
-                    &shard1.shard_id,
-                    r.partition_key.clone(),
-                    r.data.clone(),
-                    r.explicit_hash_key,
-                );
-            } else {
-                shard2.put_record(
-                    &shard2.shard_id,
-                    r.partition_key.clone(),
-                    r.data.clone(),
-                    r.explicit_hash_key,
-                );
-            }
-        }
+        // Record contract (real AWS): the closed parent retains its records
+        // with their ORIGINAL sequence numbers, and the new children start
+        // EMPTY — records put after the re-shard route onto the open
+        // children (select_shard filters to open shards). moto's own
+        // pipeline drains the parent and re-fires through put_record, whose
+        // closed-parent-insertion-order first-match lands every re-fired
+        // record back on the closed parent (fresh sequence numbers, empty
+        // children); the twin keeps the real-AWS readability contract
+        // instead: originals preserved in place, no re-sequencing, no
+        // double-visible copies in the children.
         // The parent stays in the list, closed with its ending sequence
         // number (moto keeps closed shards in ListShards/DescribeStream).
         *target.ending_sequence_number.write() =
@@ -1065,32 +1048,16 @@ impl KinesisHandler {
                 ))
             })
             .collect();
-        // Every stored record re-fires onto whichever new shard covers the
-        // hash it routes by (pinned ExplicitHashKey wins, per moto's
-        // put_record re-fire) — COPIED, not drained: moto's update copies
-        // across reshard steps and the closed shards stay readable, so the
-        // closed-parent history contract is what the code delivers. Only
-        // open shards carry records to re-fire.
-        for shard in &old_shards {
-            if !shard.is_open() {
-                continue;
-            }
-            for r in shard.records_snapshot() {
-                let h = r.refire_hash();
-                let dest = new_shards
-                    .iter()
-                    .find(|s| s.hash_key_start <= h && h <= s.hash_key_end)
-                    .or_else(|| new_shards.first());
-                if let Some(dest) = dest {
-                    dest.put_record(
-                        &dest.shard_id,
-                        r.partition_key.clone(),
-                        r.data.clone(),
-                        r.explicit_hash_key,
-                    );
-                }
-            }
-        }
+        // Record contract (real AWS): the closed parents retain their
+        // records with their ORIGINAL sequence numbers, and the new open
+        // shards start EMPTY — only records put after the re-shard route
+        // through them (select_shard filters to open shards), whose uniform
+        // ranges cover the whole hash space. moto's update re-fires through
+        // split/merge steps whose closed-parent-insertion-order first-match
+        // seats every re-fired record back on a CLOSED shard (fresh
+        // sequence numbers, empty opens); the twin trades that for the
+        // real-AWS readability contract: originals preserved in place on
+        // the closed parents, never duplicated into the opens.
         // The old shards stay, closed (moto keeps them in the shard list
         // with EndingSequenceNumber); only open shards accept new records
         // (select_shard filters).
@@ -3026,7 +2993,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_shard_count_carries_records() {
+    fn test_update_shard_count_record_contract() {
         let handler = KinesisHandler::new();
         handler.handle(make_req(
             "CreateStream",
@@ -3058,10 +3025,11 @@ mod tests {
         ));
         assert_eq!(resp.status, 200);
 
-        // moto's update COPIES the records onto the new shards without
-        // draining the closed parents (models.py:344-378): the closed
-        // parent keeps serving its TRIM_HORIZON paging history AND the
-        // new open shards carry the copies.
+        // Real-AWS reshard contract: the closed parents keep their records
+        // readable with original sequence numbers and the new open shards
+        // start EMPTY (they receive only post-reshard records). moto's own
+        // pipeline re-numbers into its CLOSED parent; neither oracle ever
+        // makes a pre-reshard record visible twice.
         let shards = parse_body(&handler.handle(make_req(
             "ListShards",
             json!({"StreamName": "usc-rec-stream"}),
@@ -3093,10 +3061,10 @@ mod tests {
                 open_total += n;
             }
         }
-        assert_eq!(open_total, 3, "the new shards carry the re-fired copies");
+        assert_eq!(open_total, 0, "the new shards start empty");
         assert_eq!(
             closed_total, 3,
-            "the closed parent keeps its records readable"
+            "the closed parents keep their original records"
         );
     }
 
@@ -3158,6 +3126,105 @@ mod tests {
         assert_eq!(
             body["message"],
             json!("Request is invalid. Stream od-stream under account 123456789012 is in On-Demand mode.")
+        );
+    }
+
+    #[test]
+    fn test_on_demand_forces_four_shards_with_explicit_shard_count() {
+        // moto forces 4 on ON_DEMAND regardless of an explicit ShardCount
+        // (models.py:219-221 — `shard_count = 4` overrides the member).
+        let handler = KinesisHandler::new();
+        handler.handle(make_req(
+            "CreateStream",
+            json!({
+                "StreamName": "od-force4",
+                "ShardCount": 2,
+                "StreamModeDetails": {"StreamMode": "ON_DEMAND"}
+            }),
+        ));
+        let desc = parse_body(&handler.handle(make_req(
+            "DescribeStreamSummary",
+            json!({"StreamName": "od-force4"}),
+        )))["StreamDescriptionSummary"]
+            .clone();
+        assert_eq!(
+            desc["OpenShardCount"],
+            json!(4),
+            "explicit ShardCount loses to moto's on-demand 4"
+        );
+    }
+
+    #[test]
+    fn test_split_shard_moto_check_order_and_texts() {
+        // moto validates grammar+range BEFORE the closed-shard rejection
+        // (models.py:803-808 → 252 → 259): a grammar-bad hash answers the
+        // regex ValidationException even on the open shard; a closed shard
+        // with an out-of-range hash answers the range arm; a closed shard
+        // with a legal hash answers moto's closed-shard text.
+        let handler = KinesisHandler::new();
+        handler.handle(make_req(
+            "CreateStream",
+            json!({"StreamName": "split-order"}),
+        ));
+        let resp = parse_body(&handler.handle(make_req(
+            "SplitShard",
+            json!({
+                "StreamName": "split-order", "ShardToSplit": "shardId-000000000000",
+                "NewStartingHashKey": "abc"
+            }),
+        )));
+        assert_eq!(resp["__type"], json!("ValidationException"));
+        assert!(
+            resp["message"]
+                .as_str()
+                .unwrap()
+                .contains("Member must satisfy regular expression pattern"),
+            "body: {}",
+            resp
+        );
+
+        // Close shard 0 with an in-range split at 5.
+        handler.handle(make_req(
+            "SplitShard",
+            json!({
+                "StreamName": "split-order", "ShardToSplit": "shardId-000000000000",
+                "NewStartingHashKey": "5"
+            }),
+        ));
+
+        // Closed shard + OUT-OF-RANGE hash → the range arm, moto's wording.
+        // The closed parent keeps its ORIGINAL range (0..2^128-1), so the
+        // out-of-range case is a value beyond u128 (grammar-legal; moto's
+        // int() accepts it and its range check rejects).
+        let resp = parse_body(&handler.handle(make_req(
+            "SplitShard",
+            json!({
+                "StreamName": "split-order", "ShardToSplit": "shardId-000000000000",
+                "NewStartingHashKey": "999999999999999999999999999999999999999"
+            }),
+        )));
+        assert_eq!(resp["__type"], json!("InvalidArgumentException"));
+        assert!(
+            resp["message"]
+                .as_str()
+                .unwrap()
+                .contains("is not both greater than one plus the shard's StartingHashKey"),
+            "body: {}",
+            resp
+        );
+
+        // Closed shard + in-parent-range hash → moto's closed-shard text.
+        let resp = parse_body(&handler.handle(make_req(
+            "SplitShard",
+            json!({
+                "StreamName": "split-order", "ShardToSplit": "shardId-000000000000",
+                "NewStartingHashKey": "2"
+            }),
+        )));
+        assert_eq!(resp["__type"], json!("InvalidArgumentException"));
+        assert_eq!(
+            resp["message"],
+            json!("Shard shardId-000000000000 in stream split-order under account 123456789012 has already been merged or split, and thus is not eligible for merging or splitting.")
         );
     }
 
