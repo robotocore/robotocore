@@ -613,13 +613,61 @@ impl LambdaHandler {
                     .write()
                     .retain(|(fn_name, _), _| fn_name != &name);
             }
-            Some(_) => {
+            Some(qual_str) => {
+                // moto's delete resolves the qualifier through the
+                // with-qualifier resolver's alias fallback (models.py:
+                // 1655-1667): an existing alias name deletes the version it
+                // pins (the resolver hands back the pointed version and
+                // del_function removes it, models.py:1832), a published
+                // version number removes that version, `$LATEST` shows
+                // moto's latest-pointer semantics (models.py:1829-1830:
+                // moto nulls `latest` — and then self-breaks on its own
+                // `all()` for any surviving entry, models.py:1847 — the
+                // twin keeps the conservative shape: function and $LATEST
+                // survive, no version removal), and anything else is moto's
+                // UnknownFunctionException 404 (exceptions.py:60-64,
+                // "Function not found" + the version-qualified ARN).
+                if qual_str.eq_ignore_ascii_case("$LATEST") {
+                    return AwsResponse::empty(204);
+                }
+                let alias_version = state
+                    .resolve_alias(&name, qual_str)
+                    .map(|a| a.function_version.read().clone());
+                // Alias → its target (`$LATEST`-pinned aliases resolve to
+                // moto's latest copy, which is not inside `versions` — moto
+                // would raise a ValueError there; the twin keeps the
+                // version list intact for that recorded edge).
+                let target: Option<String> = match alias_version.as_deref() {
+                    Some(v) if v.eq_ignore_ascii_case("$LATEST") => None,
+                    Some(v) => Some(v.to_string()),
+                    None => {
+                        let mut funcs = state.functions.write();
+                        match funcs.get_mut(&name) {
+                            Some(entry) => {
+                                let exists = entry
+                                    .versions
+                                    .iter()
+                                    .any(|v| *v.version.read() == *qual_str);
+                                // moto fails resolution after alias+version
+                                // miss (404); an explicit version match is
+                                // the only remaining deletable form.
+                                exists.then(|| qual_str.to_string())
+                            }
+                            None => None,
+                        }
+                    }
+                };
+                let Some(target) = target else {
+                    return function_not_found(
+                        &format!("{name}:{qual_str}"),
+                        &req.region,
+                        req.account,
+                    );
+                };
                 // Deleting a published version only: drop it from the entry.
                 let mut funcs = state.functions.write();
                 if let Some(entry) = funcs.get_mut(&name) {
-                    entry
-                        .versions
-                        .retain(|v| Some(v.version.read().as_str()) != qual.as_deref());
+                    entry.versions.retain(|v| *v.version.read() != target);
                 }
             }
         }
@@ -1045,9 +1093,15 @@ impl LambdaHandler {
         // (`get_function_by_name_or_arn_forbid_qualifier`, models.py:1704-
         // 1722; LambdaStorage.publish_version uses it explicitly, :1777):
         // a qualifier-bearing name/ARN is a 400 "Cannot provide qualifier",
-        // not a silent strip-and-publish.
+        // not a silent strip-and-publish. The guard is shape-based, not
+        // emptiness-based: a bare `fn:` raises on the single-colon shape
+        // before any existence check (models.py:1617-1618) and an ARN with
+        // a trailing colon yields qualifier = "" which is *not None* → the
+        // same 400 (models.py:1697-1700 + 1716-1717) — so both morphs of an
+        // empty qualifier refuse too (w6-lambda F3: the twin used to
+        // silently strip-and-publish those).
         let expr = req.path_fn_name();
-        if LambdaState::expr_qualifier(&expr).is_some() {
+        if LambdaState::qualifier_slot(&expr).is_some() {
             return AwsResponse::error(
                 400,
                 "InvalidParameterValueException",
@@ -1087,17 +1141,16 @@ impl LambdaHandler {
     }
 
     fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        // moto's forbid-qualifier resolver applies here too (models.py:
-        // 1704-1722) — the same "Cannot provide qualifier" 400.
-        let expr = req.path_fn_name();
-        if LambdaState::expr_qualifier(&expr).is_some() {
-            return AwsResponse::error(
-                400,
-                "InvalidParameterValueException",
-                "Cannot provide qualifier",
-            );
-        }
-        let name = LambdaState::norm_name(&expr);
+        // NO forbid-qualifier here: moto's ListVersionsByFunction never
+        // touches the forbid resolver — responses.py:114-123 paths the raw
+        // segment into LambdaStorage.list_versions_by_function
+        // (models.py:1671-1677), which merely keys the map (so moto answers
+        // 200 {"Versions": []} even for unknown names — the twin's 404 for
+        // an unknown name is the lane's pinned convention, w5 ledger, and
+        // is intentionally NOT asserted as moto-derived). Qualified
+        // expressions resolve like every other path (real-AWS posture: the
+        // qualifier just names the function).
+        let name = LambdaState::norm_name(&req.path_fn_name());
         let funcs = state.functions.read();
         let Some(entry) = funcs.get(&name) else {
             drop(funcs);
@@ -3856,9 +3909,12 @@ mod tests {
         );
     }
 
-    /// PublishVersion / ListVersionsByFunction reject qualifier-bearing
-    /// names and ARNs with moto's 400 (the forbid-qualifier resolver,
-    /// models.py:1704-1722 + 1610-1622), instead of silently stripping.
+    /// PublishVersion rejects qualifier-bearing names and ARNs (including
+    /// the EMPTY-qualifier suffixes — bare `fn:` and ARN trailing colon) with
+    /// moto's 400 (the forbid-qualifier resolver + shape-based emptiness,
+    /// models.py:1704-1722 + 1610-1622 + 1697-1700/1617-1618), instead of
+    /// silently stripping. ListVersionsByFunction carries no such guard
+    /// (moto a plain map get; w6 F2).
     #[test]
     fn publish_and_list_versions_forbid_qualifiers() {
         let handler = LambdaHandler::new();
@@ -3867,22 +3923,40 @@ mod tests {
             json!({"FunctionName": "fq-fn", "Runtime": "python3.12", "Handler": "index.handler"}),
             "/2015-03-31/functions",
         ));
-        for (op, path) in [
-            ("POST", "/2015-03-31/functions/fq-fn:1/versions"),
-            ("GET", "/2015-03-31/functions/fq-fn:1/versions"),
-            (
-                "POST",
-                "/2015-03-31/functions/arn%3Aaws%3Alambda%3Aus-east-1%3A123456789012%3Afunction%3Afq-fn%3A1/versions",
-            ),
+        // PublishVersion keeps the forbid guard: every qualifier shape 400s
+        // (moto forbid resolver, models.py:1704-1722).
+        for path in [
+            "/2015-03-31/functions/fq-fn:1/versions",
+            "/2015-03-31/functions/arn%3Aaws%3Alambda%3Aus-east-1%3A123456789012%3Afunction%3Afq-fn%3A1/versions",
+            // F3: the EMPTY-qualifier suffixes refuse on shape, before any
+            // existence check (bare single-colon, models.py:1617-1618; ARN
+            // trailing colon → qualifier "" not None, models.py:1697-1700).
+            "/2015-03-31/functions/fq-fn:/versions",
+            "/2015-03-31/functions/arn%3Aaws%3Alambda%3Aus-east-1%3A123456789012%3Afunction%3Afq-fn%3A/versions",
         ] {
-            let resp = handler.handle(make_req(op, json!({}), path));
-            assert_eq!(resp.status, 400, "{op} {path}: {}", resp.body);
+            let resp = handler
+                .handle(make_req("POST", json!({}), path));
+            assert_eq!(resp.status, 400, "POST {path}: {}", resp.body);
             assert!(
                 resp.body.contains("Cannot provide qualifier"),
-                "{op} {path}: {}",
+                "POST {path}: {}",
                 resp.body
             );
         }
+
+        // ListVersionsByFunction has NO forbid guard: moto answers from a
+        // plain map get (responses.py:114-123 → models.py:1671-1677), so a
+        // qualified expression resolves (real-AWS posture) instead of 400ing.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    "/2015-03-31/functions/fq-fn:$LATEST/versions"
+                ))
+                .status,
+            200
+        );
 
         // The unqualified surface keeps working.
         assert_eq!(
@@ -3895,6 +3969,107 @@ mod tests {
                 .status,
             200
         );
+    }
+
+    /// Delete a function through an ALIAS qualifier: moto's with-qualifier
+    /// resolver (models.py:1655-1667) hands back the version the alias pins
+    /// and del_function removes THAT version (models.py:1832); an unknown
+    /// qualifier is moto's UnknownFunctionException 404 ("Function not
+    /// found: arn:…:function:{fn}:{qual}", exceptions.py:60-64); `$LATEST`
+    /// removes no version (moto only nulls its broken-on-return latest
+    /// pointer, models.py:1829-1830 — the twin keeps function + latest
+    /// intact; the wave-5 silent-204 no-op for `fn:99` is now moto's 404).
+    #[test]
+    fn delete_function_resolves_alias_and_latest_qualifiers() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "delq2-fn", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/delq2-fn/versions",
+        ));
+        handler.handle(make_req(
+            "PUT",
+            json!({"Description": "bump"}),
+            "/2015-03-31/functions/delq2-fn/configuration",
+        ));
+        handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/delq2-fn/versions",
+        ));
+        handler.handle(make_req(
+            "POST",
+            json!({"Name": "live", "FunctionVersion": "2"}),
+            "/2015-03-31/functions/delq2-fn/aliases",
+        ));
+
+        // Alias-name qualifier: deletes the version the alias pins (v2).
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq2-fn");
+        req.query_string = "Qualifier=live".to_string();
+        assert_eq!(handler.handle(req).status, 204);
+        let resp = handler.handle(make_req(
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/delq2-fn/versions",
+        ));
+        let vs: Value = serde_json::from_str(&resp.body).unwrap();
+        let version_set: Vec<&str> = vs["Versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["Version"].as_str().unwrap())
+            .collect();
+        assert!(
+            !version_set.contains(&"2"),
+            "the alias-pointed version is gone: {version_set:?}"
+        );
+        assert_eq!(
+            handler
+                .handle(make_req("GET", json!({}), "/2015-03-31/functions/delq2-fn"))
+                .status,
+            200,
+            "the function itself survives the alias-qualified delete"
+        );
+
+        // $LATEST: no version removal, function + $LATEST intact.
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq2-fn");
+        req.query_string = "Qualifier=$LATEST".to_string();
+        assert_eq!(handler.handle(req).status, 204);
+        let vs: Value = serde_json::from_str(
+            &handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    "/2015-03-31/functions/delq2-fn/versions",
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            vs["Versions"].as_array().unwrap().len(),
+            2,
+            "$LATEST + version 1 survive: {vs}"
+        );
+
+        // Unknown qualifier / unpublished version → moto's 404.
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq2-fn");
+        req.query_string = "Qualifier=nosuchalias".to_string();
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("Function not found: arn:aws:lambda:us-east-1:123456789012:function:delq2-fn:nosuchalias"),
+            "body: {}",
+            resp.body
+        );
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq2-fn");
+        req.query_string = "Qualifier=99".to_string();
+        assert_eq!(handler.handle(req).status, 404, "unpublished version 404s");
     }
 
     /// UpdateEventSourceMapping re-points the mapping when FunctionName

@@ -277,8 +277,18 @@ pub(crate) fn response_too_large_result(logs: String) -> ExecResult {
 /// invocation answers (whole runtime-interface response bodies) ride the
 /// `docker exec` stdout, so the docker pipes need more room than the local
 /// executors — 4MB keeps multi-hundred-KB results intact while bounding the
-/// buffer.
+/// buffer. Only housekeeping channels (logs, sweeps, daemon probes) drain at
+/// this cap; the result channels drain at `DOCKER_RESULT_CAP` so the
+/// response-budget fail-loud can actually fire (w6-lambda F1: the 6MiB
+/// checks sat beyond a 4MB drain and were dead code).
 pub(crate) const DOCKER_OUTPUT_CAP: usize = 4 * 1024 * 1024;
+
+/// Cap on the docker RESULT channels (`docker run` stdout and the EMI curl
+/// stdout) — `FAMILY_RESULT_CAP` so the >= cap-1 response-too-large checks
+/// in `loose_result` and the EMI lane read a drain that can actually reach
+/// them (moto enforces the 6MB response cap regardless of executor; the
+/// 4MB log cap truncated 4–6MB results silently as data).
+pub(crate) const DOCKER_RESULT_CAP: usize = FAMILY_RESULT_CAP;
 
 /// Drain a spawned child pipe on a dedicated thread, keeping at most `cap`
 /// bytes (tail semantics) and returning a channel the caller can wait on
@@ -1673,7 +1683,7 @@ fn ensure_java_bootstrap() -> Option<std::path::PathBuf> {
         dir_arg.clone(),
         source_arg.clone(),
     ];
-    let mut ok = crate::docker_runtime::run_subprocess(&argv8, None, 30)
+    let mut ok = crate::docker_runtime::run_subprocess(&argv8, None, 30, DOCKER_OUTPUT_CAP)
         .map(|o| o.status_code == Some(0))
         .unwrap_or(false);
     if !ok {
@@ -1683,7 +1693,7 @@ fn ensure_java_bootstrap() -> Option<std::path::PathBuf> {
             dir_arg.clone(),
             source_arg.clone(),
         ];
-        ok = crate::docker_runtime::run_subprocess(&argv, None, 30)
+        ok = crate::docker_runtime::run_subprocess(&argv, None, 30, DOCKER_OUTPUT_CAP)
             .map(|o| o.status_code == Some(0))
             .unwrap_or(false);
     }

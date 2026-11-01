@@ -1233,11 +1233,20 @@ impl IamHandler {
     fn list_groups_for_user(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto iterates its groups dict in INSERTION order
+        // (models.py:2586-2593); the twin keys a HashMap, so member groups
+        // sort by the creation sequence (then name for restored's tie).
+        let mut ordered: Vec<Arc<Group>> = state
+            .groups
+            .read()
+            .values()
+            .filter(|g| g.users.read().contains(&username))
+            .cloned()
+            .collect();
+        ordered.sort_by_key(|g| (g.created_seq, g.group_name.clone()));
         let mut body = String::from("<Groups>");
-        for group in state.groups.read().values() {
-            if group.users.read().contains(&username) {
-                body.push_str(&self.group_xml(group));
-            }
+        for group in &ordered {
+            body.push_str(&self.group_xml(group));
         }
         body.push_str("</Groups><IsTruncated>false</IsTruncated>");
         AwsResponse::xml(200, "ListGroupsForUser", body)
@@ -1872,7 +1881,10 @@ impl IamHandler {
                 404,
                 "NoSuchEntity",
                 &format!(
-                    "The Password Policy with domain {} cannot be found.",
+                    // moto: "The Password Policy with domain name {account}
+                    // cannot be found." (models.py:3288-3290) — "domain
+                    // name", not "domain" (w6-crate F6 residual).
+                    "The Password Policy with domain name {} cannot be found.",
                     req.account
                 ),
             ),
@@ -1935,7 +1947,12 @@ impl IamHandler {
         map.insert("MinimumPasswordLength".into(), json!(minimum));
         if let Some(v) = max_password_age {
             map.insert("MaxPasswordAge".into(), json!(v));
-            map.insert("ExpirePasswords".into(), json!(true));
+            // moto's rendered ExpirePasswords derives from the
+            // `expire_passwords` property (models.py:1694-1696): true only
+            // when max_password_age > 0 — an authenticated falsy age (0 or
+            // negative, accepted by moto's falsy `_validate` guard) renders
+            // false, not true.
+            map.insert("ExpirePasswords".into(), json!(v > 0));
         }
         if let Some(v) = reuse_prevention {
             map.insert("PasswordReusePrevention".into(), json!(v));
@@ -2829,22 +2846,27 @@ impl IamHandler {
         // RFC3339 seconds precision like AWS — e.g. 2026-10-17T12:00:00Z)
         // and rendered from the store: per-read `Utc::now()` gave a
         // different CreateDate on every Get/List (wave-4 finding 15).
-        let create_date = state
-            .instance_profile_created
-            .read()
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| {
-                // Profiles created before the store existed (snapshot
-                // round-trip edge): stamp and persist now instead of
-                // leaving a per-read date.
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                state
-                    .instance_profile_created
-                    .write()
-                    .insert(name.to_string(), now.clone());
-                now
-            });
+        // The legacy miss must drop the READ guard BEFORE the write-back:
+        // the fallback closure ran inside the enclosing statement, where
+        // the read temporary was still alive — parking_lot read→write on
+        // the same lock deadlocks (found by the w6 snapshot-restore test).
+        let create_date = {
+            let existing = state.instance_profile_created.read().get(name).cloned();
+            match existing {
+                Some(stamped) => stamped,
+                None => {
+                    // Profiles created before the store existed (snapshot
+                    // round-trip edge): stamp and persist now instead of
+                    // leaving a per-read date.
+                    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                    state
+                        .instance_profile_created
+                        .write()
+                        .insert(name.to_string(), now.clone());
+                    now
+                }
+            }
+        };
         let ip_id = state
             .instance_profile_ids
             .read()
@@ -5139,8 +5161,7 @@ mod tests {
 
     /// The instance-profile CreateDate is stamped once at creation
     /// (instance_profile_created) and never drifts across reads — the
-    /// per-read `now()` rendering made every Get/List differ.
-    #[test]
+    /// per-read `now()` rendering made every Get/List differ.    #[test]
     fn instance_profile_createdate_is_stable_across_reads() {
         let handler = IamHandler::new();
         handler.handle(make_req(
@@ -5173,6 +5194,92 @@ mod tests {
         assert_eq!(
             date1, date2,
             "the CreateDate must be identical across reads (≥1s apart)"
+        );
+    }
+
+    /// moto's rendered `ExpirePasswords` derives from the
+    /// `expire_passwords` property (models.py:1694-1696) = true only when
+    /// max_password_age > 0 — an authenticated falsy age (accepted after
+    /// the S-5b rework, boto3 blocks <1 client-side) renders false, and the
+    /// ListGroupsForUser ordering follows moto's insertion order via the
+    /// creation sequence (w6-crate F5 + F4).
+    #[test]
+    fn password_policy_expire_flag_and_group_user_ordering() {
+        let handler = IamHandler::new();
+        // MaxPasswordAge=0: accepted (no false-rejection) and renders false.
+        let resp = handler.handle(make_req(
+            "UpdateAccountPasswordPolicy",
+            json!({ "MaxPasswordAge": "0" }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let got = handler.handle(make_req("GetAccountPasswordPolicy", json!({})));
+        assert!(
+            got.body
+                .contains("<ExpirePasswords>false</ExpirePasswords>"),
+            "body: {}",
+            got.body
+        );
+        assert!(
+            got.body.contains("<MaxPasswordAge>0</MaxPasswordAge>"),
+            "body: {}",
+            got.body
+        );
+        // A real age renders true.
+        handler.handle(make_req(
+            "UpdateAccountPasswordPolicy",
+            json!({ "MaxPasswordAge": "90" }),
+        ));
+        let got = handler.handle(make_req("GetAccountPasswordPolicy", json!({})));
+        assert!(
+            got.body.contains("<ExpirePasswords>true</ExpirePasswords>"),
+            "body: {}",
+            got.body
+        );
+
+        // ListGroupsForUser: insertion order of the GROUP TABLE (moto
+        // iterates its groups dict — models.py:2586-2593 — so groups surface
+        // in the order they were CREATED, regardless of membership-join
+        // order), not HashMap order.
+        handler.handle(make_req("CreateUser", json!({ "UserName": "ord-user" })));
+        handler.handle(make_req("CreateGroup", json!({ "GroupName": "zeta-team" })));
+        handler.handle(make_req(
+            "CreateGroup",
+            json!({ "GroupName": "alpha-team" }),
+        ));
+        handler.handle(make_req("CreateGroup", json!({ "GroupName": "mid-team" })));
+        // Join in an order deliberately different from the creation order.
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "mid-team", "UserName": "ord-user" }),
+        ));
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "zeta-team", "UserName": "ord-user" }),
+        ));
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "alpha-team", "UserName": "ord-user" }),
+        ));
+        let resp = handler.handle(make_req(
+            "ListGroupsForUser",
+            json!({ "UserName": "ord-user" }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let names: Vec<String> = resp
+            .body
+            .split("<GroupName>")
+            .skip(1)
+            .map(|t| {
+                t.split("</GroupName>")
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["zeta-team", "alpha-team", "mid-team"],
+            "group-creation order beats the wild HashMap order: {names:?}"
         );
     }
 }

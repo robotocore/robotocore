@@ -380,6 +380,25 @@ impl LambdaState {
         (!q.is_empty()).then(|| q.to_string())
     }
 
+    /// Qualifier slot presence on a function expression (the FORBID guard's
+    /// shape test). Unlike `expr_qualifier`, an EMPTY suffix counts: moto
+    /// refuses a single-colon bare name on shape before any existence check
+    /// (`name.count(":") == 1`, models.py:1617-1618) and an ARN with a
+    /// trailing colon yields qualifier `""` which is *not None* → the same
+    /// 400 (models.py:1697-1700 + 1716-1717). `None` for plain names and
+    /// plain ARNs. (A many-colon bare name is moto's unknown-function 404
+    /// instead — w6 F6 edge, recorded, out of this fix's scope.)
+    pub fn qualifier_slot(name: &str) -> Option<String> {
+        if let Some(rest) = name.strip_prefix("arn:aws:lambda:") {
+            if let Some(idx) = rest.find(":function:") {
+                let tail = &rest[idx + ":function:".len()..];
+                return tail.split_once(':').map(|(_, q)| q.to_string());
+            }
+            return None;
+        }
+        name.split_once(':').map(|(_, q)| q.to_string())
+    }
+
     /// Resolve latest by name or full ARN (no qualifier).
     pub fn get_function(&self, name: &str) -> Option<Arc<LambdaFunction>> {
         self.get_function_with_qualifier(name, None)
