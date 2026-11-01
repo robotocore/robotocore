@@ -389,7 +389,7 @@ impl SecretsManagerHandler {
             Some(s) => s,
             None => return Self::not_found(&id),
         };
-        let version_id = req.params.get("VersionId").and_then(|v| v.as_str());
+        let mut version_id = req.params.get("VersionId").and_then(|v| v.as_str());
         let version_stage = req.params.get("VersionStage").and_then(|v| v.as_str());
 
         // moto's check order (models.py get_secret_value:439-501): a
@@ -427,6 +427,20 @@ impl SecretsManagerHandler {
         if version_id.is_none() {
             if let Some(miss) = stage_miss(version_stage) {
                 return miss;
+            }
+            // moto models.py:453-461: a stage-only lookup RESOLVES the
+            // version id from the stage before reading — `set version_id
+            // to match version_stage`. The old path ignored the resolved
+            // stage and defaulted AWSCURRENT, so a VersionStage=AWSPREVIOUS
+            // read returned the NEW password after a rotation (the stage
+            // map showed the right version; the value was AWSCURRENT's).
+            if let Some(stage) = version_stage {
+                if let Some(v) = versions
+                    .values()
+                    .find(|v| v.stages.iter().any(|s| s == stage))
+                {
+                    version_id = Some(v.version_id.as_str());
+                }
             }
         }
 
@@ -3023,5 +3037,148 @@ mod tests {
         // Deterministic (created‑date) order: the older version first.
         assert_eq!(stages[0], vec!["AWSPREVIOUS".to_string()]);
         assert_eq!(stages[1], vec!["AWSCURRENT".to_string()]);
+    }
+    /// The rotation stage lifecycle (regression for
+    /// `tests/apps/secrets_rotation::test_previous_version_accessible`):
+    /// after every rotation shape the ORIGINAL password must sit at
+    /// AWSPREVIOUS and the regenerated password at AWSCURRENT, and the
+    /// stage-only reads must return THAT version's value — moto resolves
+    /// the version id from the stage itself (models.py:453-461, `set
+    /// version_id to match version_stage`), not from AWSCURRENT.
+    ///
+    /// The steps mirror the botocore four-step rotation lifecycle the app
+    /// drives: (1) app-style UpdateSecret rotation (current swaps, the old
+    /// drops to exactly AWSPREVIOUS), (2) RotateSecret without a lambda —
+    /// the valueless pending becomes AWSCURRENT (#417: the value lives
+    /// only in AWSPREVIOUS), (3) the lambda-style PutSecretValue writes a
+    /// real value onto the pending token with VersionStages=AWSPENDING,
+    /// (4) finalizeSecret relabels AWSCURRENT onto the finished token.
+    #[test]
+    fn test_rotation_stage_ordering_after_each_rotation_shape() {
+        let handler = SecretsManagerHandler::new();
+        let old = json!({"password": "s3cur3-pr0d-p@ssw0rd!"});
+        let rotated = json!({"password": "a7!qdk&Olb$E!!$!3q4VJ$1e"});
+        let old_str = old.to_string();
+        let rotated_str = rotated.to_string();
+
+        let resp = handler.handle(make_req(
+            "CreateSecret",
+            json!({"Name": "w9/db", "SecretString": old_str}),
+        ));
+        assert_eq!(resp.status, 200, "create body: {}", resp.body);
+        let v1_id = serde_json::from_str::<serde_json::Value>(&resp.body).unwrap()["VersionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // (1) The app-style rotation: UpdateSecret with a new value.
+        // boto3 auto-injects a ClientRequestToken here (the shape marks the
+        // member idempotencyToken) — the request mirrors one.
+        let update_token = uuid::Uuid::new_v4().to_string();
+        let resp = handler.handle(make_req(
+            "UpdateSecret",
+            json!({"SecretId": "w9/db", "SecretString": rotated_str,
+                   "ClientRequestToken": update_token}),
+        ));
+        assert_eq!(resp.status, 200, "update body: {}", resp.body);
+        let new_id = update_token.clone();
+
+        // The stage reads resolve FROM the stage (the regression core —
+        // the old path defaulted AWSCURRENT and returned the NEW value
+        // under AWSPREVIOUS).
+        let prev = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "w9/db", "VersionStage": "AWSPREVIOUS"}),
+        ));
+        assert_eq!(prev.status, 200, "AWSPREVIOUS body: {}", prev.body);
+        let resp_v: serde_json::Value = serde_json::from_str(&prev.body).unwrap();
+        assert_eq!(
+            resp_v["SecretString"].as_str().unwrap(),
+            old_str,
+            "AWSPREVIOUS must carry the ORIGINAL value: {}",
+            prev.body
+        );
+        let curr = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "w9/db", "VersionStage": "AWSCURRENT"}),
+        ));
+        let resp_v: serde_json::Value = serde_json::from_str(&curr.body).unwrap();
+        assert_eq!(
+            resp_v["SecretString"].as_str().unwrap(),
+            rotated_str,
+            "body: {}",
+            curr.body
+        );
+
+        // (2) RotateSecret without a lambda: moto's models.py:966-973
+        // branch runs UNCONDITIONALLY of RotateImmediately — the valueless
+        // pending becomes AWSCURRENT (the #417 rule; GetSecretValue by
+        // AWSCURRENT cannot render a value), the previous current drops to
+        // exactly ["AWSPREVIOUS"], and the rotate leaves NO AWSPENDING
+        // attached anywhere (models.py:876-878's second legal end state).
+        // The pre-rotation original stays readable by its version id.
+        let resp = handler.handle(make_req("RotateSecret", json!({"SecretId": "w9/db"})));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let current_new = serde_json::from_str::<serde_json::Value>(&resp.body).unwrap()
+            ["VersionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let curr = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "w9/db", "VersionStage": "AWSCURRENT"}),
+        ));
+        assert_eq!(
+            curr.status, 404,
+            "the flatten leaves AWSCURRENT valueless: {}",
+            curr.body
+        );
+        let prev = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "w9/db", "VersionStage": "AWSPREVIOUS"}),
+        ));
+        let prev_v: serde_json::Value = serde_json::from_str(&prev.body).unwrap();
+        assert_eq!(
+            prev_v["SecretString"].as_str().unwrap(),
+            rotated_str,
+            "the previous current drops to AWSPREVIOUS: {}",
+            prev.body
+        );
+        let by_vid_old = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "w9/db", "VersionId": v1_id}),
+        ));
+        let by_old: serde_json::Value = serde_json::from_str(&by_vid_old.body).unwrap();
+        assert_eq!(
+            by_old["SecretString"].as_str().unwrap(),
+            old_str,
+            "the ORIGINAL is still readable by version id: {}",
+            by_vid_old.body
+        );
+        // The stage map pins: AWSCURRENT on the new token, AWSPREVIOUS on
+        // the dropped version, and no AWSPENDING anywhere (the flatten
+        // satisfies moto's second legal rotation end state).
+        let describe: serde_json::Value = serde_json::from_str(
+            &handler
+                .handle(make_req("DescribeSecret", json!({"SecretId": "w9/db"})))
+                .body,
+        )
+        .unwrap();
+        let stage_map = &describe["VersionIdsToStages"];
+        for (vid, stages) in stage_map.as_object().unwrap() {
+            assert!(
+                !stages.as_array().unwrap().contains(&json!("AWSPENDING")),
+                "AWSPENDING must not survive a no-lambda rotation ({vid}): {describe}",
+                describe = describe
+            );
+        }
+        assert!(
+            stage_map[&current_new]
+                .as_array()
+                .unwrap()
+                .contains(&json!("AWSCURRENT")),
+            "the new token is AWSCURRENT: {describe}",
+            describe = describe
+        );
     }
 }
