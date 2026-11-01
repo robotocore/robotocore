@@ -617,18 +617,14 @@ class TestTaskOperations:
         assert len(resp["tasks"]) == 2
 
     def test_stop_task(self, ecs, cluster, task_def_arn):
-        run_resp = ecs.run_task(
-            cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE"
-        )
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE")
         task_arn = run_resp["tasks"][0]["taskArn"]
         stop_resp = ecs.stop_task(cluster=cluster, task=task_arn, reason="testing")
         assert "task" in stop_resp
         assert stop_resp["task"]["taskArn"] == task_arn
 
     def test_describe_tasks(self, ecs, cluster, task_def_arn):
-        run_resp = ecs.run_task(
-            cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE"
-        )
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE")
         task_arn = run_resp["tasks"][0]["taskArn"]
         desc_resp = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
         assert len(desc_resp["tasks"]) == 1
@@ -1138,9 +1134,7 @@ class TestAttributeOperations:
         )
         ci_arn = reg["containerInstance"]["containerInstanceArn"]
         yield ci_arn
-        ecs.deregister_container_instance(
-            cluster=cluster, containerInstance=ci_arn, force=True
-        )
+        ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
 
     def test_put_attributes(self, ecs, cluster, container_instance):
         resp = ecs.put_attributes(
@@ -1200,9 +1194,7 @@ class TestAttributeOperations:
         assert "attributes" in resp
         # Verify it's gone
         listed = ecs.list_attributes(cluster=cluster, targetType="container-instance")
-        names = [
-            a["name"] for a in listed["attributes"] if a.get("targetId") == container_instance
-        ]
+        names = [a["name"] for a in listed["attributes"] if a.get("targetId") == container_instance]
         assert "temp-attr" not in names
 
 
