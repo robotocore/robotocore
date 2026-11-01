@@ -35,12 +35,24 @@ pub struct Secret {
     /// Set when the secret is scheduled for deletion (recoverable).
     #[serde(with = "crate::snapshot::rw")]
     pub removed: RwLock<bool>,
+    /// KMS key the secret is encrypted with (CreateSecret/UpdateSecret),
+    /// mirrored in DescribeSecret unless it is the default AWS alias.
+    #[serde(with = "crate::snapshot::rw", default)]
+    pub kms_key_id: RwLock<Option<String>>,
     /// Resource policy JSON (PutResourcePolicy / GetResourcePolicy).
     #[serde(with = "crate::snapshot::rw")]
     pub resource_policy: RwLock<Option<String>>,
     /// Rotation state (RotateSecret / CancelRotateSecret / DescribeSecret).
     #[serde(with = "crate::snapshot::rw")]
     pub rotation_enabled: RwLock<bool>,
+    /// moto gates rotation members behind `rotation_requested` — set once
+    /// RotateSecret has been called, not merely when rotation is enabled.
+    #[serde(with = "crate::snapshot::rw", default)]
+    pub rotation_requested: RwLock<bool>,
+    /// Schedule committed by a RotateSecret carrying AutomaticallyAfterDays
+    /// (moto `secret.next_rotation_date`, epoch seconds).
+    #[serde(with = "crate::snapshot::rw", default)]
+    pub next_rotation_date: RwLock<Option<f64>>,
     #[serde(with = "crate::snapshot::rw")]
     pub rotation_lambda_arn: RwLock<Option<String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -50,11 +62,31 @@ pub struct Secret {
     pub replicas: RwLock<Vec<String>>,
 }
 
+/// 6 random letters for the ARN suffix (moto ids use `[A-Za-z]{6}`,
+/// utils.py SecretsManagerSecretIdentifier.generate → get_random_string(6,
+/// include_digits=False)).
+pub fn random_arn_suffix() -> String {
+    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut seed =
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default() as u64 ^ 0x9E3779B97F4A7C15;
+    (0..6)
+        .map(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            ALPHABET[(seed % ALPHABET.len() as u64) as usize] as char
+        })
+        .collect()
+}
+
 impl Secret {
     pub fn new(name: String, account: u64, region: String) -> Self {
         let arn = format!(
-            "arn:aws:secretsmanager:{}:{}:secret:{}",
-            region, account, name
+            "arn:aws:secretsmanager:{}:{}:secret:{}-{}",
+            region,
+            account,
+            name,
+            random_arn_suffix()
         );
         Self {
             name,
@@ -67,8 +99,11 @@ impl Secret {
             description: RwLock::new(None),
             deletion_date: RwLock::new(None),
             removed: RwLock::new(false),
+            kms_key_id: RwLock::new(None),
             resource_policy: RwLock::new(None),
             rotation_enabled: RwLock::new(false),
+            rotation_requested: RwLock::new(false),
+            next_rotation_date: RwLock::new(None),
             rotation_lambda_arn: RwLock::new(None),
             rotation_rules: RwLock::new(None),
             replicas: RwLock::new(Vec::new()),
@@ -123,6 +158,9 @@ impl SmState {
             .collect()
     }
 }
+
+/// moto's `MAX_RESULTS_DEFAULT` for ListSecrets / BatchGetSecretValue.
+pub const LIST_SECRETS_MAX_RESULTS_DEFAULT: usize = 100;
 
 impl Default for SmState {
     fn default() -> Self {
