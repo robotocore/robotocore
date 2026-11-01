@@ -624,8 +624,9 @@ impl EcsHandler {
         let td = {
             let mut tds = state.task_definitions.write();
             // moto numbers revisions via _get_last_task_definition_revision_id
-            // (max revision) + 1 — len()+1 duplicates ids once a delete
-            // removed a middle revision.
+            // — `max(definitions.keys())` on a hit (models.py:2134-2138) —
+            // so a mid-history delete never recycled: max+1 keeps the
+            // numbering monotone.
             let revisions = tds.entry(family.to_string()).or_default();
             let revision = revisions
                 .iter()

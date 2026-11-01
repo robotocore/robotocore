@@ -1,10 +1,10 @@
 {
   "service": "firehose",
-  "generated_at": "2026-11-01T17:59:48.504101+00:00",
+  "generated_at": "2026-11-01T18:54:51.279212+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/firehose.rs": "absent",
     "rotocore/src/services/firehose/": "absent",
-    "crates/firehose/src/": "de65300bc6ed8b88850c2122d8100881a7fef662f687d93044338daa0a4d9195"
+    "crates/firehose/src/": "2a0857eb46c3a3da1f0b7bbca2370b656eec998bcd7051f5a7c588c2cde1938e"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

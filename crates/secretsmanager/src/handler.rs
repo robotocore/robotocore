@@ -389,8 +389,22 @@ impl SecretsManagerHandler {
             Some(s) => s,
             None => return Self::not_found(&id),
         };
-        let mut version_id = req.params.get("VersionId").and_then(|v| v.as_str());
-        let version_stage = req.params.get("VersionStage").and_then(|v| v.as_str());
+        // moto's falsy-string semantics: an explicitly-passed empty
+        // VersionId/VersionStage is FALSY (models.py:445 `if version_id and
+        // version_stage`, :454, :472 `version_id or default or
+        // "AWSCURRENT"`) — "" folds back into the stage/default path
+        // instead of a 404 (w9-store S1-2; botocore serializes explicitly
+        // passed empty strings for json protocols).
+        let mut version_id = req
+            .params
+            .get("VersionId")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty());
+        let version_stage = req
+            .params
+            .get("VersionStage")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty());
 
         // moto's check order (models.py get_secret_value:439-501): a
         // VersionId+VersionStage pair first cross-checks the stages on that
@@ -434,13 +448,15 @@ impl SecretsManagerHandler {
             // stage and defaulted AWSCURRENT, so a VersionStage=AWSPREVIOUS
             // read returned the NEW password after a rotation (the stage
             // map showed the right version; the value was AWSCURRENT's).
+            // The deterministic pick mirrors moto's insertion-order kind
+            // of determinism (oldest first) instead of HashMap order.
             if let Some(stage) = version_stage {
-                if let Some(v) = versions
-                    .values()
-                    .find(|v| v.stages.iter().any(|s| s == stage))
-                {
-                    version_id = Some(v.version_id.as_str());
-                }
+                version_id =
+                    crate::models::deterministic_by_stage(&versions, stage).and_then(|v| {
+                        versions
+                            .iter()
+                            .find_map(|(id, _)| (id == &v.version_id).then_some(id.as_str()))
+                    });
             }
         }
 
@@ -457,9 +473,7 @@ impl SecretsManagerHandler {
         let version_id = version_id.map(String::from).or_else(|| {
             // The twin has no default_version_id field; the AWSCURRENT
             // version plays that role (moto `default_version_id`).
-            versions
-                .values()
-                .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
+            crate::models::deterministic_by_stage(&versions, "AWSCURRENT")
                 .map(|v| v.version_id.clone())
         });
         let version = version_id
@@ -1562,9 +1576,14 @@ impl SecretsManagerHandler {
                 let current_value = if rotate_immediately {
                     (None, None)
                 } else {
-                    // moto copies the secret's top-level fields here; the
-                    // twin's source of truth is the current AWSCURRENT
-                    // version.
+                    // moto copies the secret's TOP-LEVEL secret_string/
+                    // secret_binary fields (models.py:911-915) — those are
+                    // only written at creation/_add_secret and are NOT
+                    // refreshed by put_secret_value, so moto copies a
+                    // STALE creation-time value after any mid-rotation
+                    // put. The twin copies the current AWSCURRENT
+                    // version's value instead — a deliberate,
+                    // documented divergence (w9-store S1-3).
                     versions
                         .values()
                         .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
@@ -3179,6 +3198,95 @@ mod tests {
                 .contains(&json!("AWSCURRENT")),
             "the new token is AWSCURRENT: {describe}",
             describe = describe
+        );
+    }
+
+    /// moto's stacked-stage corner: `update_secret_version_stage` with an
+    /// empty `RemoveFromVersionId` APPENDS the stage onto `move_to`
+    /// WITHOUT stripping other carriers (moto models.py:1165-1172) — for
+    /// AWSCURRENT moto demands an explicit RemoveFromVersionId
+    /// (models.py:1156-1163) but for any other stage the omission stacks.
+    /// In that state moto's `get_secret_value(VersionStage=…)` returns
+    /// deterministically the FIRST-inserted (oldest) carrier
+    /// (models.py:457-460); the stage→version pick must mirror that kind
+    /// of determinism, not HashMap order.
+    #[test]
+    fn test_stacked_stage_resolves_deterministically() {
+        // moto's stacked-stage corner: `update_secret_version_stage` with
+        // an empty `RemoveFromVersionId` APPENDS the stage onto `move_to`
+        // WITHOUT stripping other carriers (moto models.py:1165-1172 —
+        // for AWSCURRENT moto demands RemoveFromVersionId, models.py:1156-
+        // 1163; any other stage stacks silently). Two plain puts first
+        // (each AWSCURRENT: the label strips are moto's put path,
+        // models.py:722-727), then stack AWSPENDING on both versions.
+        // moto's get_secret_value(VersionStage=…) returns the
+        // FIRST-inserted carrier (models.py:457-460); the twin mirrors
+        // that kind of determinism as oldest-first with a version-id
+        // tie-break (equal created dates break a<a<b lexicographically to
+        // token_a — deterministic without moto's live insertion state).
+        let handler = SecretsManagerHandler::new();
+        handler.handle(make_req(
+            "CreateSecret",
+            json!({"Name": "stack/db",
+                   "SecretString": json!({"p": "v0"}).to_string()}),
+        ));
+        let token_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let token_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        handler.handle(make_req(
+            "PutSecretValue",
+            json!({"SecretId": "stack/db", "ClientRequestToken": token_a,
+                   "SecretString": json!({"p": "v1"}).to_string()}),
+        ));
+        handler.handle(make_req(
+            "PutSecretValue",
+            json!({"SecretId": "stack/db", "ClientRequestToken": token_b,
+                   "SecretString": json!({"p": "v2"}).to_string()}),
+        ));
+        // Empty/omitted RemoveFromVersionId: moto appends without
+        // stripping (models.py:1165-1172).
+        for to in [token_a, token_b] {
+            let resp = handler.handle(make_req(
+                "UpdateSecretVersionStage",
+                json!({"SecretId": "stack/db", "VersionStage": "AWSPENDING",
+                       "MoveToVersionId": to}),
+            ));
+            assert_eq!(resp.status, 200, "{to}: {}", resp.body);
+        }
+        let describe: serde_json::Value = serde_json::from_str(
+            &handler
+                .handle(make_req("DescribeSecret", json!({"SecretId": "stack/db"})))
+                .body,
+        )
+        .unwrap();
+        for vid in [token_a, token_b] {
+            assert!(
+                describe["VersionIdsToStages"][vid]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("AWSPENDING")),
+                "AWSPENDING stacked on both versions: {describe}",
+                describe = describe
+            );
+        }
+        // The stage-only read deterministically resolves the OLDEST
+        // carrier (token_a), not HashMap luck.
+        let got = handler.handle(make_req(
+            "GetSecretValue",
+            json!({"SecretId": "stack/db", "VersionStage": "AWSPENDING"}),
+        ));
+        assert_eq!(got.status, 200, "body: {}", got.body);
+        let got_v: serde_json::Value = serde_json::from_str(&got.body).unwrap();
+        assert_eq!(
+            got_v["VersionId"],
+            json!(token_a),
+            "the stage resolves the oldest carrier deterministically: {}",
+            got.body
+        );
+        assert_eq!(
+            got_v["SecretString"].as_str().unwrap(),
+            json!({"p": "v1"}).to_string(),
+            "the oldest carrier's value: {}",
+            got.body
         );
     }
 }

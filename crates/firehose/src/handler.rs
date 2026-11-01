@@ -625,10 +625,26 @@ impl FirehoseHandler {
                 ),
             );
         }
-        // Apply. moto: same destination type → shallow top-level `update`
-        // (models.py:663-664) — keys in this request REPLACE the stored ones
-        // wholesale, keys not named are kept; a different destination type
-        // replaces the whole entry (models.py:666-669).
+        // Apply. moto keys the branch on `dest_name in destination`
+        // (models.py:663-669): same key → shallow top-level `update` —
+        // keys in this request REPLACE the stored ones wholesale, keys not
+        // named are kept; a truly absent key replaces the whole entry.
+        // An ExtendedS3 creation AUTO-CONTAINS the "S3" mirror key
+        // (models.py:183-186 → `destinations[0]["S3"] =
+        // create_s3_destination_config(config)`), so an S3DestinationUpdate
+        // against an ExtendedS3 stream finds "S3" already there and takes
+        // the merge path; moto then re-projects the ExtendedS3 key from the
+        // merged mirror (models.py:688-693 — shared keys carry the updated
+        // values, ExtendedS3-only keys the twin stores keep). moto
+        // additionally renders BOTH S3DestinationDescription and
+        // ExtendedS3DestinationDescription for such streams (describe
+        // renders every destination key, models.py:331-340) — the twin's
+        // single-config renderer keeps the ExtendedS3-flavored description
+        // (documented simplification). An ExtendedS3Update against a plain
+        // S3 stream does replace the whole entry (models.py:666-668) and
+        // auto-creates the S3 mirror (680-683) — the twin's replace+flip
+        // covers the ExtendedS3 slot; the not-rendered mirror is the same
+        // documented simplification.
         match dest_name {
             "HttpEndpoint" => {
                 let mut updated = s.http_endpoint_config.clone().unwrap_or_default();
@@ -640,17 +656,23 @@ impl FirehoseHandler {
             "S3" | "ExtendedS3" => {
                 let same_flavor = (dest_name == "ExtendedS3") == s.s3_config_is_extended
                     && !s.s3_config.is_empty();
-                if same_flavor {
-                    // Same flavor: moto's `destinations[idx][dest_name].update
+                // An S3 update on an ExtendedS3-created stream merges into
+                // the auto-mirrored S3 slot (moto: "S3" IS in destination).
+                let mirrored_s3_update =
+                    dest_name == "S3" && s.s3_config_is_extended && !s.s3_config.is_empty();
+                if same_flavor || mirrored_s3_update {
+                    // moto's `destinations[idx][dest_name].update
                     // (dest_config)` (models.py:663-664) — this request's
                     // top-level keys REPLACE the stored ones wholesale, and
                     // keys not named here are kept — then the
                     // S3Update/S3BackupUpdate/S3BackupConfiguration →
                     // *Description renames (models.py:671-678) shallow-merge
                     // into the stored description. moto keeps the
-                    // update-spelled key too; the twin's describe renders a
-                    // fixed member set, so the leftover is invisible either
-                    // way.
+                    // update-spelled key too; moto's post-update
+                    // ExtendedS3-key projection (models.py:688-693) then
+                    // drops ExtendedS3-only fields from that render — the
+                    // mirror-driven describe divergence the twin does not
+                    // carry (documented above).
                     for (k, v) in dest_config.clone() {
                         s.s3_config.insert(k, v);
                     }
@@ -1511,9 +1533,18 @@ mod tests {
         );
         assert_eq!(desc["DeliveryStreamDescription"]["VersionId"], json!("2"));
 
-        // A plain S3DestinationUpdate on an ExtendedS3 stream replaces the
-        // whole destination entry and flips the flavor (models.py:666-668).
-        let switch = handler.handle(make_req(
+        // An S3DestinationUpdate against an ExtendedS3-created stream
+        // SHALLOW-MERGES into the auto-mirrored S3 slot rather than
+        // replacing the entry: moto's branch key is `dest_name in
+        // destination` (models.py:663-669) and an ExtendedS3 creation
+        // auto-contains the "S3" mirror key (models.py:183-186), so "S3"
+        // is already there. Sampled fields: an updated shared key lands,
+        // mirror-inherited keys (BufferingHints) survive the merge, and
+        // theExtendedS3 slot is re-projected by moto (models.py:688-693).
+        // The twin merges into the single stored config and keeps the
+        // ExtendedS3-flavored description (moto renders BOTH descriptions
+        // for such streams — the documented simplify-the-mirror gap).
+        let merged = handler.handle(make_req(
             "UpdateDestination",
             json!({
                 "DeliveryStreamName": "upd",
@@ -1525,8 +1556,21 @@ mod tests {
                 }
             }),
         ));
-        assert_eq!(switch.status, 200);
-        let desc = serde_json::from_str::<Value>(
+        assert_eq!(merged.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(
+                &handler
+                    .handle(make_req(
+                        "DescribeDeliveryStream",
+                        json!({"DeliveryStreamName": "upd"}),
+                    ))
+                    .body,
+            )
+            .unwrap()["DeliveryStreamDescription"]["VersionId"],
+            json!("3"),
+            "the merge also bumps the version"
+        );
+        let merged_desc = serde_json::from_str::<Value>(
             &handler
                 .handle(make_req(
                     "DescribeDeliveryStream",
@@ -1535,22 +1579,23 @@ mod tests {
                 .body,
         )
         .unwrap();
-        let switched = &desc["DeliveryStreamDescription"]["Destinations"][0];
+        let merged_dest = &merged_desc["DeliveryStreamDescription"]["Destinations"][0];
         assert!(
-            switched.get("S3DestinationDescription").is_some(),
-            "the flavor flipped to plain S3: {switched}"
+            merged_dest
+                .get("ExtendedS3DestinationDescription")
+                .is_some(),
+            "the ExtendedS3 slot never flips away (moto keeps both keys): {merged_dest}"
+        );
+        let ext = &merged_dest["ExtendedS3DestinationDescription"];
+        assert_eq!(
+            ext["BucketARN"],
+            json!("arn:aws:s3:::plain"),
+            "the S3Update's shared key replaces the stored value"
         );
         assert_eq!(
-            switched["S3DestinationDescription"]["BucketARN"],
-            json!("arn:aws:s3:::plain")
-        );
-        // The old keys are gone from the stored entry (the describe
-        // renderer renders an empty BufferingHints object when the store
-        // has none — a shallow MERGE would have kept {SizeInMBs, …}).
-        assert_eq!(
-            switched["S3DestinationDescription"]["BufferingHints"],
-            json!({}),
-            "a different destination type replaces the whole entry: {switched}"
+            ext["BufferingHints"]["IntervalInSeconds"],
+            json!(120),
+            "mirror-inherited keys survive (moto's models.py:663-664 merge              into the auto-created S3 slot; the wave-9 divergence's whole-             entry replace dropped them)"
         );
     }
 

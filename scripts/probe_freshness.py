@@ -163,12 +163,23 @@ def main() -> int:
     arg_parser.add_argument(
         "--backfill",
         action="store_true",
-        help="stamp today's impl_fingerprint into every probe file (bookkeeping, NOT regeneration)",
+        help="stamp today's impl_fingerprint into every probe file whose "
+        "fingerprint already matches content (bookkeeping, NOT "
+        "regeneration); drifted arms are skipped with a DRIFTED warning + "
+        "re-probe command and the command exits 1",
+    )
+    arg_parser.add_argument(
+        "--backfill-force",
+        action="store_true",
+        help="with --backfill: stamp drifted arms too (deliberate override — "
+        "stale corpora will then report fresh until genuinely re-probed)",
     )
     args = arg_parser.parse_args()
 
     if args.backfill:
+        args.backfill_force = args.backfill and args.backfill_force
         stamped = 0
+        drifted: list[str] = []
         for probe_file in sorted(PROBES.glob("*.json")):
             name = probe_file.stem
             try:
@@ -176,11 +187,35 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"could not parse {probe_file.name}: {exc}", file=sys.stderr)
                 continue
+            if "impl_fingerprint" in data and not fingerprint_matches(name, data):
+                # The arm's PRE-EXISTING fingerprint does not match this
+                # tree: the implementation content changed since the corpus
+                # was genuinely generated. Stamping today's fingerprint
+                # here would launder a stale corpus into "fresh" with zero
+                # new probe evidence (wave w9-store PART2 P2.2). Skip and
+                # tell the operator to re-probe; --backfill-force can
+                # override for a deliberate bookkeeping pass.
+                if not args.backfill_force:
+                    print(
+                        f"DRIFTED {name}: implementation content changed since "
+                        f"the last corpus regen — re-probe instead of backfilling."
+                    )
+                    print(
+                        f"  ENDPOINT_URL=http://localhost:4566 "
+                        f"uv run python -m scripts.probe_service --service {name} --all"
+                    )
+                    drifted.append(name)
+                    continue
             data["impl_fingerprint"] = impl_fingerprint(name)
             probe_file.write_text(json.dumps(data, indent=2) + "\n")
             stamped += 1
-        print(f"backfilled impl_fingerprint into {stamped} probe files")
-        return 0
+        print(
+            f"backfilled impl_fingerprint into {stamped} probe files"
+            + (f"; {len(drifted)} drifted arms skipped" if drifted else "")
+        )
+        # Automation must notice the skipped lies: a run that laundered
+        # nothing but skipped drifted arms is NOT success.
+        return 0 if not drifted else 1
 
     stale: list[str] = []
     fresh_count = 0
