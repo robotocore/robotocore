@@ -635,11 +635,11 @@ impl KmsHandler {
         if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
             return resp;
         }
-        let key = match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id)
-        {
-            Ok(k) => k,
-            Err(resp) => return resp,
-        };
+        let key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
         if state.alias_exists(&alias_name) {
             return AwsResponse::error(
                 400,
@@ -708,11 +708,11 @@ impl KmsHandler {
         if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
             return resp;
         }
-        let key = match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id)
-        {
-            Ok(k) => k,
-            Err(resp) => return resp,
-        };
+        let key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
         if !state.alias_exists(&alias_name) {
             return AwsResponse::error(
                 400,
@@ -892,15 +892,15 @@ impl KmsHandler {
             .get_key(key_id)
             .map(|k| k.key_id.clone())
             .ok_or_else(|| {
-            AwsResponse::error(
-                400,
-                "NotFoundException",
-                &format!(
-                    "Key '{}' does not exist",
-                    Self::display_arn(region, account, key_id)
-                ),
-            )
-        })
+                AwsResponse::error(
+                    400,
+                    "NotFoundException",
+                    &format!(
+                        "Key '{}' does not exist",
+                        Self::display_arn(region, account, key_id)
+                    ),
+                )
+            })
     }
 
     fn decrypt(&self, req: &AwsRequest) -> AwsResponse {
@@ -1275,7 +1275,10 @@ impl KmsHandler {
     /// with an empty message body.
     fn mac_key_error(key: &Key) -> Option<AwsResponse> {
         if key.key_usage != "GENERATE_VERIFY_MAC"
-            || !matches!(key.key_spec.as_str(), "HMAC_224" | "HMAC_256" | "HMAC_384" | "HMAC_512")
+            || !matches!(
+                key.key_spec.as_str(),
+                "HMAC_224" | "HMAC_256" | "HMAC_384" | "HMAC_512"
+            )
         {
             return Some(AwsResponse::error(400, "InvalidKeyUsageException", ""));
         }
@@ -2250,7 +2253,11 @@ mod tests {
             json!({"KeyId": key_id, "NumberOfBytes": 5, "KeySpec": "BOGUS"}),
         ));
         assert_eq!(resp.status, 400);
-        assert!(resp.body.contains("Value 'BOGUS' at 'keySpec'"), "{}", resp.body);
+        assert!(
+            resp.body.contains("Value 'BOGUS' at 'keySpec'"),
+            "{}",
+            resp.body
+        );
 
         let resp = handler.handle(make_req(
             "GenerateDataKey",
@@ -2269,7 +2276,9 @@ mod tests {
             "GenerateDataKey",
             json!({"KeyId": key_id, "NumberOfBytes": 0}),
         ));
-        assert!(resp.body.contains("Please specify either number of bytes or key spec."));
+        assert!(resp
+            .body
+            .contains("Please specify either number of bytes or key spec."));
 
         let resp = handler.handle(make_req(
             "GenerateDataKey",
@@ -2770,7 +2779,11 @@ mod tests {
             }),
         ));
         assert_eq!(verify.status, 400);
-        assert!(verify.body.contains("KMSInvalidMacException"), "{}", verify.body);
+        assert!(
+            verify.body.contains("KMSInvalidMacException"),
+            "{}",
+            verify.body
+        );
 
         // moto models.py:836-840 — wrong key USAGE rejects both ops.
         let ed = handler.handle(make_req("CreateKey", json!({})));
@@ -2785,7 +2798,6 @@ mod tests {
             ));
             assert_eq!(resp.status, 400, "{}", op);
             assert!(resp.body.contains("InvalidKeyUsageException"));
-
         }
         // An RSA spec under GENERATE_VERIFY_MAC usage fails the same gate.
         let rsa = handler.handle(make_req(
@@ -2920,7 +2932,11 @@ mod tests {
             json!({"AliasName": "alias/dup", "TargetKeyId": key_id.clone()}),
         ));
         assert_eq!(resp.status, 400);
-        assert!(resp.body.contains("AlreadyExistsException"), "{}", resp.body);
+        assert!(
+            resp.body.contains("AlreadyExistsException"),
+            "{}",
+            resp.body
+        );
         assert!(resp.body.contains(
             "An alias with the name arn:aws:kms:us-east-1:123456789012:alias/dup already exists"
         ));
@@ -2990,8 +3006,9 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert!(
-            resp.body
-                .contains("Key 'arn:aws:kms:us-east-1:123456789012:key/missing-key' does not exist"),
+            resp.body.contains(
+                "Key 'arn:aws:kms:us-east-1:123456789012:key/missing-key' does not exist"
+            ),
             "{}",
             resp.body
         );
@@ -3001,9 +3018,13 @@ mod tests {
             "UpdateAlias",
             json!({"AliasName": "alias/never-made", "TargetKeyId": key_id.clone()}),
         ));
-        assert!(resp.body.contains(
-            "Alias arn:aws:kms:us-east-1:123456789012:alias/never-made is not found."
-        ), "{}", resp.body);
+        assert!(
+            resp.body.contains(
+                "Alias arn:aws:kms:us-east-1:123456789012:alias/never-made is not found."
+            ),
+            "{}",
+            resp.body
+        );
 
         // DeleteAlias of an unknown alias → the same NotFound.
         let resp = handler.handle(make_req(
@@ -3015,24 +3036,22 @@ mod tests {
 
         // moto quirk: deleting a reserved auto-creates a `Default key`
         // behind it (models.py:363-375,540-546), so the alias answers 200.
-        let before: Vec<String> = serde_json::from_str::<Value>(&handler
-            .handle(make_req("ListKeys", json!({})))
-            .body)
-        .unwrap()["Keys"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|k| k["KeyId"].as_str().unwrap().to_string())
-            .collect();
+        let before: Vec<String> =
+            serde_json::from_str::<Value>(&handler.handle(make_req("ListKeys", json!({}))).body)
+                .unwrap()["Keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| k["KeyId"].as_str().unwrap().to_string())
+                .collect();
         let resp = handler.handle(make_req(
             "DeleteAlias",
             json!({"AliasName": "alias/aws/ebs"}),
         ));
         assert_eq!(resp.status, 200);
-        let after: Value = serde_json::from_str::<Value>(
-            &handler.handle(make_req("ListKeys", json!({}))).body,
-        )
-        .unwrap();
+        let after: Value =
+            serde_json::from_str::<Value>(&handler.handle(make_req("ListKeys", json!({}))).body)
+                .unwrap();
         let keys = after["Keys"].as_array().unwrap();
         assert_eq!(keys.len(), before.len() + 1);
         // Identify the key that appeared and check its moto description.
@@ -3138,7 +3157,11 @@ mod tests {
             "{}",
             resp.body
         );
-        assert!(resp.body.contains("'SM2', 'SYMMETRIC_DEFAULT']"), "{}", resp.body);
+        assert!(
+            resp.body.contains("'SM2', 'SYMMETRIC_DEFAULT']"),
+            "{}",
+            resp.body
+        );
 
         // No KeySpec → SYMMETRIC_DEFAULT.
         let resp = handler.handle(make_req("CreateKey", json!({})));
@@ -3151,7 +3174,11 @@ mod tests {
             json!({"CustomerMasterKeySpec": "BOGUS"}),
         ));
         assert_eq!(resp.status, 400);
-        assert!(resp.body.contains("Value 'BOGUS' at 'KeySpec'"), "{}", resp.body);
+        assert!(
+            resp.body.contains("Value 'BOGUS' at 'KeySpec'"),
+            "{}",
+            resp.body
+        );
 
         // Valid RSA spec still creates (asymmetric path untouched).
         let resp = handler.handle(make_req(
@@ -3478,10 +3505,6 @@ mod tests {
             }),
         ));
         assert_eq!(resp.status, 400);
-        assert!(
-            resp.body.contains("['ECDSA_SHA_384']"),
-            "{}",
-            resp.body
-        );
+        assert!(resp.body.contains("['ECDSA_SHA_384']"), "{}", resp.body);
     }
 }

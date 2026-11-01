@@ -488,6 +488,15 @@ impl IamHandler {
                 )
             }
         };
+        // moto caps keys per user before minting (models.py:2861-2866,
+        // LIMIT_KEYS_PER_USER = 2 at models.py:106).
+        if user.access_keys.read().len() >= 2 {
+            return err(
+                409,
+                "LimitExceeded",
+                "Cannot exceed quota for AccessKeysPerUser: 2",
+            );
+        }
         let key = crate::models::AccessKey::new(req.account);
         let (key_id, key_secret) = (key.access_key_id.clone(), key.secret_access_key.clone());
         let created = ms_to_iso(key.created);
@@ -502,17 +511,36 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_else(|| "unknown".into());
         let key_id = get_param(req, "AccessKeyId").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            user.access_keys
-                .write()
-                .retain(|k| k.access_key_id != key_id);
-            return AwsResponse::xml(200, "DeleteAccessKey", String::new());
+        // moto raises on the user first, then the key lookup
+        // (models.py:2911-2913 → user.get_access_key_by_id raises
+        // "The Access Key with id {id} cannot be found",
+        // models.py:1443-1449) — the unknown key used to be silently
+        // accepted.
+        match state.get_user(&username) {
+            Some(user) => {
+                if !user
+                    .access_keys
+                    .read()
+                    .iter()
+                    .any(|k| k.access_key_id == key_id)
+                {
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("The Access Key with id {key_id} cannot be found"),
+                    );
+                }
+                user.access_keys
+                    .write()
+                    .retain(|k| k.access_key_id != key_id);
+                AwsResponse::xml(200, "DeleteAccessKey", String::new())
+            }
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
-        err(
-            404,
-            "NoSuchEntity",
-            &format!("The user with name {} cannot be found.", username),
-        )
     }
 
     fn list_access_keys(&self, req: &AwsRequest) -> AwsResponse {
@@ -547,18 +575,30 @@ impl IamHandler {
         let key_id = get_param(req, "AccessKeyId").unwrap_or_default();
         let status = get_param(req, "Status").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            let mut keys = user.access_keys.write();
-            if let Some(k) = keys.iter_mut().find(|k| k.access_key_id == key_id) {
-                k.status = status;
+        // moto: user first (NoSuchEntity user text), then the key lookup —
+        // an unknown AccessKeyId is a 404 ("The Access Key with id {id}
+        // cannot be found", models.py:1443-1449), never a silent 200.
+        match state.get_user(&username) {
+            Some(user) => {
+                let mut keys = user.access_keys.write();
+                match keys.iter_mut().find(|k| k.access_key_id == key_id) {
+                    Some(k) => {
+                        k.status = status;
+                        AwsResponse::xml(200, "UpdateAccessKey", String::new())
+                    }
+                    None => err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("The Access Key with id {key_id} cannot be found"),
+                    ),
+                }
             }
-            return AwsResponse::xml(200, "UpdateAccessKey", String::new());
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
-        err(
-            404,
-            "NoSuchEntity",
-            &format!("The user with name {} cannot be found.", username),
-        )
     }
 
     fn get_access_key_last_used(&self, req: &AwsRequest) -> AwsResponse {
@@ -599,18 +639,30 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            tag_upsert(&mut user.tags.write(), tags);
-        }
+        // moto resolves the user first (models.py:3357 → get_user NoSuchEntity).
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        tag_upsert(&mut user.tags.write(), tags);
         AwsResponse::xml(200, "TagUser", String::new())
     }
 
     fn untag_user(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            remove_tags(&mut user.tags.write(), &string_vec(req, "TagKeys"));
-        }
+        // moto resolves the user first (models.py:3362 → get_user NoSuchEntity).
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        remove_tags(&mut user.tags.write(), &string_vec(req, "TagKeys"));
         AwsResponse::xml(200, "UntagUser", String::new())
     }
 
@@ -632,12 +684,25 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_users.write().push(username.clone());
-        }
-        if let Some(user) = state.get_user(&username) {
-            user.attached_policies.write().push(arn);
-        }
+        // moto order: the policy lookup first ("Policy {arn} does not exist
+        // or is not attachable.", models.py:2003-2010), then the user
+        // (get_user NoSuchEntity).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Policy {arn} does not exist or is not attachable."),
+            );
+        };
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        policy.attached_users.write().push(username.clone());
+        user.attached_policies.write().push(arn);
         AwsResponse::xml(200, "AttachUserPolicy", String::new())
     }
 
@@ -645,12 +710,24 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_users.write().retain(|u| *u != username);
+        // moto order (models.py:2013-2020): policy lookup AND attached-
+        // membership raise "Policy {arn} was not found."; the subject
+        // itself resolves through get_user (user NoSuchEntity text).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
+        };
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        if !user.attached_policies.read().contains(&arn) {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
         }
-        if let Some(user) = state.get_user(&username) {
-            user.attached_policies.write().retain(|a| *a != arn);
-        }
+        policy.attached_users.write().retain(|u| *u != username);
+        user.attached_policies.write().retain(|a| *a != arn);
         AwsResponse::xml(200, "DetachUserPolicy", String::new())
     }
 
@@ -674,13 +751,22 @@ impl IamHandler {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let doc = get_param(req, "PolicyDocument").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            let mut policies = user.policies.write();
-            if !policies.contains(&policy_name) {
-                policies.push(policy_name.clone());
-            }
-            user.policy_documents.write().insert(policy_name, doc);
+        // moto resolves the user first (models.py:2844-2851 → get_user
+        // NoSuchEntity) — the silent-200 no-existence-check family's last
+        // put_* arm. moto's document validation is ledgered; see
+        // put_role_policy.
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        let mut policies = user.policies.write();
+        if !policies.contains(&policy_name) {
+            policies.push(policy_name.clone());
         }
+        user.policy_documents.write().insert(policy_name, doc);
         AwsResponse::xml(200, "PutUserPolicy", String::new())
     }
 
@@ -849,16 +935,49 @@ impl IamHandler {
     }
 
     fn list_roles(&self, req: &AwsRequest) -> AwsResponse {
+        // moto (models.py:2708-2725): PathPrefix filter (default "/"),
+        // sorted by role ID, index Marker, MaxItems default 100; Marker is
+        // `str(start + max_items)` at the wire through moto's own page
+        // arithmetic (moto stops the marker when `len(sorted) <= start +
+        // max_items` — models.py:2720-2723 — so an exactly-full terminal
+        // page answers IsTruncated=false; unlike list_policies' strict
+        // `len(page) < max` rule).
+        let path_prefix = get_param(req, "PathPrefix").unwrap_or_else(|| "/".into());
+        let max_items = get_param(req, "MaxItems")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+            .max(1);
+        let start = get_param(req, "Marker")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
         let state = self.get_state(req.account);
-        let mut names: Vec<String> = state.roles.read().keys().cloned().collect();
-        names.sort();
+        let mut ids: Vec<(String, String)> = state
+            .roles
+            .read()
+            .iter()
+            // moto filters by the rolled-up path (filter_items_with_path_prefix).
+            .filter(|(_, r)| r.path.starts_with(&path_prefix))
+            .map(|(name, r)| (r.role_id.clone(), name.clone()))
+            .collect();
+        // moto sorts by role.id (models.py:2717).
+        ids.sort();
+        let page: Vec<&(String, String)> = ids.iter().skip(start).take(max_items).collect();
         let mut body = String::from("<Roles>");
-        for name in &names {
+        for (_, name) in &page {
             if let Some(role) = state.get_role(name) {
                 body.push_str(&self.role_xml(&role, false));
             }
         }
-        body.push_str("</Roles><IsTruncated>false</IsTruncated>");
+        body.push_str("</Roles>");
+        // moto (models.py:2717-2723): marker only while the sort order has
+        // more rows past this page.
+        match ids.len() > start + max_items {
+            true => body.push_str(&format!(
+                "<IsTruncated>true</IsTruncated><Marker>{}</Marker>",
+                start + max_items
+            )),
+            false => body.push_str("<IsTruncated>false</IsTruncated>"),
+        }
         AwsResponse::xml(200, "ListRoles", body)
     }
 
@@ -921,18 +1040,23 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
-        if let Some(role) = state.get_role(&role_name) {
-            tag_upsert(&mut role.tags.write(), tags);
-        }
+        // moto resolves the role first (models.py:2322 → get_role
+        // "Role {name} not found", models.py:2187-2191).
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        tag_upsert(&mut role.tags.write(), tags);
         AwsResponse::xml(200, "TagRole", String::new())
     }
 
     fn untag_role(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(role) = state.get_role(&role_name) {
-            remove_tags(&mut role.tags.write(), &string_vec(req, "TagKeys"));
-        }
+        // moto resolves the role first (models.py:2330 → get_role).
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        remove_tags(&mut role.tags.write(), &string_vec(req, "TagKeys"));
         AwsResponse::xml(200, "UntagRole", String::new())
     }
 
@@ -950,12 +1074,21 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_roles.write().push(role_name.clone());
-        }
-        if let Some(role) = state.get_role(&role_name) {
-            role.attached_policies.write().push(arn);
-        }
+        // moto order (models.py:1932-1939): policy first — user/role flavor
+        // text "does not exist or is not attachable." — then get_role
+        // ("Role {name} not found", models.py:2187-2191).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Policy {arn} does not exist or is not attachable."),
+            );
+        };
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        policy.attached_roles.write().push(role_name.clone());
+        role.attached_policies.write().push(arn);
         AwsResponse::xml(200, "AttachRolePolicy", String::new())
     }
 
@@ -963,12 +1096,20 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_roles.write().retain(|r| *r != role_name);
+        // moto (models.py:1973-1981): policy or not-attached ∈ one KeyError
+        // arm → "Policy {arn} was not found."; the role itself resolves
+        // through get_role (its own NotFound text).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
+        };
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        if !role.attached_policies.read().contains(&arn) {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
         }
-        if let Some(role) = state.get_role(&role_name) {
-            role.attached_policies.write().retain(|a| *a != arn);
-        }
+        policy.attached_roles.write().retain(|r| *r != role_name);
+        role.attached_policies.write().retain(|a| *a != arn);
         AwsResponse::xml(200, "DetachRolePolicy", String::new())
     }
 
@@ -992,13 +1133,18 @@ impl IamHandler {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let doc = get_param(req, "PolicyDocument").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(role) = state.get_role(&role_name) {
-            let mut policies = role.inline_policies.write();
-            if !policies.contains(&policy_name) {
-                policies.push(policy_name.clone());
-            }
-            role.policy_documents.write().insert(policy_name, doc);
+        // moto resolves the role first (models.py:2226-2234 → get_role
+        // "Role {name} not found"). moto then validates the policy
+        // document (IAMPolicyDocumentValidator) — the twin defers that
+        // (the document-parse validation class is ledgered).
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        let mut policies = role.inline_policies.write();
+        if !policies.contains(&policy_name) {
+            policies.push(policy_name.clone());
         }
+        role.policy_documents.write().insert(policy_name, doc);
         AwsResponse::xml(200, "PutRolePolicy", String::new())
     }
 
@@ -1175,13 +1321,21 @@ impl IamHandler {
             }
             state.groups.write().remove(&group.group_name);
         }
-        let rebuilt = Arc::new(Group::with_path(req.account, name.clone(), path));
+        let mut rebuilt = Group::with_path(req.account, name.clone(), path);
+        // moto mutates the same group object in place — only
+        // `group.path`/`group.name` move (models.py:2630-2647): CreateDate
+        // and the generated id survive the rename. The FRESH created_seq is
+        // deliberate: moto's pop+insert repositions the group at dict END,
+        // so "renamed groups sort last" is moto parity.
+        rebuilt.created = group.created;
+        rebuilt.group_id = group.group_id.clone();
+        *rebuilt.users.write() = group.users.read().clone();
         *rebuilt.tags.write() = group.tags.read().clone();
         *rebuilt.attached_policies.write() = group.attached_policies.read().clone();
         *rebuilt.inline_policies.write() = group.inline_policies.read().clone();
         *rebuilt.policy_documents.write() = group.policy_documents.read().clone();
         *rebuilt.permissions_boundary.write() = group.permissions_boundary.read().clone();
-        *rebuilt.users.write() = group.users.read().clone();
+        let rebuilt = Arc::new(rebuilt);
         state.groups.write().insert(name, rebuilt);
         AwsResponse::xml(200, "UpdateGroup", String::new())
     }
@@ -1280,18 +1434,32 @@ impl IamHandler {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
-        if let Some(group) = state.get_group(&group_name) {
-            tag_upsert(&mut group.tags.write(), tags);
-        }
+        // moto never modeled TagGroup; the twin's superset keeps the
+        // real-AWS posture and resolves the group first (moto's get_group
+        // text, models.py:2582) so the silent-200 class stays closed
+        // across the tag family.
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        tag_upsert(&mut group.tags.write(), tags);
         AwsResponse::xml(200, "TagGroup", String::new())
     }
 
     fn untag_group(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(group) = state.get_group(&group_name) {
-            remove_tags(&mut group.tags.write(), &string_vec(req, "TagKeys"));
-        }
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        remove_tags(&mut group.tags.write(), &string_vec(req, "TagKeys"));
         AwsResponse::xml(200, "UntagGroup", String::new())
     }
 
@@ -1309,12 +1477,21 @@ impl IamHandler {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_groups.write().push(group_name.clone());
-        }
-        if let Some(group) = state.get_group(&group_name) {
-            group.attached_policies.write().push(arn);
-        }
+        // moto order (models.py:1983-1992): policy lookup first — the GROUP
+        // flavor text is "Policy {arn} was not found." — then get_group
+        // ("Group {name} not found", models.py:2582).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
+        };
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        policy.attached_groups.write().push(group_name.clone());
+        group.attached_policies.write().push(arn);
         AwsResponse::xml(200, "AttachGroupPolicy", String::new())
     }
 
@@ -1322,12 +1499,24 @@ impl IamHandler {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            policy.attached_groups.write().retain(|g| *g != group_name);
+        // moto (models.py:1993-2001): policy or not-attached →
+        // "Policy {arn} was not found."; the group resolves through
+        // get_group (its own NotFound text).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
+        };
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        if !group.attached_policies.read().contains(&arn) {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} was not found."));
         }
-        if let Some(group) = state.get_group(&group_name) {
-            group.attached_policies.write().retain(|a| *a != arn);
-        }
+        policy.attached_groups.write().retain(|g| *g != group_name);
+        group.attached_policies.write().retain(|a| *a != arn);
         AwsResponse::xml(200, "DetachGroupPolicy", String::new())
     }
 
@@ -1351,13 +1540,21 @@ impl IamHandler {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let doc = get_param(req, "PolicyDocument").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(group) = state.get_group(&group_name) {
-            let mut policies = group.inline_policies.write();
-            if !policies.contains(&policy_name) {
-                policies.push(policy_name.clone());
-            }
-            group.policy_documents.write().insert(policy_name, doc);
+        // moto resolves the group first (models.py:2595 → get_group
+        // "Group {name} not found"). Document validation like moto's
+        // IAMPolicyDocumentValidator is ledgered (see put_role_policy).
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        let mut policies = group.inline_policies.write();
+        if !policies.contains(&policy_name) {
+            policies.push(policy_name.clone());
         }
+        group.policy_documents.write().insert(policy_name, doc);
         AwsResponse::xml(200, "PutGroupPolicy", String::new())
     }
 
@@ -1507,12 +1704,44 @@ impl IamHandler {
     }
 
     fn list_policies(&self, req: &AwsRequest) -> AwsResponse {
-        let state = self.get_state(req.account);
+        // moto (models.py:2086-2148): OnlyAttached filters by live
+        // attachments; Scope=Local keeps customer policies (the twin holds
+        // only those — Scope=AWS yields none, same as moto's AWSManagedPolicy
+        // census over its bundled list); sorted by policy NAME; index
+        // marker arithmetic identical to list_roles.
         let scope = get_param(req, "Scope").unwrap_or_default();
-        let mut names: Vec<String> = state.policies.read().keys().cloned().collect();
+        let only_attached = get_param(req, "OnlyAttached")
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let path_prefix = get_param(req, "PathPrefix").unwrap_or_else(|| "/".into());
+        let max_items = get_param(req, "MaxItems")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+            .max(1);
+        let start = get_param(req, "Marker")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        let state = self.get_state(req.account);
+        let mut names: Vec<String> = state
+            .policies
+            .read()
+            .keys()
+            .filter(|name| {
+                let policy = state.policies.read().get(*name).cloned();
+                match policy {
+                    Some(p) => {
+                        p.path.starts_with(&path_prefix)
+                            && (!only_attached || self.policy_attachments(&p) > 0)
+                    }
+                    None => false,
+                }
+            })
+            .cloned()
+            .collect();
         names.sort();
+        let page: Vec<String> = names.iter().skip(start).take(max_items).cloned().collect();
         let mut body = String::from("<Policies>");
-        for name in &names {
+        for name in &page {
             // We only hold customer-managed policies; Scope=AWS yields none.
             if scope == "AWS" {
                 continue;
@@ -1524,7 +1753,20 @@ impl IamHandler {
                 ));
             }
         }
-        body.push_str("</Policies><IsTruncated>false</IsTruncated>");
+        body.push_str("</Policies>");
+        // moto (models.py:2140-2146): `len(page) < max_items -> None` — a
+        // page that carries EXACTLY max_items is TRUNCATED with the next
+        // start index as its Marker, even when it exhausts the census (the
+        // following page then answers empty + IsTruncated=false). The old
+        // more-rows arithmetic missed exactly that boundary case (w8-C).
+        if page.len() < max_items {
+            body.push_str("<IsTruncated>false</IsTruncated>");
+        } else {
+            body.push_str(&format!(
+                "<IsTruncated>true</IsTruncated><Marker>{}</Marker>",
+                start + max_items
+            ));
+        }
         AwsResponse::xml(200, "ListPolicies", body)
     }
 
@@ -1544,8 +1786,31 @@ impl IamHandler {
                 )
             }
         };
-        let next_version = policy.versions.read().len() + 1;
+        // moto (models.py:2379-2401): the 5-version cap raises LimitExceeded
+        // (no drop-oldest), ids come from the monotonic per-policy
+        // `next_version_num` (never recycled after deletes), and
+        // SetAsDefault only flips the default pointer.
+        if policy.versions.read().len() >= 5 {
+            return err(
+                409,
+                "LimitExceeded",
+                "A managed policy can have up to 5 versions. Before you create a new version, you must delete an existing version.",
+            );
+        }
+        // Pre-field snapshots restore next_version_num=0; a live max of
+        // "v{n}" seeds the counter to n+1 so legacy ids are never recycled.
+        let stored_next = *policy.next_version_num.read();
+        let live_max = policy
+            .versions
+            .read()
+            .iter()
+            .filter_map(|v| v.get("VersionId").and_then(|x| x.as_str()))
+            .filter_map(|id| id.strip_prefix('v').and_then(|n| n.parse::<u32>().ok()))
+            .max()
+            .unwrap_or(0);
+        let next_version = stored_next.max(if live_max > 0 { live_max + 1 } else { 1 });
         let version_id = format!("v{}", next_version);
+        *policy.next_version_num.write() = next_version + 1;
         let now = now_iso();
         let document = get_param(req, "PolicyDocument").unwrap_or_else(|| "{}".into());
         if set_as_default {
@@ -1708,15 +1973,25 @@ impl IamHandler {
         };
         if *policy.default_version_id.read() == version_id {
             return err(
-                400,
+                409,
                 "DeleteConflict",
                 "Cannot delete the default version of a policy.",
             );
         }
-        policy
-            .versions
-            .write()
-            .retain(|v| v.get("VersionId").and_then(|x| x.as_str()) != Some(version_id.as_str()));
+        // moto: an unknown (non-default) version id is
+        // NotFoundException "Policy not found" (models.py:2420-2429) —
+        // the blind retain answered a silent 200 when nothing matched
+        // (w8 S2-2, the last uncovered silent-200 row). The DeleteConflict
+        // status above now rides the botocore spec's httpStatusCode=409
+        // for DeleteConflictException.
+        let mut versions = policy.versions.write();
+        let Some(pos) = versions
+            .iter()
+            .position(|v| v.get("VersionId").and_then(|x| x.as_str()) == Some(version_id.as_str()))
+        else {
+            return err(404, "NoSuchEntity", "Policy not found");
+        };
+        versions.remove(pos);
         AwsResponse::xml(200, "DeletePolicyVersion", String::new())
     }
 
@@ -1724,18 +1999,23 @@ impl IamHandler {
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            tag_upsert(&mut policy.tags.write(), tags);
-        }
+        // moto resolves the policy first (models.py:2362 → get_policy
+        // "Policy {arn} not found", models.py:2051-2054).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} not found"));
+        };
+        tag_upsert(&mut policy.tags.write(), tags);
         AwsResponse::xml(200, "TagPolicy", String::new())
     }
 
     fn untag_policy(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(policy) = state.get_policy(&arn) {
-            remove_tags(&mut policy.tags.write(), &string_vec(req, "TagKeys"));
-        }
+        // moto resolves the policy first (models.py:2374 → get_policy).
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} not found"));
+        };
+        remove_tags(&mut policy.tags.write(), &string_vec(req, "TagKeys"));
         AwsResponse::xml(200, "UntagPolicy", String::new())
     }
 
@@ -2204,10 +2484,26 @@ impl IamHandler {
 
     fn list_virtual_mfa_devices(&self, req: &AwsRequest) -> AwsResponse {
         let assignment = get_param(req, "AssignmentStatus").unwrap_or_else(|| "Any".into());
+        let max_items = get_param(req, "MaxItems")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+            .max(1);
+        // moto (models.py:3048-3078): AssignmentStatus filter, then an
+        // INDEX Marker over the filtered census; a marker beyond the list
+        // is moto's ValidationError "Invalid Marker." MaxItems bounds the
+        // page and `IsTruncated` + the next-index Marker ride only while a
+        // full page carries through.
+        let start = match get_param(req, "Marker") {
+            Some(text) => match text.parse::<usize>() {
+                Ok(idx) => idx,
+                Err(_) => return err(400, "ValidationError", "Invalid Marker."),
+            },
+            None => 0,
+        };
         let state = self.get_state(req.account);
         let mut serials: Vec<String> = state.virtual_mfas.read().keys().cloned().collect();
         serials.sort();
-        let mut body = String::from("<VirtualMFADevices>");
+        let mut filtered: Vec<String> = Vec::new();
         for serial in &serials {
             let device = match state.virtual_mfas.read().get(serial) {
                 Some(d) => d.clone(),
@@ -2219,9 +2515,26 @@ impl IamHandler {
                 "Unassigned" => !assigned,
                 _ => true,
             };
-            if !keep {
-                continue;
+            if keep {
+                filtered.push(serial.clone());
             }
+        }
+        if start > filtered.len() {
+            return err(400, "ValidationError", "Invalid Marker.");
+        }
+        let page: Vec<String> = filtered
+            .iter()
+            .skip(start)
+            .take(max_items)
+            .cloned()
+            .collect();
+        let mut body = String::from("<VirtualMFADevices>");
+        for serial in &page {
+            let device = match state.virtual_mfas.read().get(serial) {
+                Some(d) => d.clone(),
+                None => continue,
+            };
+            let assigned = device.assigned_user.read().is_some();
             let mut item = format!(
                 "<member><SerialNumber>{}</SerialNumber>",
                 xml_escape(&device.serial)
@@ -2241,10 +2554,21 @@ impl IamHandler {
             item.push_str("</member>");
             body.push_str(&item);
         }
-        body.push_str("</VirtualMFADevices><IsTruncated>false</IsTruncated>");
+        body.push_str("</VirtualMFADevices>");
+        // moto (models.py:3071-3076): `len(page) < max_items -> None` — an
+        // EXACTLY-full terminal page stays truncated=true + Marker; the
+        // next call renders the empty tail page (w8-C, mirrors the
+        // list_policies arithmetic).
+        if page.len() < max_items {
+            body.push_str("<IsTruncated>false</IsTruncated>");
+        } else {
+            body.push_str(&format!(
+                "<IsTruncated>true</IsTruncated><Marker>{}</Marker>",
+                start + max_items
+            ));
+        }
         AwsResponse::xml(200, "ListVirtualMFADevices", body)
     }
-
     fn enable_mfa_device(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let serial = get_param(req, "SerialNumber").unwrap_or_default();
@@ -2259,6 +2583,16 @@ impl IamHandler {
         let device = state.virtual_mfas.read().get(&serial).cloned();
         match device {
             Some(device) => {
+                // moto: re-registering the same serial on the same user is
+                // EntityAlreadyExists (models.py:2961-2963).
+                let already_owned = *device.assigned_user.read() == Some(username.clone());
+                if already_owned && device.enable_date.read().is_some() {
+                    return err(
+                        409,
+                        "EntityAlreadyExists",
+                        &format!("Device {serial} already exists"),
+                    );
+                }
                 *device.assigned_user.write() = Some(username.clone());
                 *device.enable_date.write() = Some(now_iso());
                 AwsResponse::xml(200, "EnableMFADevice", String::new())
@@ -2279,8 +2613,19 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username),
+                &format!("The user with name {username} cannot be found."),
             );
+        }
+        // moto: the device must be attached to THIS user — anything else is
+        // NotFoundException "Device {serial} not found" (models.py:2981-2984).
+        let owned = state
+            .virtual_mfas
+            .read()
+            .get(&serial)
+            .map(|d| d.assigned_user.read().as_deref() == Some(username.as_str()))
+            .unwrap_or(false);
+        if !owned {
+            return err(404, "NoSuchEntity", &format!("Device {serial} not found"));
         }
         if let Some(device) = state.virtual_mfas.read().get(&serial).cloned() {
             *device.assigned_user.write() = None;
@@ -2320,6 +2665,15 @@ impl IamHandler {
     fn list_mfa_devices(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_else(|| "unknown".into());
         let state = self.get_state(req.account);
+        // moto resolves the user first (models.py:3002-3004 → get_user
+        // NoSuchEntity) — the empty-list silent-200 class.
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        }
         let mut serials: Vec<String> = state.virtual_mfas.read().keys().cloned().collect();
         serials.sort();
         let mut body = String::from("<MFADevices>");
@@ -2857,13 +3211,17 @@ impl IamHandler {
                 None => {
                     // Profiles created before the store existed (snapshot
                     // round-trip edge): stamp and persist now instead of
-                    // leaving a per-read date.
+                    // leaving a per-read date. `or_insert` pins the
+                    // once-stamped-forever contract under concurrency:
+                    // two renderers observing None would overwrite each
+                    // other with plain `insert` (w7-store N4 TOCTOU).
                     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                     state
                         .instance_profile_created
                         .write()
-                        .insert(name.to_string(), now.clone());
-                    now
+                        .entry(name.to_string())
+                        .or_insert_with(|| now.clone())
+                        .clone()
                 }
             }
         };
@@ -2873,9 +3231,25 @@ impl IamHandler {
             .get(name)
             .cloned()
             .unwrap_or_default();
+        // moto's profile ARN embeds the create-time Path
+        // (models.py:1012: `instance-profile{path}{name}`); the twin stores
+        // the path at create (empty fall-back for legacy profiles keeps
+        // the old root-path rendering).
+        let profile_path = state
+            .instance_profile_paths
+            .read()
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| "/".to_string());
         let mut s = format!(
-            "<InstanceProfile><Path>/</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile/{}</Arn><CreateDate>{}</CreateDate>",
-            xml_escape(name), ip_id, account, name, create_date
+            "<InstanceProfile><Path>{}</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile{}{}</Arn><CreateDate>{}</CreateDate>",
+            xml_escape(&profile_path),
+            xml_escape(name),
+            ip_id,
+            account,
+            profile_path,
+            xml_escape(name),
+            create_date
         );
         {
             let profiles = state.instance_profiles.read();
@@ -2903,16 +3277,30 @@ impl IamHandler {
         if name.is_empty() {
             return err(400, "ValidationError", "InstanceProfileName is required");
         }
+        let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
+        let role_names = string_vec(req, "Roles");
         let state = self.get_state(req.account);
         if state.instance_profiles.read().contains_key(&name) {
             return err(
                 409,
                 "EntityAlreadyExists",
-                &format!("Instance profile {} already exists", name),
+                &format!("Instance profile {name} already exists."),
             );
+        }
+        // moto resolves every provided role BEFORE creating the profile
+        // (models.py:2438: `roles = [self.get_role(role_name) ...]`).
+        for role_name in &role_names {
+            if state.get_role(role_name).is_none() {
+                return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+            }
         }
         let tags = self.parse_query_list(req, "Tags");
         state.create_instance_profile(&name);
+        *state.instance_profiles.write().get_mut(&name).unwrap() = role_names;
+        state
+            .instance_profile_paths
+            .write()
+            .insert(name.clone(), path);
         if !tags.is_empty() {
             state
                 .instance_profile_tags
@@ -2979,23 +3367,29 @@ impl IamHandler {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the profile then the role (models.py:2493-2496,
+        // "Instance profile {name} not found" / get_role text).
         if !state.instance_profiles.read().contains_key(&name) {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name),
+                &format!("Instance profile {name} not found"),
             );
         }
         if state.get_role(&role_name).is_none() {
-            return err(
-                404,
-                "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name),
-            );
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
         }
+        // moto's 1-role-per-profile quota (models.py:2497-2502).
         let mut profiles = state.instance_profiles.write();
         if let Some(roles) = profiles.get_mut(&name) {
             if !roles.contains(&role_name) {
+                if !roles.is_empty() {
+                    return err(
+                        409,
+                        "LimitExceeded",
+                        "Cannot exceed quota for InstanceSessionsPerInstanceProfile: 1",
+                    );
+                }
                 roles.push(role_name);
             }
         }
@@ -3006,7 +3400,31 @@ impl IamHandler {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        state.remove_role_from_instance_profile(&name, &role_name);
+        // moto resolves profile + role first (models.py:2503-2506); the
+        // role-not-on-profile arm is moto's ValueError crash — real-AWS
+        // posture keeps the store coherent with a NoSuchEntity 404.
+        let Some(_) = state.instance_profiles.read().get(&name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {name} not found"),
+            );
+        };
+        if state.get_role(&role_name).is_none() {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        }
+        let mut profiles = state.instance_profiles.write();
+        if let Some(roles) = profiles.get_mut(&name) {
+            if roles.iter().any(|r| r == &role_name) {
+                roles.retain(|r| r != &role_name);
+            } else {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("Role {role_name} not found on instance profile {name}"),
+                );
+            }
+        }
         AwsResponse::xml(200, "RemoveRoleFromInstanceProfile", String::new())
     }
 
@@ -3328,14 +3746,35 @@ impl IamHandler {
         // entry between collecting the names and the per-name lookup.
         let mut certs: Vec<Arc<ServerCert>> = state.server_certs.read().values().cloned().collect();
         certs.sort_by(|a, b| a.name.cmp(&b.name));
+        // moto has NO pagination here ("Pagination is not yet implemented",
+        // models.py:2510 — it returns the whole census). The twin keeps the
+        // real-AWS MaxItems/Marker posture with moto's index-marker style
+        // (Marker = the next start index, IsTruncated only on a full page).
+        let max_items = get_param(req, "MaxItems")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+            .max(1);
+        let start = get_param(req, "Marker")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        let page: Vec<Arc<ServerCert>> =
+            certs.iter().skip(start).take(max_items).cloned().collect();
         let mut body = String::from("<ServerCertificateMetadataList>");
-        for cert in &certs {
+        for cert in &page {
             body.push_str(&format!(
                 "<member>{}</member>",
                 self.server_cert_metadata_xml(cert, req.account)
             ));
         }
-        body.push_str("</ServerCertificateMetadataList><IsTruncated>false</IsTruncated>");
+        body.push_str("</ServerCertificateMetadataList>");
+        if certs.len() > start + max_items {
+            body.push_str(&format!(
+                "<IsTruncated>true</IsTruncated><Marker>{}</Marker>",
+                start + max_items
+            ));
+        } else {
+            body.push_str("<IsTruncated>false</IsTruncated>");
+        }
         AwsResponse::xml(200, "ListServerCertificates", body)
     }
 
@@ -5159,6 +5598,85 @@ mod tests {
         );
     }
 
+    /// moto mutates the group in place on rename — only path/name move
+    /// (models.py:2630-2647): CreateDate and GroupId survive (the rebuild
+    /// used to refresh both), and the renamed group repositions to dict
+    /// END (moto's pop+insert ≡ the fresh seq).
+    #[test]
+    fn update_group_rename_preserves_created_and_id() {
+        let handler = IamHandler::new();
+        handler.handle(make_req("CreateGroup", json!({ "GroupName": "driftg1" })));
+        let before = handler.handle(make_req("GetGroup", json!({ "GroupName": "driftg1" })));
+        let date = |resp: &AwsResponse| {
+            resp.body
+                .split("<CreateDate>")
+                .nth(1)
+                .and_then(|t| t.split("</CreateDate>").next())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let id = |resp: &AwsResponse| {
+            resp.body
+                .split("<GroupId>")
+                .nth(1)
+                .and_then(|t| t.split("</GroupId>").next())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let created_before = date(&before);
+        assert!(!created_before.is_empty());
+        let id_before = id(&before);
+        assert!(!id_before.is_empty());
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let rep = handler.handle(make_req(
+            "UpdateGroup",
+            json!({ "GroupName": "driftg1", "NewGroupName": "driftg2" }),
+        ));
+        assert_eq!(rep.status, 200, "body: {}", rep.body);
+        let after = handler.handle(make_req("GetGroup", json!({ "GroupName": "driftg2" })));
+        assert_eq!(after.status, 200, "body: {}", after.body);
+        assert_eq!(
+            created_before,
+            date(&after),
+            "CreateDate must survive the rename"
+        );
+        assert_eq!(id_before, id(&after), "groupid must survive the rename");
+
+        // Ordering: renamed group lands at dict END (moto pop+insert).
+        handler.handle(make_req("CreateUser", json!({ "UserName": "ord-u2" })));
+        handler.handle(make_req("CreateGroup", json!({ "GroupName": "aaa-after" })));
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "driftg2", "UserName": "ord-u2" }),
+        ));
+        handler.handle(make_req(
+            "AddUserToGroup",
+            json!({ "GroupName": "aaa-after", "UserName": "ord-u2" }),
+        ));
+        let resp = handler.handle(make_req(
+            "ListGroupsForUser",
+            json!({ "UserName": "ord-u2" }),
+        ));
+        let names: Vec<String> = resp
+            .body
+            .split("<GroupName>")
+            .skip(1)
+            .map(|t| {
+                t.split("</GroupName>")
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["driftg2", "aaa-after"],
+            "at rename time the group repositions to dict END; groups created \
+             AFTER the rename follow it (moto pop+insert): {names:?}"
+        );
+    }
+
     /// The instance-profile CreateDate is stamped once at creation
     /// (instance_profile_created) and never drifts across reads — the
     /// per-read `now()` rendering made every Get/List differ.    #[test]
@@ -5280,6 +5798,370 @@ mod tests {
             names,
             vec!["zeta-team", "alpha-team", "mid-team"],
             "group-creation order beats the wild HashMap order: {names:?}"
+        );
+    }
+
+    /// Wave-7 ledger batch: access-key cap + unknown-key 404s, the
+    /// attach/detach/put existence 404 family, and moto's exact
+    /// policy-version semantics (LimitExceeded at 5 — no drop-oldest — and
+    /// monotonic ids that never recycle after a delete).
+    #[test]
+    fn ledger_accesskey_caps_and_policy_semantics() {
+        let handler = IamHandler::new();
+        handler.handle(make_req("CreateUser", json!({ "UserName": "led-u" })));
+
+        // 2-key cap (moto LIMIT_KEYS_PER_USER, models.py:106 + 2861-2866).
+        let k1 = handler.handle(make_req("CreateAccessKey", json!({ "UserName": "led-u" })));
+        let k2 = handler.handle(make_req("CreateAccessKey", json!({ "UserName": "led-u" })));
+        let _ = k2;
+        let id1 = k1
+            .body
+            .split("<AccessKeyId>")
+            .nth(1)
+            .and_then(|t| t.split("</AccessKeyId>").next())
+            .unwrap_or_default()
+            .to_string();
+        let k3 = handler.handle(make_req("CreateAccessKey", json!({ "UserName": "led-u" })));
+        // moto/botocore wire: LimitExceeded httpStatusCode = 409 (w8-A).
+        assert_eq!(k3.status, 409, "third key must hit the cap: {}", k3.body);
+        assert!(
+            k3.body.contains("<Code>LimitExceeded</Code>")
+                && k3
+                    .body
+                    .contains("Cannot exceed quota for AccessKeysPerUser: 2"),
+            "moto's cap text: {}",
+            k3.body
+        );
+
+        // Unknown key 404s (models.py:1443-1449 text).
+        for op in ["UpdateAccessKey", "DeleteAccessKey"] {
+            let resp = handler.handle(make_req(
+                op,
+                json!({"UserName": "led-u", "AccessKeyId": "AKIANOPE", "Status": "Inactive"}),
+            ));
+            assert_eq!(resp.status, 404, "{op}: {}", resp.body);
+            assert!(
+                resp.body
+                    .contains("The Access Key with id AKIANOPE cannot be found"),
+                "{op}: {}",
+                resp.body
+            );
+        }
+        // The real key still updates and deletes cleanly.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "UpdateAccessKey",
+                    json!({"UserName": "led-u", "AccessKeyId": id1, "Status": "Inactive"})
+                ))
+                .status,
+            200
+        );
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "DeleteAccessKey",
+                    json!({"UserName": "led-u", "AccessKeyId": id1})
+                ))
+                .status,
+            200
+        );
+
+        // attach_user_policy: moto's two-step order (models.py:2003-2010).
+        let resp = handler.handle(make_req(
+            "AttachUserPolicy",
+            json!({"UserName": "led-u", "PolicyArn": "arn:aws:iam::123456789012:policy/p-nope"}),
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Policy arn:aws:iam::123456789012:policy/p-nope does not exist or is not attachable."),
+            "body: {}",
+            resp.body
+        );
+        // Missing subject 404s with the second step's text (an EXISTING
+        // policy so the first-step policy check passes).
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "led-pol-sub", "PolicyDocument": "{}"}),
+        ));
+        let ent404 = handler.handle(make_req(
+            "AttachUserPolicy",
+            json!({"UserName": "no-such-user",
+                   "PolicyArn": "arn:aws:iam::123456789012:policy/led-pol-sub"}),
+        ));
+        assert!(
+            ent404
+                .body
+                .contains("The user with name no-such-user cannot be found."),
+            "body: {}",
+            ent404.body
+        );
+        // detach_role_policy texts: an existing policy + missing role hits
+        // the get_role arm (models.py:1973-1981, get_role text); a missing
+        // policy shows the detach-flavor "was not found." text.
+        let ent404 = handler.handle(make_req(
+            "DetachRolePolicy",
+            json!({"RoleName": "no-role",
+                   "PolicyArn": "arn:aws:iam::123456789012:policy/led-pol-sub"}),
+        ));
+        assert!(
+            ent404.body.contains("Role no-role not found"),
+            "body: {}",
+            ent404.body
+        );
+        let pol404 = handler.handle(make_req(
+            "DetachRolePolicy",
+            json!({"RoleName": "no-role", "PolicyArn": "arn:aws:iam::123456789012:policy/x"}),
+        ));
+        assert!(
+            pol404
+                .body
+                .contains("Policy arn:aws:iam::123456789012:policy/x was not found."),
+            "body: {}",
+            pol404.body
+        );
+
+        // put_role_policy on a missing role (models.py:2226-2234).
+        let resp = handler.handle(make_req(
+            "PutRolePolicy",
+            json!({"RoleName": "no-role", "PolicyName": "p", "PolicyDocument": "{}"}),
+        ));
+        assert!(
+            resp.body.contains("Role no-role not found"),
+            "body: {}",
+            resp.body
+        );
+
+        // policy versions: 5-cap raises (no drop-oldest) and ids stay
+        // monotonic across deletions (models.py:2379-2401).
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "led-pol", "PolicyDocument": "{}"}),
+        ));
+        let arn = "arn:aws:iam::123456789012:policy/led-pol";
+        for expect in ["v2", "v3", "v4"] {
+            let resp = handler.handle(make_req(
+                "CreatePolicyVersion",
+                json!({"PolicyArn": arn, "PolicyDocument": "{}", "SetAsDefault": "true"}),
+            ));
+            assert_eq!(resp.status, 200, "body: {}", resp.body);
+            assert!(
+                resp.body
+                    .contains(&format!("<VersionId>{expect}</VersionId>")),
+                "expected {expect}: {}",
+                resp.body
+            );
+        }
+        // Delete a middle version then create: the id does not recycle.
+        handler.handle(make_req(
+            "DeletePolicyVersion",
+            json!({"PolicyArn": arn, "VersionId": "v3"}),
+        ));
+        let resp = handler.handle(make_req(
+            "CreatePolicyVersion",
+            json!({"PolicyArn": arn, "PolicyDocument": "{}"}),
+        ));
+        assert!(
+            resp.body.contains("<VersionId>v5</VersionId>"),
+            "body: {}",
+            resp.body
+        );
+        // 5 versions live → the sixth raises moto's exact text. (Fresh
+        // policy: led-pol only carries 4 live versions after the delete —
+        // moto's cap counts the LIVE list.)
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "led-cap", "PolicyDocument": "{}"}),
+        ));
+        let cap_arn = "arn:aws:iam::123456789012:policy/led-cap";
+        for _ in 0..4 {
+            handler.handle(make_req(
+                "CreatePolicyVersion",
+                json!({"PolicyArn": cap_arn, "PolicyDocument": "{}"}),
+            ));
+        }
+        let resp = handler.handle(make_req(
+            "CreatePolicyVersion",
+            json!({"PolicyArn": cap_arn, "PolicyDocument": "{}"}),
+        ));
+        // moto/botocore wire: LimitExceeded httpStatusCode = 409 (w8-A).
+        assert_eq!(resp.status, 409, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("A managed policy can have up to 5 versions."),
+            "body: {}",
+            resp.body
+        );
+
+        // instance-profile Roles + Path honored (moto models.py:2429-2449)
+        // and a missing listed role 404s before any profile exists.
+        let resp = handler.handle(make_req(
+            "CreateInstanceProfile",
+            json!({"InstanceProfileName": "led-ip", "Path": "/svc/",
+                   "Roles.member.1": "no-such-role"}),
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Role no-such-role not found"),
+            "body: {}",
+            resp.body
+        );
+        handler.handle(make_req(
+            "CreateRole",
+            json!({"RoleName": "led-role", "AssumeRolePolicyDocument": "{}"}),
+        ));
+        let resp = handler.handle(make_req(
+            "CreateInstanceProfile",
+            json!({"InstanceProfileName": "led-ip", "Path": "/svc/",
+                   "Roles.member.1": "led-role"}),
+        ));
+        assert!(
+            resp.body.contains("<Path>/svc/</Path>"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("arn:aws:iam::123456789012:instance-profile/svc/led-ip"),
+            "the ARN embeds the path: {}",
+            resp.body
+        );
+        // 1-role-per-profile quota (moto models.py:2497-2502).
+        handler.handle(make_req(
+            "CreateRole",
+            json!({"RoleName": "led-role2", "AssumeRolePolicyDocument": "{}"}),
+        ));
+        let resp = handler.handle(make_req(
+            "AddRoleToInstanceProfile",
+            json!({"InstanceProfileName": "led-ip", "RoleName": "led-role2"}),
+        ));
+        // moto/botocore wire: LimitExceeded httpStatusCode = 409 (w8-A).
+        assert_eq!(resp.status, 409, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("Cannot exceed quota for InstanceSessionsPerInstanceProfile: 1"),
+            "body: {}",
+            resp.body
+        );
+    }
+    /// Wave-8 batch: DeletePolicyVersion's unknown-version 404 (moto
+    /// models.py:2420-2429, the batch's last silent-200 row), the
+    /// DeleteConflict 409 wire status (botocore spec), and the
+    /// exactly-full terminal page arithmetic for list_policies and
+    /// list_virtual_mfa_devices (a page carrying EXACTLY max_items stays
+    /// truncated=true with the next-start Marker; the follow-up page is
+    /// empty + false — moto models.py:2140-2146 / 3071-3076).
+    #[test]
+    fn wave8_delete_version_and_terminal_pages() {
+        let handler = IamHandler::new();
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "w8-delpol", "PolicyDocument": "{}"}),
+        ));
+        let arn = "arn:aws:iam::123456789012:policy/w8-delpol";
+        handler.handle(make_req(
+            "CreatePolicyVersion",
+            json!({"PolicyArn": arn, "PolicyDocument": "{}"}),
+        ));
+
+        // Unknown version id → moto's "Policy not found" (NoSuchEntity).
+        let resp = handler.handle(make_req(
+            "DeletePolicyVersion",
+            json!({"PolicyArn": arn, "VersionId": "v999"}),
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("<Message>Policy not found</Message>"),
+            "body: {}",
+            resp.body
+        );
+
+        // Default-version delete → DeleteConflict with moto's 409 wire.
+        let resp = handler.handle(make_req(
+            "DeletePolicyVersion",
+            json!({"PolicyArn": arn, "VersionId": "v1"}),
+        ));
+        assert_eq!(resp.status, 409, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("Cannot delete the default version of a policy."),
+            "body: {}",
+            resp.body
+        );
+        // The default version still deletes fine afterwards.
+        handler.handle(make_req(
+            "CreatePolicyVersion",
+            json!({"PolicyArn": arn, "PolicyDocument": "{}", "SetAsDefault": "true"}),
+        ));
+        let resp = handler.handle(make_req(
+            "DeletePolicyVersion",
+            json!({"PolicyArn": arn, "VersionId": "v1"}),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+
+        // Exactly-full terminal page (list_policies, MaxItems=2).
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "aaa-p1", "PolicyDocument": "{}"}),
+        ));
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({"PolicyName": "bbb-p2", "PolicyDocument": "{}"}),
+        ));
+        let page1 = handler.handle(make_req(
+            "ListPolicies",
+            json!({"MaxItems": "2", "Scope": "Local"}),
+        ));
+        assert_eq!(page1.status, 200, "body: {}", page1.body);
+        assert!(
+            page1
+                .body
+                .contains("<IsTruncated>true</IsTruncated><Marker>2</Marker>"),
+            "the exactly-full boundary page is truncated: {}",
+            page1.body
+        );
+        let page2 = handler.handle(make_req(
+            "ListPolicies",
+            json!({"MaxItems": "2", "Scope": "Local", "Marker": "2"}),
+        ));
+        assert!(
+            page2.body.contains("<IsTruncated>false</IsTruncated>"),
+            "the follow-up page is not truncated: {}",
+            page2.body
+        );
+        // The two boundary policies genuinely rendered in page 1.
+        assert!(
+            page1.body.contains("aaa-p1") && page1.body.contains("bbb-p2"),
+            "page1 carries both: {}",
+            page1.body
+        );
+
+        // Exactly-full terminal page (list_virtual_mfa_devices,
+        // MaxItems=2 over a 2-device census: moto models.py:3071-3076).
+        handler.handle(make_req(
+            "CreateVirtualMFADevice",
+            json!({"VirtualMFADeviceName": "w8-dev1"}),
+        ));
+        handler.handle(make_req(
+            "CreateVirtualMFADevice",
+            json!({"VirtualMFADeviceName": "w8-dev2"}),
+        ));
+        let page1 = handler.handle(make_req("ListVirtualMFADevices", json!({"MaxItems": "2"})));
+        assert!(
+            page1
+                .body
+                .contains("<IsTruncated>true</IsTruncated><Marker>2</Marker>"),
+            "exactly-full device census stays truncated: {}",
+            page1.body
+        );
+        let page2 = handler.handle(make_req(
+            "ListVirtualMFADevices",
+            json!({"MaxItems": "2", "Marker": "2"}),
+        ));
+        assert!(
+            page2.body.contains("<IsTruncated>false</IsTruncated>"),
+            "the follow-up device page is not truncated: {}",
+            page2.body
         );
     }
 }
