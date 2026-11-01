@@ -1083,11 +1083,13 @@ fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
     compute_key_from_attrs(&table.key_schema, &attrs_to_map(attrs))
 }
 
-/// The 400 for a batch row whose key cannot resolve against the schema. A
-/// key member that is entirely ABSENT reads moto's "Missing the key {attr}
-/// in the item" (table.py:620-632 — the name rides the schema, first
-/// missing member wins); a present-but-unusable member keeps the real-AWS
-/// schema-mismatch text.
+/// The 400 for a batch PUT row whose key cannot resolve against the schema.
+/// A key member that is entirely ABSENT reads moto's `table.put_item` text
+/// "Missing the key {attr} in the item" (table.py:627-638 — the name rides
+/// the schema, first-missing HASH-then-RANGE wins; moto reaches it only on
+/// the put arm); a present-but-unusable member keeps the real-AWS
+/// schema-mismatch text. The batch DELETE arm bypasses this helper — moto
+/// routes deletes through `get_keys_value`'s plain "Validation Exception".
 fn keyed_lookup_error(table: &Table, attrs: &Map<String, Value>) -> AwsResponse {
     match table
         .key_schema
@@ -1181,7 +1183,7 @@ fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     }
     if let Some(null) = value.get("NULL") {
         if *null != Value::Bool(true) {
-            // moto table.py:558-560.
+            // moto table.py:564-569.
             return Some(AwsResponse::error(
                 400,
                 "ValidationException",
@@ -1207,9 +1209,12 @@ fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     if let Some(ns) = value.get("NS").and_then(Value::as_array) {
         for v in ns {
             let Some(s) = v.as_str() else {
-                // moto's NS members ride the same numeric validator; a
-                // non-string member has no numeric conversion and prints
-                // the offending literal in full (not a blank).
+                // moto has NO server-side NS-member validation at all
+                // (_validate_item_types checks N/S/NULL only) — its non-
+                // string NS members blow up lazily at comparison/hash time.
+                // The twin surfaces the member eagerly on the write with
+                // the numeric-conversion text, printing the offending
+                // literal in full (not a blank).
                 return Some(AwsResponse::error(
                     400,
                     "ValidationException",
@@ -1676,16 +1681,21 @@ impl DynamoDbHandler {
                 continue;
             }
             // moto's name resolution is a strict dict access (a probe (g)
-            // KeyError '#nores'): an expression token whose #name is absent
-            // from ExpressionAttributeNames fails the query instead of
-            // resolving into a phantom attribute that scans as empty. The
-            // value-side misses pour through eval_condition's parser; the
-            // names map has no parse-error surface of its own.
+            // KeyError '#nores' → unhandled 500): an expression token whose
+            // #name is absent from ExpressionAttributeNames fails the query
+            // instead of resolving into a phantom attribute that scans as
+            // empty. The twin answers 400 with real AWS's validator text
+            // ("The expression contains an unresolved attribute name: …")
+            // — a deliberate divergence from moto's crash, recorded here.
+            // The value-side misses pour through eval_condition's parser;
+            // the names map has no parse-error surface of its own.
             if let Some(tok) = unbound_name_token(expr, &names) {
                 return AwsResponse::error(
                     400,
                     "ValidationException",
-                    &format!("{member}: unbound expression attribute name {tok}"),
+                    &format!(
+                        "{member}: The expression contains an unresolved attribute name: {tok}"
+                    ),
                 );
             }
             if let Err(e) =
@@ -2216,7 +2226,16 @@ impl DynamoDbHandler {
                         let key_attrs: Map<String, Value> =
                             key_json.as_object().cloned().unwrap_or_default();
                         let Some(key) = item_key(&table, &key_attrs) else {
-                            return keyed_lookup_error(&table, &key_attrs);
+                            // moto's batch DELETE rows resolve through
+                            // backend.delete_item → get_keys_value, whose
+                            // whole schema arm is the generic text — the
+                            // put row's `Missing the key` shade (table.py
+                            // 627-638) never fires on the delete arm.
+                            return AwsResponse::error(
+                                400,
+                                "ValidationException",
+                                "Validation Exception",
+                            );
                         };
                         if !seen_deletes.insert(format!("{table_name}:{key}")) {
                             return AwsResponse::error(
@@ -2272,7 +2291,16 @@ impl DynamoDbHandler {
         // (one 1.0 unit with the Table member) plus the empty
         // ItemCollectionMetrics map (verified: CC = [{"CapacityUnits": 1.0,
         // "Table": {"CapacityUnits": 1.0}, "TableName": "t"}]).
-        let mut body = json!({ "UnprocessedItems": {}, "ItemCollectionMetrics": {} });
+        let mut body = json!({
+            "UnprocessedItems": {},
+            "ItemCollectionMetrics": {},
+            // moto renders the [] always, even for an empty RequestItems
+            // (responses.py:765-776). The per-table fingerprints are ALSO
+            // scoped to their table name (moto's dumps are table-blind and
+            // false-positive across tables — responses.py:754-756); the
+            // twin's scoping is the deliberate, real-AWS-correct choice.
+            "ConsumedCapacity": [],
+        });
         if let Some(obj) = request_items.as_object() {
             let consumed: Vec<Value> = obj
                 .keys()
@@ -2284,9 +2312,7 @@ impl DynamoDbHandler {
                     })
                 })
                 .collect();
-            if !consumed.is_empty() {
-                body["ConsumedCapacity"] = Value::Array(consumed);
-            }
+            body["ConsumedCapacity"] = Value::Array(consumed);
         }
         AwsResponse::json(200, body)
     }
@@ -2869,17 +2895,14 @@ impl DynamoDbHandler {
             };
             let key_json = get.get("Key").cloned().unwrap_or(Value::Null);
             let key_attrs: Map<String, Value> = key_json.as_object().cloned().unwrap_or_default();
-            // moto validates the key against the table schema (same
-            // provided-key-element message as batch) — an empty `{}` response
-            // row for a schema-mismatched key must not leak out silently.
+            // moto validates the key against the table schema — both
+            // batch_get_item and transact_get_items route every row through
+            // backend.get_item → get_keys_value (models/__init__.py:297-303),
+            // whose schema arm is the generic "Validation Exception" text.
             let key = match item_key(&table, &key_attrs) {
                 Some(k) => k,
                 None => {
-                    return AwsResponse::error(
-                        400,
-                        "ValidationException",
-                        "The provided key element does not match the schema",
-                    )
+                    return AwsResponse::error(400, "ValidationException", "Validation Exception")
                 }
             };
             let item = table.items.read().get(&key).cloned();

@@ -21,7 +21,8 @@ pub struct KinesisRecord {
     pub timestamp: f64,
     pub shard_id: String,
     /// The record's `ExplicitHashKey` when the writer pinned it (moto's
-    /// `KinesisRecord.explicit_hash_key` — a reshard re-fires routes by it).
+    /// `KinesisRecord.explicit_hash_key`; carried on the record — merge-ups
+    /// re-store it so a future reshard keeps the pin).
     #[serde(default)]
     pub explicit_hash_key: Option<String>,
 }
@@ -34,16 +35,6 @@ impl KinesisRecord {
             "Data": base64::engine::general_purpose::STANDARD.encode(&self.data),
             "PartitionKey": self.partition_key,
         })
-    }
-
-    /// The hash a record routes by on a re-fire: a pinned ExplicitHashKey
-    /// wins (moto re-fires through `put_record(..., explicit_hash_key, ...)`),
-    /// the partition-key MD5 otherwise.
-    pub(crate) fn refire_hash(&self) -> u128 {
-        self.explicit_hash_key
-            .as_deref()
-            .and_then(|k| k.parse::<u128>().ok())
-            .unwrap_or_else(|| KinesisStream::hash_key(&self.partition_key))
     }
 }
 

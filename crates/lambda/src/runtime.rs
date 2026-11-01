@@ -125,10 +125,8 @@ def main():
         # per-function total, like the node bootstrap).
         def layer_index(name):
             # Numeric-aware: layer2 must sort before layer10 (a plain string
-            # sort put layer10 first, and the per-layer insert(0/1) pattern
-            # then REVERSED priority) — era layers are attached in list
-            # order with LATER attachments winning, so sort by the parsed
-            # suffix then reverse the insertion.
+            # sort put layer10 first). Attachment order after the numeric
+            # sort is what the insert(1) loop below rides for precedence.
             digits = "".join(ch for ch in name if ch.isdigit())
             return (int(digits) if digits else -1, name)
 
@@ -254,6 +252,24 @@ const LOCAL_OUTPUT_CAP: usize = 128 * 1024;
 /// garbage wrapped string with no function error. Real Lambda responses
 /// reach 6 MB; keep the whole result window up to that budget.
 const FAMILY_RESULT_CAP: usize = 6 * 1024 * 1024;
+
+/// The moto ResponseSizeTooLarge failure (moto/awslambda/responses.py:66-68):
+/// moto's exact message with its 6291556 bound, `Function.ResponseSizeTooLarge`
+/// errorType and the `x-amz-function-error: Unhandled` header (the handler
+/// maps `function_error` onto that header). Shared by every stdout-riding
+/// result channel so a handler whose output hit the capture budget fails
+/// loudly instead of delivering a tail fragment as data.
+fn response_too_large_result(logs: String) -> ExecResult {
+    ExecResult {
+        payload: json!({
+            "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",
+            "errorType": "Function.ResponseSizeTooLarge",
+        })
+        .to_string(),
+        function_error: Some("Unhandled".to_string()),
+        logs,
+    }
+}
 
 /// Cap on captured docker-cli output per stream: the EMI-family
 /// invocation answers (whole runtime-interface response bodies) ride the
@@ -1074,6 +1090,13 @@ pub fn execute_nodejs(
                 logs: stderr,
             };
         }
+        // Fail-loud at the capture budget — the same boundary
+        // run_subprocess_family enforces: the drain keeps a bounded TAIL, so
+        // a result at/over the 6MB window cannot be trusted as JSON and
+        // must not re-encode as a fragment-per-data payload.
+        if stdout.len() >= FAMILY_RESULT_CAP - 1 {
+            return response_too_large_result(stderr);
+        }
         // Handlers always emit JSON; non-JSON stdout is surfaced as a JSON
         // string, exactly like the Python-era twin's raw-string fallback.
         let payload = if serde_json::from_str::<Value>(stdout_trim).is_ok() {
@@ -1502,17 +1525,9 @@ fn run_subprocess_family(
     // trusted — its tail was dropped, so JSON parses (if any) arrive in the
     // WRONG reads or fail. Real AWS/moto answer Function.ResponseSizeTooLarge;
     // surface that instead of silently wrapping a fragment as a string
-    // (moto's exact message text and Unhandled error family).
+    // (moto's exact message text, errorType and Unhandled error family).
     if stdout_hit_cap {
-        return ExecResult {
-            payload: json!({
-                "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",
-                "errorType": "RequestEntityTooLargeException",
-            })
-            .to_string(),
-            function_error: Some("Unhandled".to_string()),
-            logs: stderr,
-        };
+        return response_too_large_result(stderr);
     }
     let payload = match serde_json::from_str::<Value>(&stdout) {
         Ok(v) => v.to_string(),
@@ -2546,6 +2561,13 @@ pub fn execute_custom(
             function_error: None,
             logs,
         };
+    }
+    // Fail-loud at the capture budget (the same mirror run_subprocess_family
+    // and the node lane enforce): the drain keeps a bounded TAIL, so a
+    // ≥6MB runtime-interface result cannot be trusted as JSON — moto/real
+    // AWS answer Function.ResponseSizeTooLarge instead of fragmenting.
+    if stdout_raw.len() >= FAMILY_RESULT_CAP - 1 {
+        return response_too_large_result(logs);
     }
     let payload = match serde_json::from_str::<Value>(&stdout) {
         Ok(v) => v.to_string(),
