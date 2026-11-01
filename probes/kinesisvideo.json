@@ -170,5 +170,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/kinesisvideo.rs": "absent",
+    "rotocore/src/services/kinesisvideo/": "bec125b1ae285a4de326b3c9dfa2939dcca0eb97cf1a4c3fa976e74b811c1bba",
+    "crates/kinesisvideo/src/": "absent"
+  }
 }

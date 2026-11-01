@@ -430,5 +430,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/lambda.rs": "absent",
+    "rotocore/src/services/lambda/": "absent",
+    "crates/lambda/src/": "4aabdde83e015b2003f68723b4ac1e02e3587352d5b443c37ae17e6f043d96f1"
+  }
 }

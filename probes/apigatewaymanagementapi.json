@@ -25,5 +25,8 @@
       "status": "working",
       "message": "likely implemented (410: Connection not found)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/apigw_management.rs": "cf31004d45852ea58544284e9d6352224fb4780256a743b1ab32fec25777abf9"
+  }
 }

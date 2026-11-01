@@ -20,5 +20,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ec2instanceconnect.rs": "4ef9ccfb085f86f968a2061b6bea11fd0ff019985b969976f7ef48707dfb87d4",
+    "rotocore/src/services/ec2instanceconnect/": "absent",
+    "crates/ec2instanceconnect/src/": "absent"
+  }
 }

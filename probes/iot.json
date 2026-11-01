@@ -1370,5 +1370,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/iot.rs": "678cb8ddd731bf282b79589463f50b1b695979a21e103a4fdced9fc567051b22",
+    "rotocore/src/services/iot/": "absent",
+    "crates/iot/src/": "absent"
+  }
 }

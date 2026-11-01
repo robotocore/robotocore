@@ -295,5 +295,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/kafka.rs": "125f437fa49dfcb6d9e8d7f8c5a2d7ed19c97c36aec1833f9b27684d638994ba",
+    "rotocore/src/services/kafka/": "absent",
+    "crates/kafka/src/": "absent"
+  }
 }

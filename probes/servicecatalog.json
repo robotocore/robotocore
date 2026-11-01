@@ -460,5 +460,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/servicecatalog.rs": "absent",
+    "rotocore/src/services/servicecatalog/": "9c27acca3d72afe544bcac0b8900c9878daef6e24d7237920d76fee40a5d93cf",
+    "crates/servicecatalog/src/": "absent"
+  }
 }

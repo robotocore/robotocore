@@ -190,5 +190,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/shield.rs": "absent",
+    "rotocore/src/services/shield/": "30e551b687f374aa577234f2d080c8281ad5bd00e7e61fb079b1226d31d3e6b6",
+    "crates/shield/src/": "absent"
+  }
 }

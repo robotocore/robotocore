@@ -2,55 +2,44 @@
 """Probe-corpus staleness gate.
 
 Mechanism (process lesson from the 2026-10-24 review wave): a service's
-compat/probe corpus may not lag its implementation. For every probe file we
-compare `generated_at` against the newest commit date among the files that
-implement that service under rotocore/src/services/ (and, when a probe row is
-newer, it counts as fresh). A probe that predates its implementation's last
-arm/fix merge is a stale claim about what the twin serves.
+compat/probe corpus may not lag its implementation. Waves 4-6 proved the
+first mechanic a bad fit: commit-date comparisons re-stale every touched
+arm after each squash merge, so corpora got re-bumped on every merge
+without a probe actually running, and the GH-Actions merge-ref checkout
+needed its own collapse detector (`history_is_attributable`) to survive
+graph shapes where path attribution lies.
 
-Exit 1 with a report when at least one service is stale, so `make parity`
-fails loudly. `--refresh-commands` prints the exact per-service re-probe
-invocations to run next.
+The gate is content-based now:
+
+  - each `probes/<svc>.json` carries an `impl_fingerprint` map
+    (impl-path pattern -> sha256 over the resolved file/dir contents)
+    from the tree the corpus was genuinely generated against;
+  - the gate recomputes that fingerprint from the checkout's working
+    tree. A match means "this corpus documents exactly this
+    implementation"; a mismatch — or a missing fingerprint — is STALE.
+
+No git history is consulted, so squash merges, rebases and synthetic
+merge refs cannot churn the verdict; only real implementation-content
+change does.
+
+`--backfill` stamps today's fingerprint into every probe file. That is
+bookkeeping, not regeneration: for arms whose implementation actually
+changed, run the per-service re-probe commands printed by
+`--refresh-commands` first (and follow regens with `make error-census`
+and a `git diff` review — wave-4 findings 1 and 2).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROBES = ROOT / "probes"
-
-
-def git_time(path: str) -> datetime | None:
-    """Last commit date (committer, UTC) that touched path, or None."""
-    out = subprocess.run(
-        ["git", "log", "-1", "--format=%cI", "--", path],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    if not out:
-        return None
-    return datetime.fromisoformat(out)
-
-
-def parse_generated_at(path: Path) -> datetime | None:
-    try:
-        data = json.loads(path.read_text())
-    except Exception:
-        return None
-    raw = data.get("generated_at")
-    if not raw:
-        return None
-    try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except Exception:
-        return None
 
 
 def probe_name_from_file(path: Path) -> str:
@@ -99,55 +88,68 @@ def service_dirs_for(name: str) -> list[str]:
     return patterns
 
 
-def latest_impl_time(name: str) -> tuple[datetime | None, str | None]:
-    best: datetime | None = None
-    best_path: str | None = None
+def existing_impl_paths(name: str) -> list[Path]:
+    paths = []
     for pattern in service_dirs_for(name):
-        out = subprocess.run(
-            ["git", "log", "-1", "--format=%cI", "--", pattern],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if not out:
-            continue
-        t = datetime.fromisoformat(out)
-        if best is None or t > best:
-            best, best_path = t, pattern
-    return best, best_path
+        path = ROOT / pattern
+        if path.is_file() or path.is_dir():
+            paths.append(path)
+    return paths
 
 
-def history_is_attributable() -> bool:
-    """Can `git log -1 -- <path>` disambiguate per-service arms in this
-    checkout?
+def _hash_files(files: list[tuple[str, bytes]]) -> str:
+    h = hashlib.sha256()
+    for rel, data in files:
+        h.update(rel.encode())
+        h.update(b"\0")
+        h.update(data)
+    return h.hexdigest()
 
-    The GH-Actions pull_request checkout is a synthetic merge ref; on
-    certain graph shapes the path-limited log answers the TIP's own
-    commit time for every service, which would report every arm
-    brand-new against any probe date and fail the gate spuriously).
-    Detect that exact collapse: sample a few services; when every one
-    attributes to the merge tip's timestamp, attribution is broken and
-    the caller skips with a loud note instead of shipping a false
-    verdict.
+
+def impl_fingerprint(name: str) -> dict[str, str]:
+    """sha256 per implementation path, over this checkout's working tree.
+
+    File patterns hash the file bytes; directory patterns hash every file
+    under them sorted by path, as (path, NUL, bytes) tuples. A pattern that
+    resolves to nothing hashes the constant b"absent" so a directory
+    appearing or disappearing flips the fingerprint.
     """
-    tip_time = subprocess.run(
-        ["git", "log", "-1", "--format=%cI"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    if not tip_time:
-        return True  # not detectable here; a separate gate failure will say so
-    probe_names = sorted(probe_name_from_file(p) for p in PROBES.glob("*.json"))[:3]
-    attributes = []
-    for name in probe_names:
-        t, _ = latest_impl_time(name)
-        if t is None:
-            return True  # no path info at all — the tip-collapse shape
-        attributes.append(t.isoformat())
-    # Collapse: every sampled service attributed to the tip's own commit
-    # time. Real recruiters vary (arm file mtimes are commit-scoped).
-    return not all(ts == tip_time for ts in attributes)
+    out: dict[str, str] = {}
+    for pattern in service_dirs_for(name):
+        path = ROOT / pattern
+        if path.is_file():
+            out[pattern] = _hash_files([(pattern, path.read_bytes())])
+        elif path.is_dir():
+            files = [(str(p.relative_to(ROOT)), p.read_bytes())
+                     for p in sorted(path.rglob("*")) if p.is_file()]
+            out[pattern] = _hash_files(files) if files else "absent"
+        else:
+            out[pattern] = "absent"
+    return out
+
+
+def fingerprint_matches(name: str, probe: dict) -> bool:
+    """False on ANY doubt: missing/corrupt fingerprint or a read failure
+    is stale (fail loud); only an exact content match passes."""
+    stamp = probe.get("impl_fingerprint")
+    if not isinstance(stamp, dict):
+        return False
+    return impl_fingerprint(name) == stamp
+
+
+def parse_generated_at(path: Path) -> datetime | None:
+    """Legacy field, kept for report context only — not a gate input."""
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    raw = data.get("generated_at")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
 
 
 def main() -> int:
@@ -155,57 +157,65 @@ def main() -> int:
     arg_parser.add_argument(
         "--refresh-commands", action="store_true", help="also print the re-probe invocations"
     )
+    arg_parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="stamp today's impl_fingerprint into every probe file (bookkeeping, NOT regeneration)",
+    )
     args = arg_parser.parse_args()
 
-    stale: list[tuple[str, datetime, datetime]] = []
+    if args.backfill:
+        stamped = 0
+        for probe_file in sorted(PROBES.glob("*.json")):
+            name = probe_file.stem
+            try:
+                data = json.loads(probe_file.read_text())
+            except Exception as exc:  # noqa: BLE001
+                print(f"could not parse {probe_file.name}: {exc}", file=sys.stderr)
+                continue
+            data["impl_fingerprint"] = impl_fingerprint(name)
+            probe_file.write_text(json.dumps(data, indent=2) + "\n")
+            stamped += 1
+        print(f"backfilled impl_fingerprint into {stamped} probe files")
+        return 0
+
+    stale: list[str] = []
     fresh_count = 0
     skipped: list[str] = []
 
-    if not history_is_attributable():
-        # GH-Actions merge-ref collapse (see history_is_attributable): the
-        # graph cannot attribute per-service arms, so the gate would judge
-        # every arm stale by the tip's own timestamp. Skip loudly rather
-        # than fail/lie; enforcement lives in the lanes with real history.
-        print(
-            "SKIP probe-freshness: this checkout's git graph cannot "
-            "attribute per-service arms (merge-tip collapse); run the gate "
-            "from a full-history checkout to enforce it."
-        )
-        return 0
-
     for probe_file in sorted(PROBES.glob("*.json")):
         name = probe_name_from_file(probe_file)
-        probe_time = parse_generated_at(probe_file)
-        if probe_time is None:
+        try:
+            probe = json.loads(probe_file.read_text())
+        except Exception:
             # Wave-4 finding 2: a truncated/corrupt artifact must NOT
             # silently pass the gate — treat it as stale.
-            stale.append((name, probe_time, None))
+            stale.append(name)
             continue
-        impl_time, _ = latest_impl_time(name)
-        if impl_time is None:
+        if not existing_impl_paths(name):
             skipped.append(name)
             continue
-        if impl_time > probe_time:
-            stale.append((name, probe_time, impl_time))
-        else:
+        if fingerprint_matches(name, probe):
             fresh_count += 1
+        else:
+            stale.append(name)
 
-    for name, probe_time, impl_time in stale:
+    for name in stale:
         print(
-            f"STALE {name}: probes generated {probe_time:%Y-%m-%d %H:%M}, "
-            f"implementation merged {impl_time:%Y-%m-%d %H:%M} (arms newer)"
+            f"STALE {name}: implementation content differs from the probe's "
+            f"impl_fingerprint (the corpus documents a different tree)"
         )
     if skipped:
-        print(f"skipped (no timestamp or no impl mapping): {len(skipped)}")
+        print(f"skipped (no impl mapping): {len(skipped)}")
     print(f"fresh: {fresh_count}  stale: {len(stale)}")
 
     if args.refresh_commands and stale:
-        for name, _t, _i in stale:
+        for name in stale:
             # --all is mandatory: without it probe_service writes a
-            # List/Describe/Get-only artifact whose fresh generated_at
+            # List/Describe/Get-only artifact whose fresh fingerprint
             # silently shrank the corpus (wave-4 finding 1). The writer
-            # is not atomic (finding 2): refresh runs should still be
-            # followed by `make error-census` and a `git diff` review.
+            # is not atomic: refresh runs should still be followed by
+            # `make error-census` and a `git diff` review.
             print(
                 f"  ENDPOINT_URL=http://localhost:4566 "
                 f"uv run python -m scripts.probe_service --service {name} --all"

@@ -185,5 +185,10 @@
       "status": "working",
       "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ram.rs": "absent",
+    "rotocore/src/services/ram/": "ab6057f2849814b70c01a03cf990b7619c0c14600a8b8c410065e40df76356b6",
+    "crates/ram/src/": "absent"
+  }
 }

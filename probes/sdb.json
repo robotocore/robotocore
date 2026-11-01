@@ -60,5 +60,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sdb.rs": "absent",
+    "rotocore/src/services/sdb/": "2bc815c08be1e52c2499706141b6eb42a6a38d9a813bb46639e47dbaedcdca4c",
+    "crates/sdb/src/": "absent"
+  }
 }

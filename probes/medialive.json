@@ -620,5 +620,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/medialive.rs": "absent",
+    "rotocore/src/services/medialive/": "158f936e7064313c7ebd266088c9190923e50a9a713f8a4d53e566524d14aaaf",
+    "crates/medialive/src/": "absent"
+  }
 }

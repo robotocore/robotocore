@@ -140,5 +140,8 @@
       "status": "working",
       "message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/servicequotas/": "4010a04148b738653eb5e63eaf17594622065b460dddcf2f1e319a7b93faf101"
+  }
 }

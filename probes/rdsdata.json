@@ -40,5 +40,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/rdsdata.rs": "509ee00d575253eaf404589930ac9a9ebc9094f11dd515596429c8fb5d8ad0cc",
+    "rotocore/src/services/rdsdata/": "absent",
+    "crates/rdsdata/src/": "absent"
+  }
 }

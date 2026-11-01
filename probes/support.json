@@ -90,5 +90,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/support.rs": "3e8ebc2dcea249fbb6b4777bf5068aaa1940a7a5bfc40557af852578ba5a4259",
+    "rotocore/src/services/support/": "absent",
+    "crates/support/src/": "absent"
+  }
 }

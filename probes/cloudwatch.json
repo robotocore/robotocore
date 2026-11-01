@@ -225,5 +225,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudwatch.rs": "absent",
+    "rotocore/src/services/cloudwatch/": "absent",
+    "crates/cloudwatch/src/": "f2606547f4d053fbf9f905388dbd6493aeafb9472cb652c6f7f3b56e44668e6b"
+  }
 }

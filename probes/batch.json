@@ -235,5 +235,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/batch.rs": "50141bdd3393c9a947f10ec9fed38eb4eda25c39bd1e65976734a116718ee3a8",
+    "rotocore/src/services/batch/": "absent",
+    "crates/batch/src/": "absent"
+  }
 }

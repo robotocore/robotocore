@@ -90,5 +90,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/emrserverless.rs": "absent",
+    "rotocore/src/services/emrserverless/": "0563b5fc1754ab9652582e15773b72ea81b0e4afbb3f02561491e59f341d5600",
+    "crates/emrserverless/src/": "absent"
+  }
 }

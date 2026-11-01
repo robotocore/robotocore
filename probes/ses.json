@@ -365,5 +365,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ses.rs": "absent",
+    "rotocore/src/services/ses/": "5e2d14bea925d459da1c6e9f02196ae81c1558861eaeb1cc9cfecce93471b4dd",
+    "crates/ses/src/": "absent"
+  }
 }

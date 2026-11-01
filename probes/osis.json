@@ -120,5 +120,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/osis.rs": "c1779665570132c9c63819139bd04ce0ea98790d2e758fdb74248a9b2960e980",
+    "rotocore/src/services/osis/": "absent",
+    "crates/osis/src/": "absent"
+  }
 }

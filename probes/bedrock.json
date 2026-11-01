@@ -500,5 +500,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/bedrock.rs": "absent",
+    "rotocore/src/services/bedrock/": "ba4c02890d7fe40d8149423aa559ea8c38d69d951aad1a1fecf142553cc31c98",
+    "crates/bedrock/src/": "absent"
+  }
 }

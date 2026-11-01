@@ -405,5 +405,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/networkfirewall.rs": "f58c2bbfb85a54f12851c65606cdc6266a4f023a81a3ebc9157f18e4e531421c",
+    "rotocore/src/services/networkfirewall/": "absent",
+    "crates/networkfirewall/src/": "absent"
+  }
 }

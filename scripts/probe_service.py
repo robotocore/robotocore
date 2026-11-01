@@ -49,6 +49,7 @@ from scripts.lib.param_filler import (
     KNOWN_PARAMS,
     auto_fill_params,
 )
+from scripts.probe_freshness import impl_fingerprint
 
 # Operations that are destructive or have side effects we don't want.
 SKIP_OPERATIONS = {
@@ -382,6 +383,11 @@ def probe_service(
     artifact = {
         "service": service_name,
         "generated_at": datetime.now(UTC).isoformat(),
+        # Content-based freshness (probe_freshness.py): the corpus carries
+        # the fingerprint of the implementation tree it was generated
+        # against, so squash merges can't re-stale it — only real
+        # implementation change can.
+        "impl_fingerprint": impl_fingerprint(service_name),
         "endpoint": endpoint,
         "counts": counts,
         "operations": results,

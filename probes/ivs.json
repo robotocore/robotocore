@@ -185,5 +185,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ivs.rs": "4fdeaf9766ab254774185d02cacc4da72703212ffdeaf73d3bfbfdfa83f84798",
+    "rotocore/src/services/ivs/": "absent",
+    "crates/ivs/src/": "absent"
+  }
 }

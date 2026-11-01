@@ -230,5 +230,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/databrew.rs": "21f111ab06c6a42a182a62216052fdbae63916e56456eb9b8f8a981623ca7e5f",
+    "rotocore/src/services/databrew/": "absent",
+    "crates/databrew/src/": "absent"
+  }
 }

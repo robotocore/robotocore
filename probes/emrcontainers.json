@@ -125,5 +125,10 @@
       "status": "working",
       "message": "likely implemented (404: )"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/emrcontainers.rs": "d0c3de1f095727769d58170543089f806547e049e7d7cecd8fd75e294a6dbc67",
+    "rotocore/src/services/emrcontainers/": "absent",
+    "crates/emrcontainers/src/": "absent"
+  }
 }

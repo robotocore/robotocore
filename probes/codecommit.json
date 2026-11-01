@@ -405,5 +405,10 @@
       "status": "working",
       "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/codecommit.rs": "absent",
+    "rotocore/src/services/codecommit/": "863316dd74e171bad3ac6eab82b97f126e27291efd09e6c21a25215e91acc96b",
+    "crates/codecommit/src/": "absent"
+  }
 }

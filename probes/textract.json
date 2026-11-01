@@ -135,5 +135,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/textract.rs": "absent",
+    "rotocore/src/services/textract/": "30d9df6a2e92caa4afd6babab9c8e83a092a90176a82a8c5e5c127e89e0decc2",
+    "crates/textract/src/": "absent"
+  }
 }

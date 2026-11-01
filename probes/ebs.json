@@ -40,5 +40,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ebs.rs": "2f288a17e98a6d35a814fe0972098ddd8e41d494d9d8a3c6f6ecfa6052bdef92",
+    "rotocore/src/services/ebs/": "absent",
+    "crates/ebs/src/": "absent"
+  }
 }

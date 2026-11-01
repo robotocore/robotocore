@@ -240,5 +240,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/opensearchserverless.rs": "08f9c2b681903bd5303fb00f1ef2cfeaba0886e384b8705b45ca7a3f0219d39d",
+    "rotocore/src/services/opensearchserverless/": "absent",
+    "crates/opensearchserverless/src/": "absent"
+  }
 }

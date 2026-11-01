@@ -250,5 +250,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/fsx.rs": "absent",
+    "rotocore/src/services/fsx/": "b7050099dcb9aca190373c3c6cf02275b45874966687aa0d7e19163e0ed9a4f0",
+    "crates/fsx/src/": "absent"
+  }
 }

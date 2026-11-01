@@ -285,5 +285,10 @@
       "status": "working",
       "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/wafv2.rs": "absent",
+    "rotocore/src/services/wafv2/": "ba2428b7782c040bb98b79408eb6b29f4b7493ddfbbc7b9876f9723b02a5d658",
+    "crates/wafv2/src/": "absent"
+  }
 }

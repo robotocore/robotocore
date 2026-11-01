@@ -115,5 +115,10 @@
       "status": "working",
       "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mediastore.rs": "absent",
+    "rotocore/src/services/mediastore/": "a15b64984d0e429dc4d94c85bf53d55046c15030705dcd00d5805d96c9df9f7d",
+    "crates/mediastore/src/": "absent"
+  }
 }

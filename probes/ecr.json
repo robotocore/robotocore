@@ -300,5 +300,10 @@
       "status": "working",
       "message": "likely implemented (PullThroughCacheRuleNotFoundException: The requested operation failed because the pull through cach)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ecr.rs": "absent",
+    "rotocore/src/services/ecr/": "absent",
+    "crates/ecr/src/": "a931dcbf656d6db00acb257760f8cfa5352d1632804275f57968b7b66c0b41d1"
+  }
 }

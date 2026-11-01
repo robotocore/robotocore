@@ -65,5 +65,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/redshiftdata.rs": "3d9287705344eb661d9872330c245624b50bfc792a86cd270d6d9fcc1b7caf44",
+    "rotocore/src/services/redshiftdata/": "absent",
+    "crates/redshiftdata/src/": "absent"
+  }
 }

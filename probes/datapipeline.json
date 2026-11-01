@@ -105,5 +105,10 @@
       "status": "working",
       "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-pipeline-id-id)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/datapipeline.rs": "absent",
+    "rotocore/src/services/datapipeline/": "3452eb90ad04ca6d764714b233cb3cfe694f7d96802f76fc1115f9fb7c862341",
+    "crates/datapipeline/src/": "absent"
+  }
 }

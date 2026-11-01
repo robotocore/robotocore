@@ -310,5 +310,10 @@
       "status": "working",
       "message": "implemented (InvalidRequestException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/emr.rs": "6c5c2d53be2a037cebd4ad1d062b78238b99bad20ad4def06b195704852b8836",
+    "rotocore/src/services/emr/": "absent",
+    "crates/emr/src/": "absent"
+  }
 }

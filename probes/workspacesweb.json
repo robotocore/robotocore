@@ -385,5 +385,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/workspacesweb.rs": "13160f3dbd4699c8900f3a71f95fafb93f19a4fa9bdf67e750aa07c0602f28a2",
+    "rotocore/src/services/workspacesweb/": "absent",
+    "crates/workspacesweb/src/": "absent"
+  }
 }

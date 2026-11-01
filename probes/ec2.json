@@ -3770,5 +3770,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ec2.rs": "absent",
+    "rotocore/src/services/ec2/": "6e21ea4a0ec8dfbfd2738ad6dcfa9e8c60870a4f108d353481506a1b6ae4ad24",
+    "crates/ec2/src/": "absent"
+  }
 }

@@ -560,5 +560,10 @@
       "status": "working",
       "message": "likely implemented (PreconditionFailed: At least one of the pre-conditions you specified did not hol)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/s3.rs": "absent",
+    "rotocore/src/services/s3/": "absent",
+    "crates/s3/src/": "390519151e5cfc944c553fc55e9bbe6c102b4b1394311fe094ab555a2b508300"
+  }
 }
