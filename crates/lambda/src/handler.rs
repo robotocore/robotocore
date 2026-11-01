@@ -584,6 +584,25 @@ impl LambdaHandler {
         // function name or ARN", models.py:1803-1832): a version-qualified
         // DELETE removes only that version, never the whole function.
         let name = LambdaState::norm_name(&req.path_fn_name());
+        // The EMPTY-qualifier EXPRESSION shapes (`fn:` / ARN trailing
+        // colon) are moto's unknown-function 404, NOT the falsy
+        // whole-delete: del_function extracts qualifier `""` and runs the
+        // with-qualifier resolver BEFORE the `if not qualifier:` branch
+        // (models.py:1804-1818) — the resolver raises (exceptions.py:60-64).
+        // moto's message keeps the ARN literally for the ARN form (trailing
+        // colon included) and drops the colon for the bare form
+        // (construct_unknown_function_exception appends `:qual` only when
+        // the qualifier is truthy). The explicitly-passed `?Qualifier=`-empty
+        // reaches the Some(_) resolver arm and 404s there the same way.
+        let expr = req.path_fn_name();
+        if req.query_param("Qualifier").is_none()
+            && LambdaState::qualifier_slot(&expr).is_some_and(|slot| slot.is_empty())
+        {
+            if expr.starts_with("arn:") {
+                return function_not_found(&expr, &req.region, req.account);
+            }
+            return function_not_found(&name, &req.region, req.account);
+        }
         let qual = req
             .query_param("Qualifier")
             .or_else(|| LambdaState::expr_qualifier(&req.path_fn_name()));
@@ -4070,6 +4089,84 @@ mod tests {
         let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq2-fn");
         req.query_string = "Qualifier=99".to_string();
         assert_eq!(handler.handle(req).status, 404, "unpublished version 404s");
+    }
+
+    /// The EMPTY-qualifier EXPRESSION shapes on DELETE (`fn:` /
+    /// ARN trailing colon / explicit `?Qualifier=`-empty) are moto's
+    /// unknown-function 404 — the with-qualifier resolver runs before the
+    /// falsy whole-delete branch (models.py:1804-1818), so nothing is
+    /// deleted and the function + cascades survive (w7-gates N-7: the
+    /// expression morph used to mass-delete).
+    #[test]
+    fn delete_function_empty_qualifier_expressions_404_and_delete_nothing() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "brecol-fn", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        // An alias to survive proves no cascade ran.
+        handler.handle(make_req(
+            "POST",
+            json!({"Name": "live"}),
+            "/2015-03-31/functions/brecol-fn/aliases",
+        ));
+
+        for path in [
+            "/2015-03-31/functions/brecol-fn:",
+            "/2015-03-31/functions/arn%3Aaws%3Alambda%3Aus-east-1%3A123456789012%3Afunction%3Abrecol-fn%3A",
+        ] {
+            let resp = handler.handle(make_req("DELETE", json!({}), path));
+            assert_eq!(resp.status, 404, "{path}: {}", resp.body);
+            assert!(
+                resp.body.contains("Function not found: arn:aws:lambda:us-east-1:123456789012:function:brecol-fn"),
+                "{path}: {}",
+                resp.body
+            );
+            // The whole function + cascades must survive.
+            assert_eq!(
+                handler
+                    .handle(make_req("GET", json!({}), "/2015-03-31/functions/brecol-fn"))
+                    .status,
+                200,
+                "the function must survive an empty-qualifier delete: {path}"
+            );
+            assert_eq!(
+                handler
+                    .handle(make_req(
+                        "GET",
+                        json!({}),
+                        "/2015-03-31/functions/brecol-fn/aliases"
+                    ))
+                    .status,
+                200,
+                "aliases must survive: {path}"
+            );
+        }
+
+        // Explicit `?Qualifier=`-empty: the with-qualifier arm 404s too.
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/brecol-fn");
+        req.query_string = "Qualifier=".to_string();
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains(
+                "Function not found: arn:aws:lambda:us-east-1:123456789012:function:brecol-fn"
+            ),
+            "body: {}",
+            resp.body
+        );
+        // Still alive.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    "/2015-03-31/functions/brecol-fn"
+                ))
+                .status,
+            200
+        );
     }
 
     /// UpdateEventSourceMapping re-points the mapping when FunctionName
