@@ -1,6 +1,6 @@
 {
   "service": "elasticache",
-  "generated_at": "2026-11-01T06:55:00.560690+00:00",
+  "generated_at": "2026-11-01T11:40:06.526205+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 74,
