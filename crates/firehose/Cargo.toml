@@ -15,3 +15,8 @@ base64 = "0.22"
 # Firehose delivers record bytes into the S3 store through the s3 crate's
 # cross-service bridge (moto's put_s3_records → s3_backends put_object).
 s3 = { path = "../s3" }
+# HttpEndpoint destinations are really delivered over HTTP, like moto's
+# `put_http_records` (firehose models.py:427-449) — the tls feature so the
+# ordinary `https://` endpoint URLs work (rotocore's mirror dials plain
+# http), json for moto's request envelope.
+ureq = { version = "2.10", features = ["tls", "json"] }

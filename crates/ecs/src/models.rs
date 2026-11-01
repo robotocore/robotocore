@@ -40,6 +40,11 @@ pub struct EcsState {
     /// name -> capacity provider
     #[serde(with = "crate::snapshot::arc_rw")]
     pub capacity_providers: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    /// task ARN -> protection enabled (UpdateTaskProtection/GetTaskProtection
+    /// store: the flag lives with the task, real-AWS semantics — the old
+    /// pair echoed the request and always answered false).
+    #[serde(with = "crate::snapshot::arc_rw", default = "Default::default")]
+    pub task_protection: Arc<RwLock<HashMap<String, serde_json::Value>>>,
 }
 
 impl EcsState {
@@ -55,6 +60,7 @@ impl EcsState {
             tags: Arc::new(RwLock::new(HashMap::new())),
             account_settings: Arc::new(RwLock::new(HashMap::new())),
             capacity_providers: Arc::new(RwLock::new(HashMap::new())),
+            task_protection: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

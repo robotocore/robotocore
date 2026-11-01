@@ -32,6 +32,13 @@ pub struct DeliveryStream {
     #[serde(default)]
     pub last_failure: Option<String>,
     pub encryption: Option<Value>,
+    /// The HttpEndpoint destination configuration stored verbatim (moto keys
+    /// every destination by its type inside `DeliveryStream.destinations`
+    /// (models.py:146-152); the twin keeps the s3/extended_s3 entry in
+    /// `s3_config` and HttpEndpoint here — the only destination kinds the
+    /// twin's create path accepts into the store).
+    #[serde(default)]
+    pub http_endpoint_config: Option<Map<String, Value>>,
 }
 
 /// The Firehose state store for one (account, region).

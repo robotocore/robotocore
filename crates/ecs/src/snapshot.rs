@@ -46,6 +46,7 @@ fn store_restore_json(st: &EcsState, v: &Value) {
     swap!(tags);
     swap!(account_settings);
     swap!(capacity_providers);
+    swap!(task_protection);
 }
 
 impl crate::handler::EcsHandler {
