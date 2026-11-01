@@ -4941,12 +4941,14 @@ fn describe_db_parameter_groups_xml(
     for g in &matched {
         list.push_str(&parameter_group_xml(acct, region, g));
     }
-    let mut out = format!("<DBParameterGroups>{list}</DBParameterGroups>");
-    let _ = &mut out;
-    if param(p, "Marker").string().is_some() {
-        let marker = param(p, "Marker").string().unwrap_or("").to_string();
-        out = format!("<Marker>{}</Marker>", esc(&marker));
-    }
+    // moto's DescribeDBParameterGroups never paginates (no Marker handling
+    // in its flow); the old branch REPLACED the group list with a bare
+    // <Marker> echo whenever a client sent one — a paginating client looped
+    // on an empty page forever.
+    let out = format!(
+        "<DBParameterGroups>{list}</DBParameterGroups><Marker>{}</Marker>",
+        esc(&param(p, "Marker").string().unwrap_or_default())
+    );
     Ok(Some(out))
 }
 

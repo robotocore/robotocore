@@ -596,6 +596,7 @@ dependencies = [
  "bytes",
  "chrono",
  "parking_lot",
+ "s3",
  "serde",
  "serde_json",
  "uuid",

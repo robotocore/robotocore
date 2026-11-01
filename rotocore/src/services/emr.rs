@@ -1569,16 +1569,47 @@ fn add_instance_groups(state: &mut EmrState, body: &Value) -> OpResult {
                 _ => "Task instance group".into(),
             });
         }
-        link_group(state, &job_flow_id, built);
+        link_group(state, &job_flow_id, built)?;
     }
     Ok(json!({}))
 }
 
-/// moto Cluster.add_instance_group: MASTER/CORE bookkeeping + id append.
-fn link_group(state: &mut EmrState, cluster_id: &str, group: InstanceGroup) {
+/// moto Cluster.add_instance_group (emr/models.py:659-681): MASTER/CORE
+/// bookkeeping + id append, with the validations BEFORE any mutation — a
+/// duplicate MASTER/CORE is moto's uncaught `Exception("Cannot add another
+/// master instance group")` (the werkzeug HTML 500 the crash page
+/// reproduces), and an HA-cluster master count other than 3 raises
+/// ValidationException.
+fn link_group(
+    state: &mut EmrState,
+    cluster_id: &str,
+    group: InstanceGroup,
+) -> Result<(), Response> {
     let role = group.role.clone();
     let num_instances = group.num_instances;
     let group_id = group.id.clone();
+    {
+        let c = state.clusters.get(cluster_id);
+        let existing_master = c
+            .map(|c| c.master_instance_group_id.is_some())
+            .unwrap_or(false);
+        let existing_core = c
+            .map(|c| c.core_instance_group_id.is_some())
+            .unwrap_or(false);
+        if role == "MASTER" {
+            if existing_master {
+                return Err(crate::proto::moto_crash_response());
+            }
+            if num_instances > 1 && num_instances != 3 {
+                return Err(validation(
+                    "Master instance group must have exactly 3 instances for HA clusters.",
+                ));
+            }
+        }
+        if role == "CORE" && existing_core {
+            return Err(crate::proto::moto_crash_response());
+        }
+    }
     state.instance_groups.insert(group_id.clone(), group);
     if let Some(c) = state.clusters.get_mut(cluster_id) {
         if role == "MASTER" {
@@ -1594,6 +1625,7 @@ fn link_group(state: &mut EmrState, cluster_id: &str, group: InstanceGroup) {
         }
         c.instance_group_ids.push(group_id);
     }
+    Ok(())
 }
 
 /// ListInstanceGroups — groups sorted by id (moto list_instance_groups).

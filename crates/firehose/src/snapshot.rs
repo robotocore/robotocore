@@ -110,6 +110,7 @@ mod tests {
             created: 1.0,
             version_id: 1,
             tags: Default::default(),
+            s3_config_is_extended: false,
             s3_config: Default::default(),
             encryption: None,
         });

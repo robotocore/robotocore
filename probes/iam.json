@@ -1,6 +1,6 @@
 {
   "service": "iam",
-  "generated_at": "2026-10-26T03:11:54.024590+00:00",
+  "generated_at": "2026-11-01T04:53:02.000946+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 176,
@@ -88,12 +88,12 @@
     {
       "operation": "CreateOpenIDConnectProvider",
       "status": "working",
-      "message": "implemented via required-only (EntityAlreadyExists)"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "likely implemented (EntityAlreadyExists: A policy called probe-test-value already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreatePolicyVersion",
@@ -128,7 +128,7 @@
     {
       "operation": "CreateVirtualMFADevice",
       "status": "working",
-      "message": "likely implemented (EntityAlreadyExists: MFADevice entity at the same path and name already exists.)"
+      "message": "OK"
     },
     {
       "operation": "DeactivateMFADevice",
@@ -148,7 +148,7 @@
     {
       "operation": "DeleteAccountPasswordPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteGroup",
@@ -213,7 +213,7 @@
     {
       "operation": "DeleteServerCertificate",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteServiceLinkedRole",
@@ -318,7 +318,7 @@
     {
       "operation": "GetAccessKeyLastUsed",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "GetAccountAuthorizationDetails",

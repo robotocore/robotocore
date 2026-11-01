@@ -360,6 +360,14 @@ impl IamHandler {
                 state.ssh_keys.write().remove(&username);
                 state.login_profiles.write().remove(&username);
                 state.ssc_creds.write().remove(&username);
+                // moto removes the user from its group memberships on
+                // delete (models.py:2619-2625) and real AWS never leaves a
+                // ghost member: the stale name bricks DeleteGroup's
+                // conflict check (409 forever, invisible in GetGroup's
+                // member rendering, which skips missing users).
+                for group in state.groups.read().values() {
+                    group.users.write().retain(|u| u != &username);
+                }
                 self.unassign_all_mfa(&state, &username);
                 AwsResponse::xml(200, "DeleteUser", String::new())
             }
@@ -398,49 +406,62 @@ impl IamHandler {
                 )
             }
         };
-        let mut changed = false;
-        if let Some(v) = get_param(req, "NewUserName") {
-            if v != user.username {
-                if state.get_user(&v).is_some() {
-                    return err(
-                        409,
-                        "EntityAlreadyExists",
-                        &format!("User {} already exists", v),
-                    );
-                }
-                state.users.write().remove(&user.username);
-                let rebuilt = Arc::new(User::with_path(req.account, v.clone(), user.path.clone()));
-                self.clone_user_into(&user, &rebuilt);
-                state.users.write().insert(v.clone(), rebuilt);
-                changed = true;
+        // moto mutates user.name/path on the same object (models.py:2691-2706)
+        // — both parameters apply in one pass, and user_id/created survive.
+        let new_name = get_param(req, "NewUserName").filter(|v| v != &user.username);
+        let new_path = get_param(req, "NewPath").filter(|v| v != &user.path);
+        if new_name.is_none() && new_path.is_none() {
+            return AwsResponse::xml(200, "UpdateUser", String::new());
+        }
+        if let Some(new_name) = &new_name {
+            if state.get_user(new_name).is_some() {
+                return err(
+                    409,
+                    "EntityAlreadyExists",
+                    &format!("User {} already exists", new_name),
+                );
             }
         }
-        if let Some(v) = get_param(req, "NewPath") {
-            if v != user.path {
-                let cur = state.get_user(&user.username);
-                if let Some(cur) = cur {
-                    state.users.write().remove(&user.username);
-                    let rebuilt = Arc::new(User::with_path(req.account, cur.username.clone(), v));
-                    self.clone_user_into(&cur, &rebuilt);
-                    state.users.write().insert(cur.username.clone(), rebuilt);
-                    changed = true;
-                }
-            }
+        let final_name = new_name.clone().unwrap_or_else(|| user.username.clone());
+        let final_path = new_path.clone().unwrap_or_else(|| user.path.clone());
+        if let Some(new_name) = &new_name {
+            // moto's `user.name` IS the map key, so moto re-keys implicitly;
+            // the twin keys four side maps by name — move them with it.
+            self.rekey_user_side_tables(&state, &user.username, new_name);
         }
-        let _ = changed;
+        state.users.write().remove(&user.username);
+        let rebuilt = Arc::new(user.renamed(req.account, final_name.clone(), final_path));
+        state.users.write().insert(final_name, rebuilt);
         AwsResponse::xml(200, "UpdateUser", String::new())
     }
 
-    fn clone_user_into(&self, src: &User, dst: &User) {
-        *dst.access_keys.write() = src.access_keys.read().clone();
-        *dst.groups.write() = src.groups.read().clone();
-        *dst.tags.write() = src.tags.read().clone();
-        *dst.policies.write() = src.policies.read().clone();
-        *dst.policy_documents.write() = src.policy_documents.read().clone();
-        *dst.attached_policies.write() = src.attached_policies.read().clone();
-        *dst.permissions_boundary.write() = src.permissions_boundary.read().clone();
-        *dst.signing_certs.write() = src.signing_certs.read().clone();
-        *dst.password.write() = src.password.read().clone();
+    /// UpdateUser's rename moves everything moto keys by user name: login
+    /// profiles, SSH keys, server certs, and the virtual-MFA assignment
+    /// (moto mutates `user.name` in place, models.py:2691-2706, so its map
+    /// keys move implicitly — the twin keys these side tables by name and
+    /// must re-key them itself, or a rename strands them under a deleted
+    /// user's name).
+    fn rekey_user_side_tables(&self, state: &IamState, old: &str, new: &str) {
+        let mut profiles = state.login_profiles.write();
+        if let Some(v) = profiles.remove(old) {
+            profiles.insert(new.to_string(), v);
+        }
+        drop(profiles);
+        let mut keys = state.ssh_keys.write();
+        if let Some(v) = keys.remove(old) {
+            keys.insert(new.to_string(), v);
+        }
+        drop(keys);
+        let mut creds = state.ssc_creds.write();
+        if let Some(v) = creds.remove(old) {
+            creds.insert(new.to_string(), v);
+        }
+        for device in state.virtual_mfas.read().values() {
+            let mut assigned = device.assigned_user.write();
+            if assigned.as_deref() == Some(old) {
+                *assigned = Some(new.to_string());
+            }
+        }
     }
 
     fn change_password(&self, _req: &AwsRequest) -> AwsResponse {
@@ -536,24 +557,35 @@ impl IamHandler {
     fn get_access_key_last_used(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = get_param(req, "AccessKeyId").unwrap_or_default();
         let state = self.get_state(req.account);
-        let mut found: Option<String> = None;
+        let mut found: Option<(String, u64)> = None;
         for (name, user) in state.users.read().iter() {
-            if user
+            let hit = user
                 .access_keys
                 .read()
                 .iter()
-                .any(|k| k.access_key_id == key_id)
-            {
-                found = Some(name.clone());
+                .find(|k| k.access_key_id == key_id)
+                .map(|k| k.created);
+            if let Some(created) = hit {
+                found = Some((name.clone(), created));
                 break;
             }
         }
-        let username =
-            get_param(req, "UserName").unwrap_or_else(|| found.unwrap_or_else(|| "unknown".into()));
-        AwsResponse::xml(200, "GetAccessKeyLastUsed", format!(
-            "<UserName>{}</UserName><AccessKeyLastUsed><LastUsedDate>{}</LastUsedDate><ServiceName>N/A</ServiceName><Region>N/A</Region></AccessKeyLastUsed>",
-            xml_escape(username.as_str()), now_iso()
-        ))
+        // moto raises NotFound for an unknown key (models.py:2887-2895) —
+        // the old path fabricated a success with UserName="unknown" and a
+        // fresh invented date. A never-used real key carries no last-used
+        // row; the twin returns the key's create time as the nearest true
+        // fact rather than inventing one.
+        match found {
+            Some((username, created)) => AwsResponse::xml(200, "GetAccessKeyLastUsed", format!(
+                "<UserName>{}</UserName><AccessKeyLastUsed><LastUsedDate>{}</LastUsedDate><ServiceName>N/A</ServiceName><Region>N/A</Region></AccessKeyLastUsed>",
+                xml_escape(username.as_str()), ms_to_iso(created)
+            )),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The Access Key with id {} cannot be found", key_id),
+            ),
+        }
     }
 
     fn tag_user(&self, req: &AwsRequest) -> AwsResponse {
@@ -1832,7 +1864,10 @@ impl IamHandler {
             None => err(
                 404,
                 "NoSuchEntity",
-                "The Password Policy with domain 123456789012 cannot be found.",
+                &format!(
+                    "The Password Policy with domain {} cannot be found.",
+                    req.account
+                ),
             ),
         }
     }
@@ -1846,17 +1881,49 @@ impl IamHandler {
         bool_param(req, &mut map, "RequireLowercaseCharacters", false);
         bool_param(req, &mut map, "AllowUsersToChangePassword", false);
         bool_param(req, &mut map, "HardExpiry", false);
+        // moto defaults MinimumPasswordLength to 6 (responses.py:1123) and
+        // validates the member ranges (models.py:1697-1730).
         let minimum = get_param(req, "MinimumPasswordLength")
             .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(8);
+            .unwrap_or(6);
+        if !(6..=128).contains(&minimum) {
+            return err(
+                400,
+                "ValidationError",
+                &format!(
+                    "1 validation error detected: Value '{}' at 'minimumPasswordLength' failed to satisfy constraint: Member must have value greater than or equal to 6 and less than or equal to 128",
+                    minimum
+                ),
+            );
+        }
         map.insert("MinimumPasswordLength".into(), json!(minimum));
         if let Some(v) = get_param(req, "MaxPasswordAge").and_then(|v| v.parse::<i64>().ok()) {
+            if !(1..=1095).contains(&v) {
+                return err(
+                    400,
+                    "ValidationError",
+                    &format!(
+                        "1 validation error detected: Value '{}' at 'maxPasswordAge' failed to satisfy constraint: Member must have value greater than or equal to 1 and less than or equal to 1095",
+                        v
+                    ),
+                );
+            }
             map.insert("MaxPasswordAge".into(), json!(v));
             map.insert("ExpirePasswords".into(), json!(true));
         }
         if let Some(v) =
             get_param(req, "PasswordReusePrevention").and_then(|v| v.parse::<i64>().ok())
         {
+            if !(1..=24).contains(&v) {
+                return err(
+                    400,
+                    "ValidationError",
+                    &format!(
+                        "1 validation error detected: Value '{}' at 'passwordReusePrevention' failed to satisfy constraint: Member must have value greater than or equal to 1 and less than or equal to 24",
+                        v
+                    ),
+                );
+            }
             map.insert("PasswordReusePrevention".into(), json!(v));
         }
         *state.password_policy.write() = Some(Value::Object(map));
@@ -1865,6 +1932,18 @@ impl IamHandler {
 
     fn delete_account_password_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account);
+        // moto raises NoSuchEntity when no policy exists (models.py:3294-3298)
+        // — the unconditional 200 masked a delete of nothing.
+        if state.password_policy.read().is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!(
+                    "The Password Policy with domain {} cannot be found.",
+                    req.account
+                ),
+            );
+        }
         *state.password_policy.write() = None;
         AwsResponse::xml(200, "DeleteAccountPasswordPolicy", String::new())
     }
@@ -1892,14 +1971,27 @@ impl IamHandler {
             }
         }
         let mut managed = String::new();
-        for policy in state.policies.read().values() {
-            managed.push_str(&format!(
-                "<member>{}</member>",
-                self.policy_xml(policy, false)
-            ));
+        // botocore's GetAccountAuthorizationDetailsResponse member is
+        // `Policies` (no ManagedPolicies member exists — boto3 dropped the
+        // old name entirely), and moto only carries the list when the
+        // filter asks for managed policies (models.py:3112-3139): the
+        // AWSManagedPolicy/LocalManagedPolicy slots. The twin has no
+        // AWS-managed catalog, so LocalManagedPolicy renders the account's
+        // customer-managed policies.
+        if filter.is_empty()
+            || filter
+                .iter()
+                .any(|f| f == "LocalManagedPolicy" || f == "AWSManagedPolicy")
+        {
+            for policy in state.policies.read().values() {
+                managed.push_str(&format!(
+                    "<member>{}</member>",
+                    self.policy_xml(policy, false)
+                ));
+            }
         }
         let body = format!(
-            "<UserDetailList>{}</UserDetailList><GroupDetailList>{}</GroupDetailList><RoleDetailList>{}</RoleDetailList><ManagedPolicies>{}</ManagedPolicies><IsTruncated>false</IsTruncated>",
+            "<UserDetailList>{}</UserDetailList><GroupDetailList>{}</GroupDetailList><RoleDetailList>{}</RoleDetailList><Policies>{}</Policies><IsTruncated>false</IsTruncated>",
             user_xml, group_xml, role_xml, managed
         );
         AwsResponse::xml(200, "GetAccountAuthorizationDetails", body)
@@ -2720,7 +2812,7 @@ impl IamHandler {
 
     // ---------------- Instance profiles ----------------
 
-    fn instance_profile_xml(&self, state: &IamState, name: &str) -> String {
+    fn instance_profile_xml(&self, state: &IamState, account: u64, name: &str) -> String {
         // AWS stamps CreateDate as RFC3339 with seconds precision,
         // e.g. 2026-10-17T12:00:00Z.
         let create_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -2732,7 +2824,7 @@ impl IamHandler {
             .unwrap_or_default();
         let mut s = format!(
             "<InstanceProfile><Path>/</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile/{}</Arn><CreateDate>{}</CreateDate>",
-            xml_escape(name), ip_id, state_account_id(state), name, create_date
+            xml_escape(name), ip_id, account, name, create_date
         );
         {
             let profiles = state.instance_profiles.read();
@@ -2779,7 +2871,7 @@ impl IamHandler {
         AwsResponse::xml(
             200,
             "CreateInstanceProfile",
-            self.instance_profile_xml(&state, &name),
+            self.instance_profile_xml(&state, req.account, &name),
         )
     }
 
@@ -2790,7 +2882,7 @@ impl IamHandler {
             AwsResponse::xml(
                 200,
                 "GetInstanceProfile",
-                self.instance_profile_xml(&state, &name),
+                self.instance_profile_xml(&state, req.account, &name),
             )
         } else {
             err(
@@ -2820,7 +2912,7 @@ impl IamHandler {
         names.sort();
         let mut body = String::new();
         for name in &names {
-            body.push_str(&self.instance_profile_xml(&state, name));
+            body.push_str(&self.instance_profile_xml(&state, req.account, name));
         }
         AwsResponse::xml(
             200,
@@ -2881,7 +2973,7 @@ impl IamHandler {
                 .map(|roles| roles.contains(&role_name))
                 .unwrap_or(false);
             if contains_role {
-                body.push_str(&self.instance_profile_xml(&state, name));
+                body.push_str(&self.instance_profile_xml(&state, req.account, name));
             }
         }
         AwsResponse::xml(
@@ -2902,12 +2994,12 @@ impl IamHandler {
                 &format!("Instance profile {} cannot be found", name),
             );
         }
-        state
-            .instance_profile_tags
-            .write()
-            .entry(name)
-            .or_default()
-            .extend(tags);
+        // Upsert like every other tag op (moto models.py:3415-3422) — the
+        // extend() left duplicate tag keys on repeat calls.
+        tag_upsert(
+            state.instance_profile_tags.write().entry(name).or_default(),
+            tags,
+        );
         AwsResponse::xml(200, "TagInstanceProfile", String::new())
     }
 
@@ -3121,7 +3213,7 @@ impl IamHandler {
         match cert {
             Some(c) => AwsResponse::xml(200, "GetServerCertificate", format!(
                 "<ServerCertificate><ServerCertificateMetadata>{}</ServerCertificateMetadata><CertificateBody>{}</CertificateBody><CertificateChain>{}</CertificateChain></ServerCertificate>",
-                self.server_cert_metadata_xml(&c, state_account_id(&state)),
+                self.server_cert_metadata_xml(&c, req.account),
                 xml_escape(&c.body),
                 xml_escape(&c.chain)
             )),
@@ -4019,13 +4111,6 @@ fn is_known_noop(op: &str) -> bool {
             | "GetServiceLastAccessedByExternalAccount"
             | "ListOpenIDConnectProviderTagsUnused" // defensive: handled explicitly above
     )
-}
-
-/// The account of a state snapshot: IAM is a global service stored per
-/// account; profile/cert ARNs are rendered from the default account used by
-/// the compat tests (the request account is accessible in the handler).
-fn state_account_id(_state: &IamState) -> u64 {
-    123456789012
 }
 
 /// Embedded form of a value to text for XML.

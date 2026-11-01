@@ -45,6 +45,24 @@ fn not_found(resource: String) -> Response {
     )
 }
 
+/// moto's unimplemented-op contract: an unmodeled URI answers `404 ""`
+/// (`core/responses.py::call_action` — no action resolves) and a modeled op
+/// outside the table answers the repo's 501 NotImplemented. The old
+/// `200 {}` fall-through masked gaps as successes, breaking the.
+/// 501-is-the-only-absence-signal contract the twin's audit/introspection
+/// layers read.
+fn unknown_uri() -> Response {
+    Response::json_status(404, &serde_json::json!({}))
+}
+
+fn not_implemented(op: &str) -> Response {
+    err_json(
+        501,
+        "NotImplemented",
+        &format!("The {} action has not been implemented", op),
+    )
+}
+
 /// Full ServiceSoftwareOptions shape (moto's Domain.software_options).
 fn software_options() -> Value {
     json!({
@@ -95,7 +113,7 @@ pub fn dispatch(req: &Request) -> Response {
     let body = parse_json_body(&req.body);
     let op = derive_op(&req.method, &req.path);
     if op.is_empty() {
-        return ok_json(json!({}));
+        return unknown_uri();
     }
     handle(req, &body, &op)
 }
@@ -301,6 +319,11 @@ fn op_table() -> Vec<(&'static str, &'static str, &'static str)> {
             "PUT",
             "ccs/inboundConnection/{ConnectionId}/accept",
             "AcceptInboundConnection",
+        ),
+        (
+            "PUT",
+            "ccs/inboundConnection/{ConnectionId}/reject",
+            "RejectInboundConnection",
         ),
         (
             "DELETE",
@@ -1110,10 +1133,31 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         "DescribeOutboundConnections" => {
             ok_json(json!({ "Connections": [], "CrossClusterSearchConnections": [] }))
         }
-        "AcceptInboundConnection"
-        | "RejectInboundConnection"
-        | "DeleteInboundConnection"
-        | "DeleteOutboundConnection" => not_found("Connection conn-nonexistent".to_string()),
+        "RejectInboundConnection" => {
+            // Real AWS models RejectInboundConnection (PUT
+            // …/ccs/inboundConnection/{id}/reject, botocore es model).
+            // moto-5.2.4 carries no ccs route at all (an unmodeled URI
+            // answers 404 "") — the twin's 200 echo here is a recorded
+            // divergence so the audit lane's absence signal stays with
+            // 501/404 for GENUINELY unmodeled ops. The connection store
+            // stays empty; the echo answers REJECTED with the id from the
+            // path.
+            let id = req
+                .path
+                .strip_suffix("/reject")
+                .and_then(|p| p.rsplit('/').next())
+                .unwrap_or_default()
+                .to_string();
+            ok_json(json!({
+                "CrossClusterSearchConnection": {
+                    "CrossClusterSearchConnectionId": id,
+                    "Status": { "StatusCode": "REJECTED", "Message": "Rejected." },
+                }
+            }))
+        }
+        "AcceptInboundConnection" | "DeleteInboundConnection" | "DeleteOutboundConnection" => {
+            not_found("Connection conn-nonexistent".to_string())
+        }
         "DeleteVpcServiceRole" => ok_json(json!({})),
         "DescribeReservedInstanceOfferings" => {
             let key = if req.service == "es" {
@@ -1353,7 +1397,7 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         "PutDefaultApplicationSetting" => ok_json(
             json!({ "ApplicationSetting": { "Enabled": body.get("DefaultApplicationSetting").is_some() } }),
         ),
-        _ => ok_json(json!({})),
+        _ => not_implemented(op),
     }
 }
 

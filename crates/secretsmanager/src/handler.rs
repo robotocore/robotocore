@@ -45,8 +45,11 @@ impl SecretsManagerHandler {
     }
 
     fn not_found(id: &str) -> AwsResponse {
+        // moto's SecretNotFoundException carries code=404 (secretsmanager
+        // exceptions.py:10-40); the twin 400ed, so HTTPStatusCode asserts
+        // against either oracle missed.
         AwsResponse::error(
-            400,
+            404,
             "ResourceNotFoundException",
             &format!("Secrets Manager can't find the specified secret: {}", id),
         )
@@ -243,6 +246,17 @@ impl SecretsManagerHandler {
                 );
             }
         };
+        // moto rejects a put with neither SecretString nor SecretBinary
+        // (responses.py:148-156) — the old path demoted AWSCURRENT and
+        // inserted a valueless AWSCURRENT that GetSecretValue could never
+        // render.
+        if req.params.get("SecretString").is_none() && req.params.get("SecretBinary").is_none() {
+            return AwsResponse::error(
+                400,
+                "InvalidRequestException",
+                "You must provide either SecretString or SecretBinary.",
+            );
+        }
         Self::promote_new_version(req, &secret, "create")
     }
 
@@ -796,26 +810,25 @@ impl SecretsManagerHandler {
         let mut rng = rand_xorshift();
         if !exclude_lowercase && !exclude_uppercase {
             alphabet.push_str("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
-            required.push(Self::pick_from(
-                "abcdefghijklmnopqrstuvwxyz",
-                exclude_chars,
-                &mut rng,
-            ));
-            required.push(Self::pick_from(
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                exclude_chars,
-                &mut rng,
-            ));
+            for required_char in [
+                Self::pick_from("abcdefghijklmnopqrstuvwxyz", exclude_chars, &mut rng),
+                Self::pick_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ", exclude_chars, &mut rng),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                required.push(required_char);
+            }
         } else if !exclude_lowercase {
             alphabet.push_str("abcdefghijklmnopqrstuvwxyz");
-            required.push(Self::pick_from(
+            required.extend(Self::pick_from(
                 "abcdefghijklmnopqrstuvwxyz",
                 exclude_chars,
                 &mut rng,
             ));
         } else if !exclude_uppercase {
             alphabet.push_str("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-            required.push(Self::pick_from(
+            required.extend(Self::pick_from(
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
                 exclude_chars,
                 &mut rng,
@@ -823,11 +836,11 @@ impl SecretsManagerHandler {
         }
         if !exclude_numbers {
             alphabet.push_str("0123456789");
-            required.push(Self::pick_from("0123456789", exclude_chars, &mut rng));
+            required.extend(Self::pick_from("0123456789", exclude_chars, &mut rng));
         }
         if !exclude_punctuation {
             alphabet.push_str("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
-            required.push(Self::pick_from(
+            required.extend(Self::pick_from(
                 "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
                 exclude_chars,
                 &mut rng,
@@ -842,6 +855,16 @@ impl SecretsManagerHandler {
             .chars()
             .filter(|c| !exclude_chars.contains(*c))
             .collect();
+        // moto raises a clean error from its pools too (models.py:978-1015);
+        // an emptied pool used to reach `% 0` — a reachable divide-by-zero
+        // panic straight from user input.
+        if alphabet.is_empty() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "You must include at least one character type in the password.",
+            );
+        }
 
         let mut password: String = (0..length)
             .map(|_| {
@@ -867,10 +890,16 @@ impl SecretsManagerHandler {
         AwsResponse::json(200, json!({ "RandomPassword": password }))
     }
 
-    fn pick_from(alphabet: &str, exclude: &str, rng: &mut u64) -> char {
+    fn pick_from(alphabet: &str, exclude: &str, rng: &mut u64) -> Option<char> {
         let pool: Vec<char> = alphabet.chars().filter(|c| !exclude.contains(*c)).collect();
+        if pool.is_empty() {
+            // An exclution can empty a required pool; moto's random.choice("")
+            // raises IndexError into its 500 envelope. The twin skips the
+            // required-character insert instead of panicking on `% 0`.
+            return None;
+        }
         let idx = (rand_next(rng) % pool.len() as u64) as usize;
-        pool[idx]
+        Some(pool[idx])
     }
 
     fn rotate_secret(&self, req: &AwsRequest) -> AwsResponse {

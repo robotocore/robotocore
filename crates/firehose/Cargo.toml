@@ -12,3 +12,6 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 base64 = "0.22"
+# Firehose delivers record bytes into the S3 store through the s3 crate's
+# cross-service bridge (moto's put_s3_records → s3_backends put_object).
+s3 = { path = "../s3" }
