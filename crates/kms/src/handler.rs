@@ -7,12 +7,12 @@ use base64::Engine as _;
 use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
 use serde_json::{json, Map, Value};
-use sha2::{Sha224, Sha256, Sha384, Sha512};
+use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use crate::cipher::{self, context_entries};
-use crate::models::{CustomKeyStore, Grant, Key, KmsState};
+use crate::models::{CustomKeyStore, Grant, Key, KmsState, RESERVED_ALIASES, VALID_KEY_SPECS};
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct KmsHandler {
@@ -153,7 +153,28 @@ impl KmsHandler {
 
     fn create_key(&self, req: &AwsRequest) -> AwsResponse {
         let key_usage = pstr(req, "KeyUsage").unwrap_or_else(|| "ENCRYPT_DECRYPT".into());
-        let key_spec = pstr(req, "KeySpec").unwrap_or_else(|| "SYMMETRIC_DEFAULT".into());
+        // moto (models.py:395-397,747-753): a supplied KeySpec (or its legacy
+        // CustomerMasterKeySpec alias) must be inside the service enum; the
+        // value falls back to SYMMETRIC_DEFAULT when absent. moto hardcodes
+        // 'KeySpec' in the message even for CustomerMasterKeySpec input.
+        let requested_spec = pstr(req, "KeySpec")
+            .filter(|s| !s.is_empty())
+            .or_else(|| pstr(req, "CustomerMasterKeySpec").filter(|s| !s.is_empty()));
+        if let Some(spec) = &requested_spec {
+            if !VALID_KEY_SPECS.contains(&spec.as_str()) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "1 validation error detected: Value '{}' at 'KeySpec' failed to \
+                         satisfy constraint: Member must satisfy enum value set: {}",
+                        spec,
+                        python_value_list(&VALID_KEY_SPECS)
+                    ),
+                );
+            }
+        }
+        let key_spec = requested_spec.unwrap_or_else(|| "SYMMETRIC_DEFAULT".to_string());
         let origin = pstr(req, "Origin").unwrap_or_else(|| "AWS_KMS".into());
         let multi_region = req
             .params
@@ -496,39 +517,213 @@ impl KmsHandler {
 
     // ---------- aliases / tags ----------
 
-    fn create_alias(&self, req: &AwsRequest) -> AwsResponse {
-        let alias_name = pstr(req, "AliasName").unwrap_or_default();
-        let key_id = pstr(req, "TargetKeyId").unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
-        if state.get_key(&key_id).is_none() {
-            return Self::not_found();
+    /// True for an alias name or alias ARN reference.
+    fn is_alias_ref(id: &str) -> bool {
+        id.starts_with("alias/") || id.contains(":alias/")
+    }
+
+    /// moto responses.py `_display_arn` — renders a key/alias reference as
+    /// its ARN (ARNs pass through, alias refs skip the `key/` segment).
+    fn display_arn(region: &str, account: u64, key_or_alias: &str) -> String {
+        if key_or_alias.starts_with("arn:") {
+            return key_or_alias.to_string();
         }
+        if key_or_alias.starts_with("alias/") {
+            return format!("arn:aws:kms:{}:{}:{}", region, account, key_or_alias);
+        }
+        format!("arn:aws:kms:{}:{}:key/{}", region, account, key_or_alias)
+    }
+
+    /// moto `_set_alias` form checks (responses.py:220-236), in order:
+    /// `alias/` prefix, reserved `alias/aws/*` (exact list membership — see
+    /// RESERVED_ALIASES), `:` separator, name regex.
+    fn alias_form_error(alias_name: &str) -> Option<AwsResponse> {
         if !alias_name.starts_with("alias/") {
-            return AwsResponse::error(
+            return Some(AwsResponse::error(
                 400,
                 "ValidationException",
-                "The alias name must start with alias/",
+                "Invalid identifier",
+            ));
+        }
+        if RESERVED_ALIASES.contains(&alias_name) {
+            return Some(AwsResponse::error(400, "NotAuthorizedException", ""));
+        }
+        if alias_name.contains(':') {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!("{} contains invalid characters for an alias", alias_name),
+            ));
+        }
+        // moto regex ^[a-zA-Z0-9:/_-]+$ (colons were rejected above already).
+        if !alias_name
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b':' | b'/' | b'_' | b'-'))
+        {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value '{}' at 'aliasName' failed to \
+                     satisfy constraint: Member must satisfy regular expression \
+                     pattern: ^[a-zA-Z0-9:/_-]+$",
+                    alias_name
+                ),
+            ));
+        }
+        None
+    }
+
+    /// TargetKeyId must name a key, never an alias (moto responses.py:238-241).
+    fn target_alias_error(state: &KmsState, target_key_id: &str) -> Option<AwsResponse> {
+        if !Self::is_alias_ref(target_key_id) {
+            return None;
+        }
+        if state.alias_exists(target_key_id) {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                "Aliases must refer to keys. Not aliases",
+            ));
+        }
+        // moto falls into `_validate_cmk_id`, which rejects an alias
+        // reference here with its `Invalid keyId` NotFoundException.
+        Some(AwsResponse::error(
+            400,
+            "NotFoundException",
+            &format!("Invalid keyId {}", target_key_id),
+        ))
+    }
+
+    /// moto `_validate_cmk_id` — a raw key id or key ARN must resolve to a
+    /// key. (The twin's key ids are dashless uuid, so moto's literal
+    /// uuid-shape regex cannot port; any non-alias ref here is key-shaped.)
+    fn resolve_key_ref(
+        state: &KmsState,
+        region: &str,
+        account: u64,
+        key_ref: &str,
+    ) -> Result<Arc<Key>, AwsResponse> {
+        if Self::is_alias_ref(key_ref) {
+            return Err(AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!("Invalid keyId {}", key_ref),
+            ));
+        }
+        state.get_key(key_ref).ok_or_else(|| {
+            AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!(
+                    "Key '{}' does not exist",
+                    Self::display_arn(region, account, key_ref)
+                ),
+            )
+        })
+    }
+
+    fn create_alias(&self, req: &AwsRequest) -> AwsResponse {
+        let alias_name = pstr(req, "AliasName").unwrap_or_default();
+        let target_key_id = pstr(req, "TargetKeyId").unwrap_or_default();
+        let state = self.get_state(req.account, &req.region);
+        // moto ladder (responses.py:216-252), in order: form checks → the
+        // target is not an alias → the target key exists → duplicates.
+        if let Some(resp) = Self::alias_form_error(&alias_name) {
+            return resp;
+        }
+        if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
+            return resp;
+        }
+        let key = match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id)
+        {
+            Ok(k) => k,
+            Err(resp) => return resp,
+        };
+        if state.alias_exists(&alias_name) {
+            return AwsResponse::error(
+                400,
+                "AlreadyExistsException",
+                &format!(
+                    "An alias with the name arn:aws:kms:{}:{}:{} already exists",
+                    req.region, req.account, alias_name
+                ),
             );
         }
-        state.create_alias(&alias_name, &key_id);
+        // moto stores the resolved key id (`Alias.target_key_id = key.id`),
+        // so an ARN input does not leak into ListAliases.
+        state.create_alias(&alias_name, &key.key_id);
         AwsResponse::json(200, json!({}))
     }
 
     fn delete_alias(&self, req: &AwsRequest) -> AwsResponse {
         let alias_name = pstr(req, "AliasName").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        state.delete_alias(&alias_name);
-        AwsResponse::json(200, json!({}))
+        // moto delete_alias (responses.py:254-265): prefix check, then the
+        // alias must exist, then remove it. (No reserved-name check — moto's
+        // `_validate_alias` "succeeds" on reserved names by auto-creating
+        // the default key + alias in `get_key_id_from_alias` and then
+        // deleting the alias; mirror that visible effect below.)
+        if !alias_name.starts_with("alias/") {
+            return AwsResponse::error(400, "ValidationException", "Invalid identifier");
+        }
+        if state.alias_exists(&alias_name) {
+            state.delete_alias(&alias_name);
+            return AwsResponse::json(200, json!({}));
+        }
+        if RESERVED_ALIASES.contains(&alias_name.as_str()) {
+            // moto models.py:363-375 — `_generate_default_keys` bakes a
+            // `Default key` behind the reserved alias, which `_validate_alias`
+            // then lets the caller delete. The twin cannot tell those names
+            // apart from a miss otherwise (they are never createable).
+            let default_key = Arc::new(Key::new(
+                req.account,
+                req.region.clone(),
+                "ENCRYPT_DECRYPT",
+                "SYMMETRIC_DEFAULT",
+            ));
+            *default_key.description.write() = "Default key".to_string();
+            state.put_key(default_key);
+            return AwsResponse::json(200, json!({}));
+        }
+        AwsResponse::error(
+            400,
+            "NotFoundException",
+            &format!(
+                "Alias {} is not found.",
+                Self::display_arn(&req.region, req.account, &alias_name)
+            ),
+        )
     }
 
     fn update_alias(&self, req: &AwsRequest) -> AwsResponse {
         let alias_name = pstr(req, "AliasName").unwrap_or_default();
-        let key_id = pstr(req, "TargetKeyId").unwrap_or_default();
+        let target_key_id = pstr(req, "TargetKeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        if state.get_key(&key_id).is_none() {
-            return Self::not_found();
+        // moto update path (responses.py:242-244): target key first, then
+        // the alias being updated must already exist.
+        if let Some(resp) = Self::alias_form_error(&alias_name) {
+            return resp;
         }
-        state.update_alias(&alias_name, &key_id);
+        if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
+            return resp;
+        }
+        let key = match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id)
+        {
+            Ok(k) => k,
+            Err(resp) => return resp,
+        };
+        if !state.alias_exists(&alias_name) {
+            return AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!(
+                    "Alias {} is not found.",
+                    Self::display_arn(&req.region, req.account, &alias_name)
+                ),
+            );
+        }
+        state.update_alias(&alias_name, &key.key_id);
         AwsResponse::json(200, json!({}))
     }
 
@@ -663,19 +858,81 @@ impl KmsHandler {
         )
     }
 
+    /// moto responses.py `_validate_key_id` (responses.py:92-107) — unlike
+    /// `resolve_key_ref`, alias references are valid here and resolve to the
+    /// aliased key's raw id (moto `any_id_to_key_id`).
+    fn validate_key_id_any(
+        state: &KmsState,
+        region: &str,
+        account: u64,
+        key_id: &str,
+    ) -> Result<String, AwsResponse> {
+        if Self::is_alias_ref(key_id) {
+            let canonical = crate::models::normalize_key_ref(key_id);
+            let found = {
+                let target = state.alias_target(&canonical);
+                target
+            };
+            if found.is_some() {
+                return Ok(found.unwrap());
+            }
+            // moto additionally auto-creates a default key behind its 14
+            // reserved `alias/aws/*` names; the twin keeps those forever
+            // absent (they cannot be created), so they miss like unknowns.
+            return Err(AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!(
+                    "Alias {} is not found.",
+                    Self::display_arn(region, account, key_id)
+                ),
+            ));
+        }
+        state
+            .get_key(key_id)
+            .map(|k| k.key_id.clone())
+            .ok_or_else(|| {
+            AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!(
+                    "Key '{}' does not exist",
+                    Self::display_arn(region, account, key_id)
+                ),
+            )
+        })
+    }
+
     fn decrypt(&self, req: &AwsRequest) -> AwsResponse {
+        // moto responses.py:449-450 — a supplied KeyId is validated before
+        // the blob is touched (an empty string is falsy in moto, ignored).
+        let requested_key_id = pstr(req, "KeyId").filter(|s| !s.is_empty());
+        let state = self.get_state(req.account, &req.region);
+        let mut resolved_request = None;
+        if let Some(kid) = &requested_key_id {
+            match Self::validate_key_id_any(&state, &req.region, req.account, kid) {
+                Ok(resolved) => resolved_request = Some(resolved),
+                Err(resp) => return resp,
+            }
+        }
         let blob = decode_param_bytes(req, "CiphertextBlob");
         let ciphertext = match cipher::Ciphertext::parse(&blob) {
             Some(ct) => ct,
             None => return Self::invalid_ciphertext(),
         };
-        // The blob header names the key that encrypted it; moto (like real
-        // KMS) ignores any requested KeyId on Decrypt.
-        let state = self.get_state(req.account, &req.region);
+        // The blob header names the key that encrypted it.
         let key = match state.keys.read().get(&ciphertext.key_id).cloned() {
             Some(k) => k,
             None => return Self::ciphertext_key_missing(),
         };
+        // moto models.py:614-621 — a KeyId that resolves to a different key
+        // than the blob header is the same AccessDeniedException as an
+        // unknown key.
+        if let Some(resolved) = &resolved_request {
+            if *resolved != ciphertext.key_id {
+                return Self::ciphertext_key_missing();
+            }
+        }
         let entries = context_entries(req.params.get("EncryptionContext"));
         let plaintext = match cipher::decrypt(&key.key_material.read(), &ciphertext, &entries) {
             Some(pt) => pt,
@@ -744,49 +1001,71 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
-        let has_bytes = req.params.get("NumberOfBytes").is_some();
-        let has_spec = req.params.get("KeySpec").is_some();
-        if has_bytes && has_spec {
-            // moto responses.py:585-588 — mutual exclusion.
+        // moto responses.py:550-574 — the exact check order, with Python
+        // truthiness (0 is falsy and skips every gate it guards).
+        let bytes_param = req.params.get("NumberOfBytes").and_then(Value::as_i64);
+        let key_spec = pstr(req, "KeySpec");
+        let bytes_given = matches!(bytes_param, Some(n) if n != 0);
+        let spec_given = key_spec.as_deref().map_or(false, |s| !s.is_empty());
+
+        // 1. numberOfBytes range — the message only cites the ≤1024 bound
+        //    even for values below 1 (moto:553-558).
+        if let Some(n) = bytes_param {
+            if n != 0 && (n > 1024 || n < 1) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "1 validation error detected: Value '{}' at 'numberOfBytes' \
+                         failed to satisfy constraint: Member must have value less than \
+                         or equal to 1024",
+                        n
+                    ),
+                );
+            }
+        }
+        // 2. keySpec enum (moto:560-565), value quoted.
+        if let Some(spec) = &key_spec {
+            if spec_given && !matches!(spec.as_str(), "AES_256" | "AES_128") {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "1 validation error detected: Value '{}' at 'keySpec' failed to \
+                         satisfy constraint: Member must satisfy enum value set: \
+                         [AES_256, AES_128]",
+                        spec
+                    ),
+                );
+            }
+        }
+        // 3. neither parameter given (moto:566-569) — a 0 NumberOfBytes is
+        //    falsy, so it lands here too.
+        if !bytes_given && !spec_given {
             return AwsResponse::error(
                 400,
                 "ValidationException",
                 "Please specify either number of bytes or key spec.",
             );
         }
-        let length = match req.params.get("NumberOfBytes").and_then(|v| v.as_u64()) {
-            Some(n) if (1..=1024).contains(&n) => n as usize,
-            Some(_) => {
-                return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    "The NumberOfBytes parameter must be between 1 and 1024",
-                )
+        // 4. both truthy (moto:571-574).
+        if bytes_given && spec_given {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Please specify either number of bytes or key spec.",
+            );
+        }
+        // Signature: per spec length (AES_128=16, anything else 32) or the
+        // requested byte count (moto models.py:649-665).
+        let length = if spec_given {
+            if key_spec.as_deref() == Some("AES_128") {
+                16
+            } else {
+                32
             }
-            None => {
-                if !has_spec {
-                    // moto responses.py:580-583 — neither parameter is an
-                    // error, not a silent default.
-                    return AwsResponse::error(
-                        400,
-                        "ValidationException",
-                        "Please specify either number of bytes or key spec.",
-                    );
-                }
-                match pstr(req, "KeySpec").as_deref() {
-                    Some("AES_128") => 16,
-                    Some("AES_256") => 32,
-                    // moto responses.py:574-579 — unknown KeySpec values are
-                    // a member-enum validation error, not a silent default.
-                    _ => {
-                        return AwsResponse::error(
-                            400,
-                            "ValidationException",
-                            "1 validation error detected: Value at 'keySpec' failed to satisfy constraint: Member must satisfy enum value set: [AES_256, AES_128]",
-                        )
-                    }
-                }
-            }
+        } else {
+            bytes_param.unwrap_or(0) as usize
         };
         let plaintext: Vec<u8> = (0..length).map(|_| rand::random::<u8>()).collect();
         let entries = context_entries(req.params.get("EncryptionContext"));
@@ -952,23 +1231,17 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
-        if key.key_usage != "GENERATE_VERIFY_MAC" {
-            return AwsResponse::error(
-                400,
-                "InvalidKeyUsageException",
-                "The key is not capable to generate mac",
-            );
+        // moto responses.py:610-619 — MacAlgorithm enum, then models.py:836-840.
+        if let Some(resp) = Self::mac_algo_error(&algo) {
+            return resp;
+        }
+        if let Some(resp) = Self::mac_key_error(&key) {
+            return resp;
         }
         let message = decode_param_bytes(req, "Message");
         let mac = match Self::hmac_output(&algo, &key.key_material.read(), &message) {
             Some(m) => m,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    &format!("The MacAlgorithm {} is not supported", algo),
-                )
-            }
+            None => unreachable!("MacAlgorithm pre-validated"),
         };
         AwsResponse::json(
             200,
@@ -980,6 +1253,35 @@ impl KmsHandler {
         )
     }
 
+    /// moto responses.py:610-619 — the MacAlgorithm enum check, shared by
+    /// GenerateMac and VerifyMac.
+    fn mac_algo_error(algo: &str) -> Option<AwsResponse> {
+        if !matches!(
+            algo,
+            "HMAC_SHA_224" | "HMAC_SHA_256" | "HMAC_SHA_384" | "HMAC_SHA_512"
+        ) {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                "MacAlgorithm must be one of HMAC_SHA_224, HMAC_SHA_256, \
+                 HMAC_SHA_384, HMAC_SHA_512",
+            ));
+        }
+        None
+    }
+
+    /// moto models.py:836-840 — the key must be a `GENERATE_VERIFY_MAC`
+    /// key on an HMAC key spec; anything else is InvalidKeyUsageException
+    /// with an empty message body.
+    fn mac_key_error(key: &Key) -> Option<AwsResponse> {
+        if key.key_usage != "GENERATE_VERIFY_MAC"
+            || !matches!(key.key_spec.as_str(), "HMAC_224" | "HMAC_256" | "HMAC_384" | "HMAC_512")
+        {
+            return Some(AwsResponse::error(400, "InvalidKeyUsageException", ""));
+        }
+        None
+    }
+
     fn verify_mac(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let algo = pstr(req, "MacAlgorithm").unwrap_or_else(|| "HMAC_SHA_256".into());
@@ -988,23 +1290,29 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
+        // moto verify_mac delegates to generate_mac (models.py:847-865), so
+        // the same algorithm enum + usage/spec gates apply here.
+        if let Some(resp) = Self::mac_algo_error(&algo) {
+            return resp;
+        }
+        if let Some(resp) = Self::mac_key_error(&key) {
+            return resp;
+        }
         let message = decode_param_bytes(req, "Message");
         let expect_mac = decode_param_bytes(req, "Mac");
         let mac = match Self::hmac_output(&algo, &key.key_material.read(), &message) {
             Some(m) => m,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    &format!("The MacAlgorithm {} is not supported", algo),
-                )
-            }
+            None => unreachable!("MacAlgorithm pre-validated"),
         };
+        if mac != expect_mac {
+            // moto models.py:864-865.
+            return AwsResponse::error(400, "KMSInvalidMacException", "");
+        }
         AwsResponse::json(
             200,
             json!({
                 "KeyId": key.key_id,
-                "MacValid": mac == expect_mac,
+                "MacValid": true,
                 "MacAlgorithm": algo,
             }),
         )
@@ -1018,7 +1326,17 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
+        // moto responses.py:659-662 — the empty-message check runs before
+        // the backend call (usage/algorithm gates live below it).
         let message = decode_param_bytes(req, "Message");
+        if message.is_empty() {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value at 'Message' failed to satisfy \
+                 constraint: Member must have length greater than or equal to 1",
+            );
+        }
         match sign_raw(&key, &algo, &message) {
             Ok(sig) => AwsResponse::json(
                 200,
@@ -1040,8 +1358,25 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
+        // moto responses.py:693-711 — message first, then signature.
         let message = decode_param_bytes(req, "Message");
+        if message.is_empty() {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value at 'Message' failed to satisfy \
+                 constraint: Member must have length greater than or equal to 1",
+            );
+        }
         let signature = decode_param_bytes(req, "Signature");
+        if signature.is_empty() {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value at 'Signature' failed to satisfy \
+                 constraint: Member must have length greater than or equal to 1",
+            );
+        }
         match verify_raw(&key, &algo, &message, &signature) {
             Ok(valid) => AwsResponse::json(
                 200,
@@ -1185,24 +1520,24 @@ impl KmsHandler {
         AwsResponse::json(200, json!({"GrantId": grant_id, "GrantToken": grant_token}))
     }
 
+    /// moto `Grant.to_json` (models.py:56-65) — a raw `KeyId` member and no
+    /// `IssuingAccount`/`CreationDate`; `Constraints` is always present
+    /// (null when the grant had none).
     fn grant_json(grant: &Grant) -> Value {
-        let mut obj = json!({
+        json!({
+            "KeyId": grant.key_id,
             "GrantId": grant.grant_id,
-            "GranteePrincipal": grant.grantee_principal,
-            "IssuingAccount": grant.issuing_account,
             "Name": grant.name,
-            "Operations": grant.operations,
+            "GranteePrincipal": grant.grantee_principal,
             "RetiringPrincipal": grant.retiring_principal,
-            "CreationDate": grant.creation_date_ms as f64 / 1000.0,
-        });
-        if let Some(c) = &grant.constraints {
-            obj["Constraints"] = c.clone();
-        }
-        obj
+            "Operations": grant.operations,
+            "Constraints": grant.constraints,
+        })
     }
 
     fn list_grants(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
+        let grant_id = pstr(req, "GrantId");
         let state = self.get_state(req.account, &req.region);
         let key = match state.get_key(&key_id) {
             Some(k) => k,
@@ -1213,11 +1548,14 @@ impl KmsHandler {
             .read()
             .iter()
             .filter(|g| g.key_id == key.key_id)
+            // moto models.py:194-196 — optional GrantId filter.
+            .filter(|g| grant_id.as_deref().map_or(true, |id| g.grant_id == id))
             .map(Self::grant_json)
             .collect();
+        let count = grants.len();
         AwsResponse::json(
             200,
-            json!({"Grants": grants, "NextMarker": null, "Truncated": false}),
+            json!({"Grants": grants, "GrantCount": count, "Truncated": false}),
         )
     }
 
@@ -1231,38 +1569,37 @@ impl KmsHandler {
             .filter(|g| g.retiring_principal == retiring)
             .map(Self::grant_json)
             .collect();
+        let count = grants.len();
         AwsResponse::json(
             200,
-            json!({"Grants": grants, "NextMarker": null, "Truncated": false}),
+            json!({"Grants": grants, "GrantCount": count, "Truncated": false}),
         )
     }
 
     fn retire_grant(&self, req: &AwsRequest) -> AwsResponse {
         let token = pstr(req, "GrantToken").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let mut grants = state.grants.write();
-        let removed = if !token.is_empty() {
-            let before = grants.len();
-            grants.retain(|g| g.grant_token != token);
-            grants.len() != before
-        } else {
-            let key_id = pstr(req, "KeyId").unwrap_or_default();
-            let grant_id = pstr(req, "GrantId").unwrap_or_default();
-            if let Some(key) = state.get_key(&key_id) {
-                let key_id = key.key_id.clone();
-                let before = grants.len();
-                grants.retain(|g| !(g.key_id == key_id && g.grant_id == grant_id));
-                grants.len() != before
-            } else {
-                false
-            }
-        };
-        drop(grants);
-        if removed {
-            AwsResponse::json(200, json!({}))
-        } else {
-            Self::not_found()
+        if !token.is_empty() {
+            // moto `retire_grant_by_token` (models.py:212-217) filters
+            // silently — no error when the token matches nothing.
+            state.grants.write().retain(|g| g.grant_token != token);
+            return AwsResponse::json(200, json!({}));
         }
+        // moto (models.py:722-728): by id the grant is popped without a
+        // raise, so retiring an unknown grant id is still a success.
+        // (A missing KEY is a moto 500 KeyError; the twin keeps its
+        // crate-wide 400 NotFound here.)
+        let key_id = pstr(req, "KeyId").unwrap_or_default();
+        let grant_id = pstr(req, "GrantId").unwrap_or_default();
+        let key = match state.get_key(&key_id) {
+            Some(k) => k,
+            None => return Self::not_found(),
+        };
+        state
+            .grants
+            .write()
+            .retain(|g| !(g.key_id == key.key_id && g.grant_id == grant_id));
+        AwsResponse::json(200, json!({}))
     }
 
     fn revoke_grant(&self, req: &AwsRequest) -> AwsResponse {
@@ -1277,17 +1614,38 @@ impl KmsHandler {
         let before = grants.len();
         grants.retain(|g| !(g.key_id == key.key_id && g.grant_id == grant_id));
         if grants.len() == before {
-            return Self::not_found();
+            // moto models.py:205-207.
+            return AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!("Grant ID {} not found", grant_id),
+            );
         }
         AwsResponse::json(200, json!({}))
     }
 
     // ---------- key policies ----------
 
+    /// moto responses.py `_assert_default_policy` (808-810) — any policy
+    /// name but `default` is a 400 NotFound, raised BEFORE the key lookup.
+    fn assert_default_policy(policy_name: &str) -> Result<(), AwsResponse> {
+        if policy_name != "default" {
+            return Err(AwsResponse::error(
+                400,
+                "NotFoundException",
+                "No such policy exists",
+            ));
+        }
+        Ok(())
+    }
+
     fn put_key_policy(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let policy_name = pstr(req, "PolicyName").unwrap_or_else(|| "default".into());
         let policy = pstr(req, "Policy").unwrap_or_default();
+        if let Err(resp) = Self::assert_default_policy(&policy_name) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         match state.get_key(&key_id) {
             Some(key) => {
@@ -1301,6 +1659,9 @@ impl KmsHandler {
     fn get_key_policy(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let policy_name = pstr(req, "PolicyName").unwrap_or_else(|| "default".into());
+        if let Err(resp) = Self::assert_default_policy(&policy_name) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         match state.get_key(&key_id) {
             Some(key) => {
@@ -1525,15 +1886,78 @@ fn ec_public_der(secret: &p256::SecretKey) -> Vec<u8> {
         .unwrap_or_default()
 }
 
+/// Python `repr(list-of-str)` — how moto renders enum value sets inside
+/// ValidationException messages (`f"{key.signing_algorithms}"`).
+fn python_value_list(values: &[&str]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|v| format!("'{}'", v))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+/// moto `__ensure_valid_sign_and_verify_key` (models.py:730-735) — a wrong
+/// key usage is a ValidationException naming the key id, not
+/// InvalidKeyUsageException.
+fn sign_usage_error(key: &Key) -> AwsResponse {
+    AwsResponse::error(
+        400,
+        "ValidationException",
+        &format!(
+            "1 validation error detected: Value '{}' at 'KeyId' failed to satisfy \
+             constraint: Member must point to a key with usage: 'SIGN_VERIFY'",
+            key.key_id
+        ),
+    )
+}
+
+/// moto `__ensure_valid_signing_algorithm` (models.py:737-745) — the
+/// algorithm must be one the key's spec supports (the twin's
+/// `Key::algorithms` list mirrors moto's `signing_algorithms`).
+fn sign_algo_error(key: &Key, algo: &str) -> AwsResponse {
+    let (_, allowed, _) = key.algorithms();
+    AwsResponse::error(
+        400,
+        "ValidationException",
+        &format!(
+            "1 validation error detected: Value '{}' at 'SigningAlgorithm' failed to \
+             satisfy constraint: Member must satisfy enum value set: {}",
+            algo,
+            python_value_list(&allowed)
+        ),
+    )
+}
+
+/// The ECDSA digest for the requested signing algorithm.
+///
+/// When the digest is longer than the curve field, sign_prehash /
+/// verify_prehash perform the FIPS 186 truncation internally (p256 ships a
+/// SHA-384-over-P-256 test for exactly this case).
+fn ecc_digest(algo: &str, message: &[u8]) -> Option<Vec<u8>> {
+    let digested: Vec<u8> = match algo {
+        "ECDSA_SHA_256" => Sha256::digest(message).to_vec(),
+        "ECDSA_SHA_384" => Sha384::digest(message).to_vec(),
+        "ECDSA_SHA_512" => Sha512::digest(message).to_vec(),
+        _ => return None,
+    };
+    Some(digested)
+}
+
 /// Sign `message` with the key's material using the requested algorithm.
+///
+/// Gate order mirrors moto `KmsBackend::sign` (models.py:755-770): key
+/// usage, then the key's algorithm set.
 fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsResponse> {
     use rsa::signature::{SignatureEncoding, Signer};
     if key.key_usage != "SIGN_VERIFY" {
-        return Err(AwsResponse::error(
-            400,
-            "InvalidKeyUsageException",
-            "The key is not capable to sign",
-        ));
+        return Err(sign_usage_error(key));
+    }
+    let (_, allowed, _) = key.algorithms();
+    if !allowed.iter().any(|a| *a == algo) {
+        return Err(sign_algo_error(key, algo));
     }
     if key.is_rsa() {
         let priv_key = key.rsa_key.read();
@@ -1566,31 +1990,30 @@ fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsRespons
             "RSASSA_PSS_SHA_512" => rsa::pss::SigningKey::<Sha512>::new(priv_key.clone())
                 .sign(message)
                 .to_bytes(),
-            other => {
-                return Err(AwsResponse::error(
-                    400,
-                    "UnsupportedOperationException",
-                    &format!("The SigningAlgorithm {} is not supported", other),
-                ))
-            }
+            // Validated against `key.algorithms()` above.
+            _ => unreachable!("SigningAlgorithm pre-validated"),
         };
         return Ok(sig.into());
     }
     if key.is_ecc() {
-        if algo != "ECDSA_SHA_256" {
-            return Err(AwsResponse::error(
-                400,
-                "UnsupportedOperationException",
-                &format!("The SigningAlgorithm {} is not supported", algo),
-            ));
-        }
         let ec_key = key.ec_key.read();
         let ec_key = match ec_key.as_ref() {
             Some(k) => k,
             None => return Err(KmsHandler::not_found()),
         };
         let signing = p256::ecdsa::SigningKey::from(ec_key.clone());
-        let sig: p256::ecdsa::Signature = signing.sign(message);
+        // The digest follows the requested ECC algorithm.
+        // Material limitation: every ECC spec is served with P-256 curve
+        // material (see models.rs) — digests still honor the algorithm, so
+        // self-sign/verify is consistent with ECDSA over the given hash.
+        let digest = match ecc_digest(algo, message) {
+            Some(d) => d,
+            None => unreachable!("SigningAlgorithm pre-validated"),
+        };
+        use p256::ecdsa::signature::hazmat::PrehashSigner;
+        let sig: p256::ecdsa::Signature = signing
+            .sign_prehash(&digest)
+            .map_err(|_| KmsHandler::not_found())?;
         return Ok(sig.to_bytes().to_vec());
     }
     Err(AwsResponse::error(
@@ -1600,7 +2023,10 @@ fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsRespons
     ))
 }
 
-/// Verify a signature; returns Ok(valid) or an error response for bad algorithms.
+/// Verify a signature; returns Ok(valid) or an error response for bad
+/// usage/algorithm requests.
+///
+/// Gate order mirrors moto `KmsBackend::verify` (models.py:772-797).
 fn verify_raw(
     key: &Key,
     algo: &str,
@@ -1609,11 +2035,11 @@ fn verify_raw(
 ) -> Result<bool, AwsResponse> {
     use rsa::signature::Verifier;
     if key.key_usage != "SIGN_VERIFY" {
-        return Err(AwsResponse::error(
-            400,
-            "InvalidKeyUsageException",
-            "The key is not capable to verify",
-        ));
+        return Err(sign_usage_error(key));
+    }
+    let (_, allowed, _) = key.algorithms();
+    if !allowed.iter().any(|a| *a == algo) {
+        return Err(sign_algo_error(key, algo));
     }
     if key.is_rsa() {
         let priv_key = key.rsa_key.read();
@@ -1656,34 +2082,27 @@ fn verify_raw(
                     Err(_) => false,
                 }
             }
-            other => {
-                return Err(AwsResponse::error(
-                    400,
-                    "UnsupportedOperationException",
-                    &format!("The SigningAlgorithm {} is not supported", other),
-                ))
-            }
+            // Validated against `key.algorithms()` above.
+            _ => unreachable!("SigningAlgorithm pre-validated"),
         };
         return Ok(valid);
     }
     if key.is_ecc() {
-        if algo != "ECDSA_SHA_256" {
-            return Err(AwsResponse::error(
-                400,
-                "UnsupportedOperationException",
-                &format!("The SigningAlgorithm {} is not supported", algo),
-            ));
-        }
         let ec_key = key.ec_key.read();
         let ec_key = match ec_key.as_ref() {
             Some(k) => k,
             None => return Err(KmsHandler::not_found()),
         };
         let vk = p256::ecdsa::VerifyingKey::from(ec_key.public_key());
-        let Ok(sig) = p256::ecdsa::Signature::from_slice(signature) else {
-            return Ok(false);
+        let digest = match ecc_digest(algo, message) {
+            Some(d) => d,
+            None => unreachable!("SigningAlgorithm pre-validated"),
         };
-        return Ok(vk.verify(message, &sig).is_ok());
+        use p256::ecdsa::signature::hazmat::PrehashVerifier;
+        match p256::ecdsa::Signature::from_slice(signature) {
+            Ok(sig) => return Ok(vk.verify_prehash(&digest, &sig).is_ok()),
+            Err(_) => return Ok(false),
+        }
     }
     Err(AwsResponse::error(
         400,
@@ -1823,6 +2242,43 @@ mod tests {
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         let pt = B64.decode(body["Plaintext"].as_str().unwrap()).unwrap();
         assert_eq!(pt.len(), 64);
+
+        // moto responses.py:550-574 — checks run in order: bytes range →
+        // spec enum → neither → both; values are quoted in the messages.
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "NumberOfBytes": 5, "KeySpec": "BOGUS"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("Value 'BOGUS' at 'keySpec'"), "{}", resp.body);
+
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "NumberOfBytes": 1500}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body.contains("Value '1500' at 'numberOfBytes'"),
+            "{}",
+            resp.body
+        );
+
+        // Python truthiness: 0 bytes is falsy — alone it means "neither
+        // given", together with a KeySpec it is ignored (moto serves 32).
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "NumberOfBytes": 0}),
+        ));
+        assert!(resp.body.contains("Please specify either number of bytes or key spec."));
+
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "NumberOfBytes": 0, "KeySpec": "AES_256"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let pt = B64.decode(body["Plaintext"].as_str().unwrap()).unwrap();
+        assert_eq!(pt.len(), 32);
     }
 
     #[test]
@@ -2301,6 +2757,64 @@ mod tests {
         ));
         let vbody: Value = serde_json::from_str(&verify.body).unwrap();
         assert_eq!(vbody["MacValid"], true);
+
+        // moto models.py:864-865 — a bad MAC is a 400 KMSInvalidMacException,
+        // not a 200 with MacValid:false.
+        let verify = handler.handle(make_req(
+            "VerifyMac",
+            json!({
+                "KeyId": key_id,
+                "Message": B64.encode(b"tampered"),
+                "MacAlgorithm": "HMAC_SHA_256",
+                "Mac": mac_value,
+            }),
+        ));
+        assert_eq!(verify.status, 400);
+        assert!(verify.body.contains("KMSInvalidMacException"), "{}", verify.body);
+
+        // moto models.py:836-840 — wrong key USAGE rejects both ops.
+        let ed = handler.handle(make_req("CreateKey", json!({})));
+        let ed_id = serde_json::from_str::<Value>(&ed.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for op in ["GenerateMac", "VerifyMac"] {
+            let resp = handler.handle(make_req(
+                op,
+                json!({"KeyId": ed_id, "Message": msg, "MacAlgorithm": "HMAC_SHA_256", "Mac": mac_value}),
+            ));
+            assert_eq!(resp.status, 400, "{}", op);
+            assert!(resp.body.contains("InvalidKeyUsageException"));
+
+        }
+        // An RSA spec under GENERATE_VERIFY_MAC usage fails the same gate.
+        let rsa = handler.handle(make_req(
+            "CreateKey",
+            json!({"KeySpec": "RSA_2048", "KeyUsage": "GENERATE_VERIFY_MAC"}),
+        ));
+        let rsa_id = serde_json::from_str::<Value>(&rsa.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resp = handler.handle(make_req(
+            "GenerateMac",
+            json!({"KeyId": rsa_id, "Message": msg, "MacAlgorithm": "HMAC_SHA_256"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("InvalidKeyUsageException"));
+
+        // moto responses.py:610-619 — unknown MacAlgorithm enum message.
+        let resp = handler.handle(make_req(
+            "GenerateMac",
+            json!({"KeyId": key_id, "Message": msg, "MacAlgorithm": "BOGUS"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("MacAlgorithm must be one of HMAC_SHA_224, HMAC_SHA_256, HMAC_SHA_384, HMAC_SHA_512"),
+            "{}",
+            resp.body
+        );
     }
 
     #[test]
@@ -2386,5 +2900,588 @@ mod tests {
         ));
         let desc = handler.handle(make_req("DescribeKey", json!({"KeyId": key_id})));
         assert!(desc.body.contains("PendingImport"));
+    }
+
+    #[test]
+    fn test_alias_ladder_moto_order() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let meta = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        let key_id = meta["KeyId"].as_str().unwrap().to_string();
+
+        // Duplicate alias → AlreadyExistsException with moto's ARN text
+        // (responses.py:247-249).
+        handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/dup", "TargetKeyId": key_id.clone()}),
+        ));
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/dup", "TargetKeyId": key_id.clone()}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("AlreadyExistsException"), "{}", resp.body);
+        assert!(resp.body.contains(
+            "An alias with the name arn:aws:kms:us-east-1:123456789012:alias/dup already exists"
+        ));
+
+        // Reserved `alias/aws/*` → NotAuthorizedException; exact list
+        // membership, so other aws-looking names stay legal.
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/aws/s3", "TargetKeyId": key_id.clone()}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("NotAuthorizedException"));
+
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/myaws/s3", "TargetKeyId": key_id.clone()}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // A `:` separator → "contains invalid characters for an alias"
+        // (before the regex message, which the `fallback:` name would trip).
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/has:colon", "TargetKeyId": key_id.clone()}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("contains invalid characters for an alias"),
+            "{}",
+            resp.body
+        );
+
+        // Regex → the pattern ValidationException (moto quotes the value).
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/var$pwd", "TargetKeyId": key_id.clone()}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("^[a-zA-Z0-9:/_-]+$"), "{}", resp.body);
+
+        // Form errors fire before the target-key lookup (moto 220-241).
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "no-prefix", "TargetKeyId": "missing"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("Invalid identifier"));
+
+        // An alias as TargetKeyId → "Aliases must refer to keys...".
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/points-at-alias", "TargetKeyId": "alias/dup"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("Aliases must refer to keys. Not aliases"),
+            "{}",
+            resp.body
+        );
+
+        // Missing target key (valid alias name) → moto `_validate_cmk_id`.
+        let resp = handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/good", "TargetKeyId": "missing-key"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("Key 'arn:aws:kms:us-east-1:123456789012:key/missing-key' does not exist"),
+            "{}",
+            resp.body
+        );
+
+        // UpdateAlias of an unknown alias → NotFound "Alias … is not found."
+        let resp = handler.handle(make_req(
+            "UpdateAlias",
+            json!({"AliasName": "alias/never-made", "TargetKeyId": key_id.clone()}),
+        ));
+        assert!(resp.body.contains(
+            "Alias arn:aws:kms:us-east-1:123456789012:alias/never-made is not found."
+        ), "{}", resp.body);
+
+        // DeleteAlias of an unknown alias → the same NotFound.
+        let resp = handler.handle(make_req(
+            "DeleteAlias",
+            json!({"AliasName": "alias/never-made"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("is not found."));
+
+        // moto quirk: deleting a reserved auto-creates a `Default key`
+        // behind it (models.py:363-375,540-546), so the alias answers 200.
+        let before: Vec<String> = serde_json::from_str::<Value>(&handler
+            .handle(make_req("ListKeys", json!({})))
+            .body)
+        .unwrap()["Keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["KeyId"].as_str().unwrap().to_string())
+            .collect();
+        let resp = handler.handle(make_req(
+            "DeleteAlias",
+            json!({"AliasName": "alias/aws/ebs"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let after: Value = serde_json::from_str::<Value>(
+            &handler.handle(make_req("ListKeys", json!({}))).body,
+        )
+        .unwrap();
+        let keys = after["Keys"].as_array().unwrap();
+        assert_eq!(keys.len(), before.len() + 1);
+        // Identify the key that appeared and check its moto description.
+        let fresh = keys
+            .iter()
+            .map(|k| k["KeyId"].as_str().unwrap().to_string())
+            .find(|id| !before.contains(id))
+            .expect("a new key materialized");
+        let desc = handler.handle(make_req("DescribeKey", json!({"KeyId": fresh})));
+        assert!(desc.body.contains("Default key"), "{}", desc.body);
+    }
+
+    #[test]
+    fn test_decrypt_key_id_moto_semantics() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let m1 = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        let k1 = m1["KeyId"].as_str().unwrap().to_string();
+        let arn1 = m1["Arn"].as_str().unwrap().to_string();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let m2 = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        let k2 = m2["KeyId"].as_str().unwrap().to_string();
+
+        handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/k1alias", "TargetKeyId": k1.clone()}),
+        ));
+
+        let enc = handler.handle(make_req(
+            "Encrypt",
+            json!({"KeyId": k1.clone(), "Plaintext": B64.encode(b"bridle me")}),
+        ));
+        let blob = serde_json::from_str::<Value>(&enc.body).unwrap()["CiphertextBlob"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Matching KeyId (raw id / alias / full key ARN) still decrypts.
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob.clone(), "KeyId": k1.clone()}),
+        ));
+        assert_eq!(dec.status, 200);
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob.clone(), "KeyId": "alias/k1alias"}),
+        ));
+        assert_eq!(dec.status, 200);
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob.clone(), "KeyId": arn1}),
+        ));
+        assert_eq!(dec.status, 200);
+
+        // moto models.py:614-621 — a KeyId of a different existing key is
+        // the AccessDeniedException, not a silent success.
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob.clone(), "KeyId": k2}),
+        ));
+        assert_eq!(dec.status, 400);
+        assert!(dec.body.contains("AccessDeniedException"), "{}", dec.body);
+
+        // moto responses.py:449-450 — the KeyId is validated before the
+        // blob: unknown alias/keys become NotFoundException.
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob.clone(), "KeyId": "alias/never-made"}),
+        ));
+        assert_eq!(dec.status, 400);
+        assert!(
+            dec.body.contains(
+                "Alias arn:aws:kms:us-east-1:123456789012:alias/never-made is not found."
+            ),
+            "{}",
+            dec.body
+        );
+
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": blob, "KeyId": "00000000-dead-beef-cafe-999999999999"}),
+        ));
+        assert_eq!(dec.status, 400);
+        assert!(
+            dec.body.contains(
+                "Key 'arn:aws:kms:us-east-1:123456789012:key/00000000-dead-beef-cafe-999999999999' does not exist"
+            ),
+            "{}",
+            dec.body
+        );
+    }
+
+    #[test]
+    fn test_create_key_spec_enum_moto() {
+        let handler = KmsHandler::new();
+        // moto models.py:395-397 + "ensure_valid_key_spec" — invalid values
+        // fail with the quoted value inside the enum message.
+        let resp = handler.handle(make_req("CreateKey", json!({"KeySpec": "RSA_9"})));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("Value 'RSA_9' at 'KeySpec' failed to satisfy constraint"),
+            "{}",
+            resp.body
+        );
+        assert!(resp.body.contains("'SM2', 'SYMMETRIC_DEFAULT']"), "{}", resp.body);
+
+        // No KeySpec → SYMMETRIC_DEFAULT.
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let meta = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        assert_eq!(meta["KeySpec"], "SYMMETRIC_DEFAULT");
+
+        // moto also accepts CustomerMasterKeySpec and validates it the same.
+        let resp = handler.handle(make_req(
+            "CreateKey",
+            json!({"CustomerMasterKeySpec": "BOGUS"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("Value 'BOGUS' at 'KeySpec'"), "{}", resp.body);
+
+        // Valid RSA spec still creates (asymmetric path untouched).
+        let resp = handler.handle(make_req(
+            "CreateKey",
+            json!({"KeySpec": "RSA_4096", "KeyUsage": "SIGN_VERIFY"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let meta = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        assert_eq!(meta["KeySpec"], "RSA_4096");
+    }
+    #[test]
+    fn test_grants_moto_ladder() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let key_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let g = handler.handle(make_req(
+            "CreateGrant",
+            json!({
+                "KeyId": key_id,
+                "GranteePrincipal": "arn:aws:iam::123456789012:role/1",
+                "Operations": ["Encrypt", "Decrypt"],
+                "RetiringPrincipal": "arn:aws:iam::123456789012:role/1",
+            }),
+        ));
+        handler.handle(make_req(
+            "CreateGrant",
+            json!({
+                "KeyId": key_id,
+                "GranteePrincipal": "arn:aws:iam::123456789012:role/2",
+                "Operations": ["Decrypt"],
+            }),
+        ));
+        let list = handler.handle(make_req("ListGrants", json!({"KeyId": key_id.clone()})));
+        let body: Value = serde_json::from_str(&list.body).unwrap();
+        assert_eq!(body["GrantCount"], 2);
+        let grants = body["Grants"].as_array().unwrap();
+        for g in grants {
+            assert_eq!(g["KeyId"], key_id.as_str());
+            assert!(g.get("IssuingAccount").is_none());
+            assert!(g.get("CreationDate").is_none());
+        }
+        assert_eq!(
+            grants[0]["Constraints"],
+            Value::Null,
+            "Constraints present, null"
+        );
+
+        // moto's GrantId filter (models.py:194-196).
+        let g1 = serde_json::from_str::<Value>(&g.body).unwrap()["GrantId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let list = handler.handle(make_req(
+            "ListGrants",
+            json!({"KeyId": key_id, "GrantId": g1}),
+        ));
+        let body: Value = serde_json::from_str(&list.body).unwrap();
+        assert_eq!(body["GrantCount"], 1);
+        assert_eq!(body["Grants"][0]["GrantId"], g1.as_str());
+    }
+
+    #[test]
+    fn test_grants_retire_revoke_texts() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let key_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let g = handler.handle(make_req(
+            "CreateGrant",
+            json!({
+                "KeyId": key_id,
+                "GranteePrincipal": "arn:aws:iam::123456789012:root",
+                "Operations": ["Encrypt", "Decrypt"],
+            }),
+        ));
+
+        // RevokeGrant of a missing grant carries moto's exact message.
+        let resp = handler.handle(make_req(
+            "RevokeGrant",
+            json!({"KeyId": key_id.clone(), "GrantId": "nope"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body.contains("Grant ID nope not found"),
+            "{}",
+            resp.body
+        );
+
+        // RetireGrant by id is a silent no-op for unknown grants only when
+        // the key exists (moto models.py:727-728); the grant created above
+        // is retired with no error.
+        let grant_id = serde_json::from_str::<Value>(&g.body).unwrap()["GrantId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resp = handler.handle(make_req(
+            "RetireGrant",
+            json!({"KeyId": key_id, "GrantId": grant_id}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // And with an unknown GrantId under the same key — still 200.
+        let resp = handler.handle(make_req(
+            "RetireGrant",
+            json!({"KeyId": key_id, "GrantId": "nope"}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // Unknown token retires nothing but answers 200 (models.py:212-217).
+        let resp = handler.handle(make_req("RetireGrant", json!({"GrantToken": "nope"})));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn test_key_policy_name_moto() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let key_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // moto `_assert_default_policy` (808-810) — any other policy name is
+        // a 400 NotFound, checked BEFORE the key exists.
+        let resp = handler.handle(make_req(
+            "GetKeyPolicy",
+            json!({"KeyId": "missing-key", "PolicyName": "foo"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("No such policy exists"), "{}", resp.body);
+
+        let resp = handler.handle(make_req(
+            "PutKeyPolicy",
+            json!({"KeyId": key_id, "PolicyName": "foo", "Policy": "{}"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("No such policy exists"));
+
+        // The `default` name still works end to end, and the missing-key
+        // error is the crate's generic NotFound.
+        let resp = handler.handle(make_req(
+            "GetKeyPolicy",
+            json!({"KeyId": "missing-key", "PolicyName": "default"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("NotFoundException"));
+
+        let resp = handler.handle(make_req(
+            "GetKeyPolicy",
+            json!({"KeyId": key_id, "PolicyName": "default"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let policy = serde_json::from_str::<Value>(&resp.body).unwrap()["Policy"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(policy.contains("Statement"));
+
+        let resp = handler.handle(make_req(
+            "PutKeyPolicy",
+            json!({"KeyId": key_id, "PolicyName": "default", "Policy": "{\"a\":1}"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "GetKeyPolicy",
+            json!({"KeyId": key_id, "PolicyName": "default"}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&resp.body).unwrap()["Policy"],
+            "{\"a\":1}"
+        );
+    }
+
+    #[test]
+    fn test_sign_verify_moto_contract() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req(
+            "CreateKey",
+            json!({"KeySpec": "RSA_2048", "KeyUsage": "SIGN_VERIFY"}),
+        ));
+        let rsa_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // moto responses.py:659-662 — empty message rejected on both ops.
+        let resp = handler.handle(make_req(
+            "Sign",
+            json!({
+                "KeyId": rsa_id,
+                "Message": "",
+                "SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("Value at 'Message' failed to satisfy constraint: Member must have length greater than or equal to 1"),
+            "{}",
+            resp.body
+        );
+
+        let resp = handler.handle(make_req(
+            "Verify",
+            json!({
+                "KeyId": rsa_id,
+                "Message": "",
+                "Signature": "AAAA",
+                "SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("'Message'"), "{}", resp.body);
+
+        // moto responses.py:704-711 — empty signature rejected after message.
+        let resp = handler.handle(make_req(
+            "Verify",
+            json!({
+                "KeyId": rsa_id,
+                "Message": B64.encode(b"msg"),
+                "Signature": "",
+                "SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("'Signature'"), "{}", resp.body);
+
+        // moto models.py:730-735 — a non-SIGN_VERIFY key is a
+        // ValidationException naming the key id (no InvalidKeyUsage here).
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let sym_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resp = handler.handle(make_req(
+            "Sign",
+            json!({
+                "KeyId": sym_id,
+                "Message": B64.encode(b"msg"),
+                "SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains("Member must point to a key with usage: 'SIGN_VERIFY'"),
+            "{}",
+            resp.body
+        );
+
+        // moto models.py:737-745 — algorithms outside the key's set answer
+        // the enum ValidationException (not UnsupportedOperationException).
+        let resp = handler.handle(make_req(
+            "Sign",
+            json!({
+                "KeyId": rsa_id,
+                "Message": B64.encode(b"msg"),
+                "SigningAlgorithm": "ECDSA_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body.contains(
+                "Value 'ECDSA_SHA_256' at 'SigningAlgorithm' failed to satisfy constraint: Member must satisfy enum value set: ['RSASSA_PKCS1_V1_5_SHA_256'"
+            ),
+            "{}",
+            resp.body
+        );
+
+        // An ECC key signs with the digest its own spec declares, and
+        // rejects ECC digests from other specs. (P-384/P-521 specs carry
+        // P-256 material — a documented models.rs limitation — but the
+        // algorithm digest is honored.)
+        let resp = handler.handle(make_req(
+            "CreateKey",
+            json!({"KeySpec": "ECC_NIST_P384", "KeyUsage": "SIGN_VERIFY"}),
+        ));
+        let ecc_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let sign = handler.handle(make_req(
+            "Sign",
+            json!({
+                "KeyId": ecc_id,
+                "Message": B64.encode(b"msg"),
+                "SigningAlgorithm": "ECDSA_SHA_384",
+            }),
+        ));
+        assert_eq!(sign.status, 200, "{}", sign.body);
+        let sig = serde_json::from_str::<Value>(&sign.body).unwrap()["Signature"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let verify = handler.handle(make_req(
+            "Verify",
+            json!({
+                "KeyId": ecc_id,
+                "Message": B64.encode(b"msg"),
+                "Signature": sig,
+                "SigningAlgorithm": "ECDSA_SHA_384",
+            }),
+        ));
+        assert_eq!(verify.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&verify.body).unwrap()["SignatureValid"],
+            json!(true)
+        );
+
+        // ECC_NIST_P384 advertises ECDSA_SHA_384 only.
+        let resp = handler.handle(make_req(
+            "Sign",
+            json!({
+                "KeyId": ecc_id,
+                "Message": B64.encode(b"msg"),
+                "SigningAlgorithm": "ECDSA_SHA_256",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body.contains("['ECDSA_SHA_384']"),
+            "{}",
+            resp.body
+        );
     }
 }
