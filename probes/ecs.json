@@ -1,6 +1,6 @@
 {
   "service": "ecs",
-  "generated_at": "2026-11-01T06:54:59.361380+00:00",
+  "generated_at": "2026-11-01T09:48:26.481356+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 63,
