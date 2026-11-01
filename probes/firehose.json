@@ -1,6 +1,11 @@
 {
   "service": "firehose",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-01T17:59:48.504101+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/firehose.rs": "absent",
+    "rotocore/src/services/firehose/": "absent",
+    "crates/firehose/src/": "de65300bc6ed8b88850c2122d8100881a7fef662f687d93044338daa0a4d9195"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 12,
@@ -68,12 +73,7 @@
     {
       "operation": "UpdateDestination",
       "status": "working",
-      "message": "implemented via required-only (ResourceNotFoundException)"
+      "message": "implemented via required-only (InvalidArgumentException)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/firehose.rs": "absent",
-    "rotocore/src/services/firehose/": "absent",
-    "crates/firehose/src/": "e971f9d12da9935b9064d6595a8e76963aa1eb405638c1d38b80b3aafa0d073c"
-  }
+  ]
 }
