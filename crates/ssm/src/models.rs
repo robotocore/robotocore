@@ -164,12 +164,35 @@ impl Parameter {
         candidate
     }
 
-    pub fn push_version(&self, v: ParamVersion) {
+    /// Append a version computed from the next version number, enforcing
+    /// moto's version cap: with `PARAMETER_VERSION_LIMIT` versions already
+    /// stored, the oldest version may only be pruned when it carries no
+    /// labels — once it is labeled, moto raises
+    /// `ParameterMaxVersionLimitExceeded` *before* appending the new version
+    /// (models.py `_check_for_parameter_version_limit_exception`, checked
+    /// prior to `pop(0)`). Check, push and prune all run under one write
+    /// lock, so the labeled-prune decision cannot interleave with another
+    /// concurrent overwrite. `Ok` carries the appended version number, `Err`
+    /// the would-be-pruned oldest version's number.
+    pub fn push_version_with_limit(
+        &self,
+        build: impl FnOnce(u64) -> ParamVersion,
+    ) -> Result<u64, u64> {
         let mut versions = self.versions.write();
-        versions.push(v);
+        let next = versions.last().map(|v| v.version + 1).unwrap_or(1);
+        versions.push(build(next));
         if versions.len() > PARAMETER_VERSION_LIMIT {
-            versions.remove(0);
+            if versions[0].labels.is_empty() {
+                versions.remove(0);
+            } else {
+                // moto's raise precedes the pop: the new version is rolled
+                // back so the stored history stays at the cap.
+                let oldest = versions[0].version;
+                versions.pop();
+                return Err(oldest);
+            }
         }
+        Ok(next)
     }
 }
 
@@ -207,23 +230,35 @@ pub struct Document {
 /// Parsed document content: (content JSON, schema version, description, parameter list).
 pub type ParsedContent = (Value, String, Option<String>, Option<Value>);
 
+/// Parse failures, distinguished the way moto's `Document.__init__` and
+/// `_validate_document_format` split them: an unsupported format is a
+/// `ValidationException`, everything else is `InvalidDocumentContent`.
+#[derive(Debug)]
+pub enum ParseError {
+    InvalidFormat(String),
+    InvalidContent,
+}
+
 impl Document {
     pub fn parse_content(
         content: &str,
         document_format: &str,
-    ) -> Result<ParsedContent, &'static str> {
+    ) -> Result<ParsedContent, ParseError> {
         if document_format != "JSON" && document_format != "YAML" {
-            return Err("unsupported document format");
+            return Err(ParseError::InvalidFormat(document_format.to_string()));
         }
         let parsed: Value = if document_format == "JSON" {
-            serde_json::from_str(content).map_err(|_| "invalid JSON body")?
+            serde_json::from_str(content).map_err(|_| ParseError::InvalidContent)?
         } else {
-            serde_yaml_from_str(content).ok_or("YAML content is not supported")?
+            // moto parses YAML document content (models.py Document.__init__
+            // `yaml.safe_load`); YAML that fails to load is doc-content-
+            // invalid exactly like malformed JSON.
+            serde_yaml_from_str(content).ok_or(ParseError::InvalidContent)?
         };
         let schema_version = parsed
             .get("schemaVersion")
             .map(v_to_string)
-            .ok_or("missing schemaVersion")?;
+            .ok_or(ParseError::InvalidContent)?;
         let description = parsed
             .get("description")
             .map(|v| v.as_str().unwrap_or("").to_string());
@@ -365,9 +400,62 @@ fn doc_param_list(parameters: &Value) -> Value {
     json!(out)
 }
 
-fn serde_yaml_from_str(_content: &str) -> Option<Value> {
-    // YAML document content is not supported natively; treat as unparsable.
-    None
+fn serde_yaml_from_str(content: &str) -> Option<Value> {
+    // Mirrors moto's `yaml.safe_load` (models.py Document.__init__): YAML
+    // document content is parsed, not rejected. serde_yaml 0.9 is already in
+    // the workspace's dependency graph (rotocore uses the same version).
+    serde_yaml::from_str(content).ok()
+}
+
+/// moto's `_validate_document_info` (models.py:936-970). The document-format
+/// enum lives in `parse_content`; this covers content presence, the SSM
+/// document-name rules (reject list + `^[a-zA-Z0-9_\-.]{3,128}$`) and, in
+/// strict mode (CreateDocument; UpdateDocument passes strict=false), the
+/// document-type enum. Returns the ValidationException message on failure.
+pub fn validate_document_info(
+    content: &str,
+    name: &str,
+    document_type: Option<&str>,
+    strict: bool,
+) -> Result<(), String> {
+    if content.is_empty() {
+        return Err("Content is required".to_string());
+    }
+    const NAME_REJECT_LIST: [&str; 3] = ["aws-", "amazon", "amzn"];
+    if NAME_REJECT_LIST.iter().any(|p| name.starts_with(p)) {
+        return Err(format!("Invalid document name {name}"));
+    }
+    let name_ok = name.len() >= 3
+        && name.len() <= 128
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+    if !name_ok {
+        return Err(format!("Invalid document name {name}"));
+    }
+    if strict {
+        const DOC_TYPES: [&str; 9] = [
+            "Command",
+            "Policy",
+            "Automation",
+            "Session",
+            "Package",
+            "ApplicationConfiguration",
+            "ApplicationConfigurationSchema",
+            "DeploymentStrategy",
+            "ChangeCalendar",
+        ];
+        if !document_type
+            .map(|t| DOC_TYPES.contains(&t))
+            .unwrap_or(false)
+        {
+            return Err(format!(
+                "Invalid document type {}",
+                document_type.unwrap_or("")
+            ));
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

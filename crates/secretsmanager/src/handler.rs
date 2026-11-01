@@ -55,6 +55,17 @@ impl SecretsManagerHandler {
         )
     }
 
+    /// moto's SecretNotFoundException text is id-less
+    /// (secretsmanager/exceptions.py:14-20); used where moto's own message is
+    /// shown (stage lookups, batch errors).
+    fn not_found_moto() -> AwsResponse {
+        AwsResponse::error(
+            404,
+            "ResourceNotFoundException",
+            "Secrets Manager can't find the specified secret.",
+        )
+    }
+
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         let operation = req.operation.as_str();
         match operation {
@@ -90,6 +101,129 @@ impl SecretsManagerHandler {
         }
     }
 
+    /// moto's `_check_with_existing_secrets_and_versions` (models.py:627-681):
+    /// duplicate-create/put/update guard keyed on the ClientRequestToken.
+    /// Returns the short-dict echo when idempotent, `Err` on conflicts, or a
+    /// flag telling the caller to proceed with the add-version path.
+    fn check_existing_and_version(
+        secret: &Arc<Secret>,
+        token: Option<&str>,
+        secret_string: Option<&str>,
+        secret_binary: Option<&str>,
+        on_create: bool,
+    ) -> Result<bool, AwsResponse> {
+        use std::collections::HashMap;
+
+        let Some(token) = token else {
+            return Err(AwsResponse::error(
+                400,
+                "ResourceExistsException",
+                "A resource with the ID you requested already exists.",
+            ));
+        };
+        let versions: HashMap<String, SecretVersion> = secret.versions.read().clone();
+        let matching = versions.get(token);
+        if let Some(matching) = matching {
+            if matching.stages.iter().any(|s| s == "AWSPENDING") {
+                // moto treats a pending-rotation token as a fresh add.
+                return Ok(true);
+            }
+            if matching.secret_string.as_deref() == secret_string
+                && matching.secret_binary.as_deref() == secret_binary
+            {
+                // Idempotent retry with the same token and value.
+                return Ok(false);
+            }
+            return Err(AwsResponse::error(
+                400,
+                "ResourceExistsException",
+                &format!(
+                    "You can't use ClientRequestToken {token} because that value is already in use for a version of secret {}.",
+                    secret.arn
+                ),
+            ));
+        }
+        if on_create {
+            return Err(AwsResponse::error(
+                400,
+                "ResourceExistsException",
+                &format!(
+                    "The operation failed because the secret {} already exists.",
+                    secret.name
+                ),
+            ));
+        }
+        Ok(true)
+    }
+
+    /// moto's `_from_client_request_token` (models.py:403-414): a supplied
+    /// ClientRequestToken must be 32-64 characters and becomes the version
+    /// id; otherwise a fresh uuid4 (hyphenated, like `str(uuid4())`) is
+    /// minted.
+    fn version_id_from_token(token: Option<&str>) -> Result<String, AwsResponse> {
+        match token {
+            Some(t) => {
+                let len = t.chars().count();
+                if !(32..=64).contains(&len) {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameterException",
+                        "ClientRequestToken must be 32-64 characters long.",
+                    ));
+                }
+                Ok(t.to_string())
+            }
+            None => Ok(uuid::Uuid::new_v4().to_string()),
+        }
+    }
+
+    /// moto's `_add_secret` update path on an existing secret: remove
+    /// duplicate stage labels from old versions, then promote AWSCURRENT the
+    /// way `reset_default_version` does (old current → exactly
+    /// [`AWSPREVIOUS`]).
+    fn add_version_to_existing(
+        secret: &Arc<Secret>,
+        version_id: &str,
+        secret_string: Option<String>,
+        secret_binary: Option<String>,
+        version_stages: Vec<String>,
+        kms_key_id: Option<String>,
+    ) {
+        if let Some(k) = kms_key_id {
+            *secret.kms_key_id.write() = Some(k);
+        }
+        let mut versions = secret.versions.write();
+        let has_current_stage = version_stages.iter().any(|s| s == "AWSCURRENT");
+        if has_current_stage {
+            for v in versions.values_mut() {
+                v.stages.retain(|s| s != "AWSPREVIOUS");
+            }
+            if let Some(old_current) = versions
+                .values_mut()
+                .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
+            {
+                old_current.stages = vec!["AWSPREVIOUS".to_string()];
+            }
+            for v in versions.values_mut() {
+                v.stages.retain(|s| s != "AWSCURRENT");
+            }
+        } else {
+            for v in versions.values_mut() {
+                v.stages.retain(|s| !version_stages.contains(s));
+            }
+        }
+        versions.insert(
+            version_id.to_string(),
+            SecretVersion {
+                version_id: version_id.to_string(),
+                secret_string,
+                secret_binary,
+                stages: version_stages,
+                created_date: Utc::now().timestamp() as f64,
+            },
+        );
+    }
+
     fn create_secret(&self, req: &AwsRequest) -> AwsResponse {
         let name = req
             .params
@@ -102,19 +236,6 @@ impl SecretsManagerHandler {
         }
 
         let state = self.get_state(req.account, &req.region);
-        if let Some(existing) = state.get_secret(&name) {
-            // A secret scheduled for deletion blocks creation too (moto parity).
-            let _ = existing;
-            return AwsResponse::error(
-                409,
-                "ResourceExistsException",
-                "The operation failed because the secret already exists.",
-            );
-        }
-
-        let secret = Arc::new(Secret::new(name.clone(), req.account, req.region.clone()));
-
-        let version_id = Self::new_version_id();
         let secret_string = req
             .params
             .get("SecretString")
@@ -125,18 +246,105 @@ impl SecretsManagerHandler {
             .get("SecretBinary")
             .and_then(|v| v.as_str())
             .map(String::from);
+        let kms_key_id = req
+            .params
+            .get("KmsKeyId")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let token_raw = req
+            .params
+            .get("ClientRequestToken")
+            .and_then(|v| v.as_str());
 
-        let version = SecretVersion {
-            version_id: version_id.clone(),
-            secret_string,
-            secret_binary,
-            stages: vec!["AWSCURRENT".to_string()],
-            created_date: Utc::now().timestamp() as f64,
+        if let Some(existing) = state.get_secret(&name) {
+            // moto's _check_with_existing_secrets_and_versions(on_create=True).
+            match Self::check_existing_and_version(
+                &existing,
+                token_raw,
+                secret_string.as_deref(),
+                secret_binary.as_deref(),
+                true,
+            ) {
+                Err(e) => return e,
+                Ok(false) => {
+                    // Idempotent retry: moto echoes to_short_dict() → the
+                    // current default version id.
+                    let current_version_id = existing
+                        .get_version("AWSCURRENT")
+                        .map(|v| v.version_id.clone())
+                        .unwrap_or_default();
+                    return AwsResponse::json(
+                        200,
+                        json!({
+                            "ARN": existing.arn,
+                            "Name": existing.name,
+                            "VersionId": current_version_id,
+                        }),
+                    );
+                }
+                Ok(true) => {
+                    // Fresh token on an existing secret (or a pending-rotation
+                    // token): moto's _check returns None and the request adds
+                    // a new version through _add_secret.
+                    let has_value = secret_string.is_some() || secret_binary.is_some();
+                    if !has_value {
+                        return AwsResponse::json(
+                            200,
+                            json!({ "ARN": existing.arn, "Name": existing.name }),
+                        );
+                    }
+                    let version_id = match Self::version_id_from_token(token_raw) {
+                        Ok(v) => v,
+                        Err(e) => return e,
+                    };
+                    Self::add_version_to_existing(
+                        &existing,
+                        &version_id,
+                        secret_string,
+                        secret_binary,
+                        vec!["AWSCURRENT".to_string()],
+                        kms_key_id,
+                    );
+                    // moto create passes its response-layer defaults
+                    // (description "", tags []) through update(), so the
+                    // caller's description/tags reset on this path.
+                    *existing.description.write() = None;
+                    *existing.tags.write() = Vec::new();
+                    return AwsResponse::json(
+                        200,
+                        json!({
+                            "ARN": existing.arn,
+                            "Name": existing.name,
+                            "VersionId": version_id,
+                        }),
+                    );
+                }
+            }
+        }
+
+        // Fresh create.
+        let version_id = match Self::version_id_from_token(token_raw) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        secret.versions.write().insert(version_id.clone(), version);
+        let secret = Arc::new(Secret::new(name.clone(), req.account, req.region.clone()));
+        let has_value = secret_string.is_some() || secret_binary.is_some();
+        if has_value {
+            let version = SecretVersion {
+                version_id: version_id.clone(),
+                secret_string: secret_string.clone(),
+                secret_binary: secret_binary.clone(),
+                stages: vec!["AWSCURRENT".to_string()],
+                created_date: Utc::now().timestamp() as f64,
+            };
+            secret.versions.write().insert(version_id.clone(), version);
+        }
 
         if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
             *secret.description.write() = Some(desc.to_string());
+        }
+        if let Some(k) = kms_key_id {
+            *secret.kms_key_id.write() = Some(k);
         }
         if let Some(tags) = req.params.get("Tags").and_then(|v| v.as_array()) {
             *secret.tags.write() = tags
@@ -153,15 +361,20 @@ impl SecretsManagerHandler {
 
         state.put_secret(secret.clone());
 
-        AwsResponse::json(
-            200,
-            json!({
-                "ARN": secret.arn,
-                "Name": secret.name,
-                "VersionId": version_id,
-                "CreatedDate": secret.created_date,
-            }),
-        )
+        // moto's fresh create responds to_short_dict(include_version_id=…):
+        // {ARN, Name} plus VersionId only when a value was stored (no
+        // CreatedDate member).
+        let mut resp = json!({
+            "ARN": secret.arn,
+            "Name": secret.name,
+        });
+        let resp_obj = resp.as_object_mut().unwrap();
+        // moto's create response only carries VersionId when a value was
+        // stored (to_short_dict(include_version_id=new_version)).
+        if has_value {
+            resp_obj.insert("VersionId".into(), json!(version_id));
+        }
+        AwsResponse::json(200, resp)
     }
 
     fn get_secret_value(&self, req: &AwsRequest) -> AwsResponse {
@@ -176,41 +389,105 @@ impl SecretsManagerHandler {
             Some(s) => s,
             None => return Self::not_found(&id),
         };
+        let version_id = req.params.get("VersionId").and_then(|v| v.as_str());
+        let version_stage = req.params.get("VersionStage").and_then(|v| v.as_str());
+
+        // moto's check order (models.py get_secret_value:439-501): a
+        // VersionId+VersionStage pair first cross-checks the stages on that
+        // version (SecretStageVersionMismatchException, a 404 carrying
+        // errorType InvalidRequestException), then a stage-only lookup
+        // resolves the version id (miss → SecretNotFoundException), then the
+        // deleted-secret guard, then the version lookup, and only a version
+        // with no value raises SecretHasNoValueException.
+        let versions = secret.versions.read();
+        let stage_miss = |version_stage: Option<&str>| -> Option<AwsResponse> {
+            let stage = version_stage?;
+            if versions
+                .values()
+                .any(|v| v.stages.iter().any(|s| s == stage))
+            {
+                None
+            } else {
+                // moto raises SecretNotFoundException when no version
+                // carries the stage (404, id-less text).
+                Some(Self::not_found_moto())
+            }
+        };
+        if let (Some(vid), Some(stage)) = (version_id, version_stage) {
+            if let Some(v) = versions.get(vid) {
+                if !v.stages.iter().any(|s| s == stage) {
+                    return AwsResponse::error(
+                        404,
+                        "InvalidRequestException",
+                        "You provided a VersionStage that is not associated to the provided VersionId.",
+                    );
+                }
+            }
+        }
+        if version_id.is_none() {
+            if let Some(miss) = stage_miss(version_stage) {
+                return miss;
+            }
+        }
 
         if *secret.removed.read() {
+            // moto 5.2.4 models.py:465-469 — the message embeds moto's
+            // backslash-continuation whitespace; mirrored verbatim.
             return AwsResponse::error(
                 400,
                 "InvalidRequestException",
-                "You tried to perform the operation on a secret that's currently marked deleted.",
+                "An error occurred (InvalidRequestException) when calling the GetSecretValue operation: You tried to                 perform the operation on a secret that's currently marked deleted.",
             );
         }
 
-        // VersionId wins over VersionStage when both provided.
-        let version = if let Some(vid) = req.params.get("VersionId").and_then(|v| v.as_str()) {
-            secret.get_version_by_id(vid)
-        } else {
-            let stage = req
-                .params
-                .get("VersionStage")
-                .and_then(|v| v.as_str())
-                .unwrap_or("AWSCURRENT");
-            secret.get_version(stage)
+        let version_id = version_id.map(String::from).or_else(|| {
+            // The twin has no default_version_id field; the AWSCURRENT
+            // version plays that role (moto `default_version_id`).
+            versions
+                .values()
+                .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
+                .map(|v| v.version_id.clone())
+        });
+        let version = version_id
+            .as_ref()
+            .and_then(|vid| versions.get(vid).cloned());
+        let Some(version) = version else {
+            // moto distinguishes the requested kind in the 404 text
+            // (models.py:474-479).
+            let kind = if version_id.is_some() {
+                "VersionId"
+            } else {
+                "staging label"
+            };
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "Secrets Manager can't find the specified secret value for {}: {}",
+                    kind,
+                    version_id.unwrap_or_else(|| "AWSCURRENT".to_string())
+                ),
+            );
         };
-        let version = match version {
-            Some(v) => v,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "InvalidRequestException",
-                    "The requested secret has no versions with the specified stage",
-                )
-            }
-        };
+        if version.secret_string.is_none() && version.secret_binary.is_none() {
+            // moto's SecretHasNoValueException — 404 with
+            // errorType ResourceNotFoundException (moto keeps the
+            // error code ResourceNotFoundException for this one).
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "Secrets Manager can't find the specified secret value for staging label: {}",
+                    version_stage.unwrap_or("AWSCURRENT")
+                ),
+            );
+        }
 
         let mut resp = json!({
             "ARN": secret.arn,
             "Name": secret.name,
             "VersionId": version.version_id,
+            "VersionStages": version.stages,
             "CreatedDate": version.created_date,
         });
         if let Some(ref s) = version.secret_string {
@@ -229,13 +506,12 @@ impl SecretsManagerHandler {
 
     fn put_secret_value(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret = match Self::resolve_secret(
-            &state,
-            req.params
-                .get("SecretId")
-                .and_then(|v| v.as_str())
-                .unwrap_or(""),
-        ) {
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => {
                 return Self::not_found(
@@ -257,7 +533,93 @@ impl SecretsManagerHandler {
                 "You must provide either SecretString or SecretBinary.",
             );
         }
-        Self::promote_new_version(req, &secret, "create")
+        let secret_string = req
+            .params
+            .get("SecretString")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let secret_binary = req
+            .params
+            .get("SecretBinary")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        // moto resolves the token first (validating its length), then runs
+        // the duplicate-version check against it (_from_client_request_token
+        // mints a uuid4 when absent, so a token-less put always proceeds).
+        let token_raw = req
+            .params
+            .get("ClientRequestToken")
+            .and_then(|v| v.as_str());
+        let version_id = match Self::version_id_from_token(token_raw) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        match Self::check_existing_and_version(
+            &secret,
+            Some(&version_id),
+            secret_string.as_deref(),
+            secret_binary.as_deref(),
+            false,
+        ) {
+            Err(e) => return e,
+            Ok(false) => {
+                // Idempotent put: moto echoes the token's version + stages.
+                let stages = secret
+                    .versions
+                    .read()
+                    .get(&version_id)
+                    .map(|v| v.stages.clone())
+                    .unwrap_or_default();
+                return AwsResponse::json(
+                    200,
+                    json!({
+                        "ARN": secret.arn,
+                        "Name": secret.name,
+                        "VersionId": version_id,
+                        "VersionStages": stages,
+                    }),
+                );
+            }
+            Ok(true) => {}
+        }
+
+        let version_stages_json = {
+            let mut vs: Vec<String> = req
+                .params
+                .get("VersionStages")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .map(|s| s.as_str().unwrap_or("").to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["AWSCURRENT".to_string()]);
+            // moto: a first version is always forced to carry AWSCURRENT
+            // (models.py:813-815).
+            if secret.versions.read().is_empty() && !vs.iter().any(|s| s == "AWSCURRENT") {
+                vs.push("AWSCURRENT".to_string());
+            }
+            vs
+        };
+        let version_stages = version_stages_json.clone();
+        Self::add_version_to_existing(
+            &secret,
+            &version_id,
+            secret_string,
+            secret_binary,
+            version_stages,
+            None,
+        );
+        AwsResponse::json(
+            200,
+            json!({
+                "ARN": secret.arn,
+                "Name": secret.name,
+                "VersionId": version_id,
+                "VersionStages": version_stages_json,
+            }),
+        )
     }
 
     fn update_secret(&self, req: &AwsRequest) -> AwsResponse {
@@ -271,35 +633,6 @@ impl SecretsManagerHandler {
             Some(s) => s,
             None => return Self::not_found(secret_id),
         };
-
-        // UpdateSecret with a new value creates a new current version (moto
-        // reuses the existing version when no value is provided).
-        let has_value =
-            req.params.get("SecretString").is_some() || req.params.get("SecretBinary").is_some();
-        if has_value {
-            let resp = Self::promote_new_version(req, &secret, "create");
-            let _ = resp;
-        }
-
-        if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
-            *secret.description.write() = Some(desc.to_string());
-        }
-
-        let current = secret.get_version("AWSCURRENT").map(|v| v.version_id);
-        AwsResponse::json(
-            200,
-            json!({
-                "ARN": secret.arn,
-                "Name": secret.name,
-                "VersionId": current.unwrap_or_default(),
-            }),
-        )
-    }
-
-    /// Create a new version for PutSecretValue / UpdateSecret, rotating the
-    /// AWSCURRENT/AWSPREVIOUS stage labels like the Python twin does.
-    fn promote_new_version(req: &AwsRequest, secret: &Arc<Secret>, _mode: &str) -> AwsResponse {
-        let version_id = Self::new_version_id();
         let secret_string = req
             .params
             .get("SecretString")
@@ -310,49 +643,103 @@ impl SecretsManagerHandler {
             .get("SecretBinary")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let created_date = Utc::now().timestamp() as f64;
+        let kms_key_id = req
+            .params
+            .get("KmsKeyId")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let token_raw = req
+            .params
+            .get("ClientRequestToken")
+            .and_then(|v| v.as_str());
 
-        let mut versions = secret.versions.write();
-        for v in versions.values_mut() {
-            if v.stages.contains(&"AWSCURRENT".to_string()) {
-                v.stages.retain(|s| s != "AWSCURRENT" && s != "AWSPREVIOUS");
-                v.stages.push("AWSPREVIOUS".to_string());
-            } else {
-                v.stages.retain(|s| s != "AWSPREVIOUS");
+        // moto's update_secret runs the duplicate check (with the RAW token)
+        // before the deleted-state guard (models.py:554-578).
+        match Self::check_existing_and_version(
+            &secret,
+            token_raw,
+            secret_string.as_deref(),
+            secret_binary.as_deref(),
+            false,
+        ) {
+            Err(e) => return e,
+            Ok(false) => {
+                // Idempotent update: moto echoes to_short_dict() → {ARN,
+                // Name, VersionId=current default}.
+                let current_version_id = secret
+                    .get_version("AWSCURRENT")
+                    .map(|v| v.version_id.clone())
+                    .unwrap_or_default();
+                return AwsResponse::json(
+                    200,
+                    json!({
+                        "ARN": secret.arn,
+                        "Name": secret.name,
+                        "VersionId": current_version_id,
+                    }),
+                );
             }
+            Ok(true) => {}
         }
 
-        let stages = req
-            .params
-            .get("VersionStages")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .map(|s| s.as_str().unwrap_or("").to_string())
-                    .collect()
-            })
-            .unwrap_or_else(|| vec!["AWSCURRENT".to_string()]);
+        if *secret.removed.read() {
+            // moto 5.2.4 models.py:574-578 — exact text.
+            return AwsResponse::error(
+                400,
+                "InvalidRequestException",
+                "An error occurred (InvalidRequestException) when calling the UpdateSecret operation: You can't perform this operation on the secret because it was marked for deletion.",
+            );
+        }
 
-        let version = SecretVersion {
-            version_id: version_id.clone(),
-            secret_string,
-            secret_binary,
-            stages,
-            created_date,
-        };
-        versions.insert(version_id.clone(), version);
+        let has_value = secret_string.is_some() || secret_binary.is_some();
+        if has_value {
+            let version_id = match Self::version_id_from_token(token_raw) {
+                Ok(v) => v,
+                Err(e) => return e,
+            };
+            Self::add_version_to_existing(
+                &secret,
+                &version_id,
+                secret_string,
+                secret_binary,
+                vec!["AWSCURRENT".to_string()],
+                kms_key_id,
+            );
+        }
 
-        AwsResponse::json(
-            200,
-            json!({
-                "ARN": secret.arn,
-                "Name": secret.name,
-                "VersionId": version_id,
-                "CreatedDate": created_date,
-            }),
-        )
+        if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
+            *secret.description.write() = Some(desc.to_string());
+        }
+
+        // moto's update response is to_short_dict(include_version_id=
+        // new_version): VersionId present only when a new version was added.
+        if has_value {
+            let version_id = secret
+                .get_version("AWSCURRENT")
+                .map(|v| v.version_id.clone())
+                .unwrap_or_default();
+            AwsResponse::json(
+                200,
+                json!({
+                    "ARN": secret.arn,
+                    "Name": secret.name,
+                    "VersionId": version_id,
+                }),
+            )
+        } else {
+            AwsResponse::json(
+                200,
+                json!({
+                    "ARN": secret.arn,
+                    "Name": secret.name,
+                }),
+            )
+        }
     }
 
+    /// moto's DeleteSecret: window-range and combo validations run before the
+    /// id lookup; version-scoped responses mirror `delete_secret` in
+    /// models.py:1059-1118.
     fn delete_secret(&self, req: &AwsRequest) -> AwsResponse {
         const DAY_SECS: f64 = 24.0 * 60.0 * 60.0;
         let state = self.get_state(req.account, &req.region);
@@ -371,30 +758,38 @@ impl SecretsManagerHandler {
             .get("RecoveryWindowInDays")
             .and_then(|v| v.as_f64());
 
+        // moto validates the window range regardless of Force, then the
+        // combo, before touching the id (models.py:1059-1077) — the messages
+        // embed moto's backslash-continuation whitespace, mirrored verbatim.
         if let Some(window) = recovery_window {
-            if (window < 7.0 || window > 30.0) && !force {
+            if window < 7.0 || window > 30.0 {
                 return AwsResponse::error(
                     400,
                     "InvalidParameterException",
-                    "RecoveryWindowInDays value must be between 7 and 30 days (inclusive)",
+                    "An error occurred (InvalidParameterException) when calling the DeleteSecret operation: The                 RecoveryWindowInDays value must be between 7 and 30 days (inclusive).",
                 );
             }
         }
+        if recovery_window.is_some() && force {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "An error occurred (InvalidParameterException) when calling the DeleteSecret operation: You can't                 use ForceDeleteWithoutRecovery in conjunction with RecoveryWindowInDays.",
+            );
+        }
 
-        // Force-delete without recovery removes the secret entirely.
         if let Some(secret) = state.get_secret(secret_id).or_else(|| {
-            // resolve also via ARN
             if force {
                 None
             } else {
                 Self::resolve_secret(&state, secret_id)
             }
         }) {
-            if *secret.removed.read() && !force {
+            if !force && *secret.removed.read() {
                 return AwsResponse::error(
                     400,
                     "InvalidRequestException",
-                    "You tried to perform the operation on a secret that's currently marked deleted.",
+                    "An error occurred (InvalidRequestException) when calling the DeleteSecret operation: You tried to                     perform the operation on a secret that's currently marked deleted.",
                 );
             }
             if force {
@@ -427,12 +822,14 @@ impl SecretsManagerHandler {
         if !force {
             return Self::not_found(secret_id);
         }
-        // Deleting an unknown id with force still reports success (moto parity).
+        // moto's force delete of an unknown id synthesizes a full ARN
+        // (with the 6-char suffix) and reports success (models.py:1079-1088).
+        let suffix = crate::models::random_arn_suffix();
         AwsResponse::json(
             200,
             json!({
                 "ARN": format!(
-                    "arn:aws:secretsmanager:{}:{}:secret:{}",
+                    "arn:aws:secretsmanager:{}:{}:secret:{}-{suffix}",
                     req.region, req.account, secret_id
                 ),
                 "Name": secret_id,
@@ -483,17 +880,26 @@ impl SecretsManagerHandler {
             version_stages.insert(v.version_id.clone(), json!(v.stages));
         }
 
+        // moto's FakeSecret.to_dict shape (models.py:239-281). The twin's
+        // invented "Type" member is dropped — neither moto nor the real
+        // botocore DescribeSecret shape has it.
         let mut resp = json!({
             "ARN": secret.arn,
             "Name": secret.name,
-            "Type": "AWS_SECRETS_MANAGER",
             "CreatedDate": secret.created_date,
             "LastChangedDate": secret.created_date,
             "Tags": *secret.tags.read(),
-            "RotationEnabled": *secret.rotation_enabled.read(),
-            "VersionIdsToStages": Value::Object(version_stages),
+            "VersionIdsToStages": Value::Object(version_stages.clone()),
+            // moto emits both maps for any dict rendering (models.py:259-267).
+            "SecretVersionsToStages": Value::Object(version_stages),
         });
         let resp_obj = resp.as_object_mut().unwrap();
+        // moto renders KmsKeyId when it is not the default service alias.
+        if let Some(ref k) = *secret.kms_key_id.read() {
+            if k != "alias/aws/secretsmanager" {
+                resp_obj.insert("KmsKeyId".into(), json!(k));
+            }
+        }
         if let Some(ref desc) = *secret.description.read() {
             resp_obj.insert("Description".into(), json!(desc));
         }
@@ -503,11 +909,36 @@ impl SecretsManagerHandler {
                 resp_obj.insert("DeletedDate".into(), json!(date));
             }
         }
-        if let Some(arn) = &*secret.rotation_lambda_arn.read() {
-            resp_obj.insert("RotationLambdaARN".into(), json!(arn));
-        }
-        if let Some(rules) = &*secret.rotation_rules.read() {
-            resp_obj.insert("RotationRules".into(), rules.clone());
+        // Moto gates rotation members behind `rotation_requested`
+        // (models.py:268-278), not merely rotation_enabled.
+        if *secret.rotation_requested.read() {
+            resp_obj.insert(
+                "RotationEnabled".into(),
+                json!(*secret.rotation_enabled.read()),
+            );
+            resp_obj.insert(
+                "RotationLambdaARN".into(),
+                json!(secret
+                    .rotation_lambda_arn
+                    .read()
+                    .clone()
+                    .unwrap_or_default()),
+            );
+            let auto = secret
+                .rotation_rules
+                .read()
+                .as_ref()
+                .and_then(|r| r.get("AutomaticallyAfterDays").and_then(|d| d.as_u64()))
+                .unwrap_or(0);
+            resp_obj.insert(
+                "RotationRules".into(),
+                json!({ "AutomaticallyAfterDays": auto }),
+            );
+            if *secret.rotation_enabled.read() {
+                if let Some(next) = *secret.next_rotation_date.read() {
+                    resp_obj.insert("NextRotationDate".into(), json!(next));
+                }
+            }
         }
         let replicas = secret.replicas.read().clone();
         if !replicas.is_empty() {
@@ -520,6 +951,10 @@ impl SecretsManagerHandler {
         AwsResponse::json(200, resp)
     }
 
+    /// moto's `list_secrets` (models.py:1040-1057): page at MaxResults
+    /// (default 100), token is the row offset as a string, deleted secrets
+    /// hidden unless IncludePlannedDeletion is set, and filters pre-validated
+    /// then matched moto-style.
     fn list_secrets(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let filters = req
@@ -527,39 +962,132 @@ impl SecretsManagerHandler {
             .get("Filters")
             .and_then(|v| v.as_array())
             .cloned();
+        if let Err(e) = validate_list_filters(filters.as_deref()) {
+            return e;
+        }
+        let include_planned_deletion = req
+            .params
+            .get("IncludePlannedDeletion")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_results = req
+            .params
+            .get("MaxResults")
+            .and_then(|v| v.as_u64())
+            .map(|m| (m as usize).max(1))
+            .unwrap_or(crate::models::LIST_SECRETS_MAX_RESULTS_DEFAULT);
+        let start = req
+            .params
+            .get("NextToken")
+            .and_then(|v| v.as_str())
+            .and_then(|t| t.parse::<usize>().ok())
+            .unwrap_or(0);
 
-        let secrets = state.list_secrets();
-        let secret_list: Vec<Value> = secrets
-            .into_iter()
-            .filter(|s| filtered_in(s, filters.as_deref()))
-            .map(|s| {
-                let mut obj = json!({
-                    "ARN": s.arn,
-                    "Name": s.name,
-                    "CreatedDate": s.created_date,
-                    "LastChangedDate": s.created_date,
-                    "RotationEnabled": *s.rotation_enabled.read(),
-                    "Tags": *s.tags.read(),
-                });
-                let obj_map = obj.as_object_mut().unwrap();
-                if let Some(ref desc) = *s.description.read() {
-                    obj_map.insert("Description".into(), json!(desc));
-                }
-                let replicas = s.replicas.read().clone();
-                if !replicas.is_empty() {
-                    obj_map.insert("PrimaryRegion".into(), json!(s.region));
-                    obj_map.insert(
-                        "ReplicationStatus".into(),
-                        json!(Self::replica_statuses(&replicas)),
-                    );
-                }
-                obj
-            })
+        let mut secret_list: Vec<Value> = Vec::new();
+        for s in state.secrets.read().values() {
+            if !include_planned_deletion && *s.removed.read() {
+                continue;
+            }
+            if !matches_list_filters(s, filters.as_deref()) {
+                continue;
+            }
+            secret_list.push(Self::secret_to_dict(s));
+        }
+
+        // moto's _get_secret_values_page_and_next_token.
+        let end = start + max_results;
+        let page: Vec<Value> = secret_list
+            .iter()
+            .skip(start)
+            .take(max_results)
+            .cloned()
             .collect();
+        let next_token = if end < secret_list.len() {
+            json!(end.to_string())
+        } else {
+            Value::Null
+        };
 
-        AwsResponse::json(200, json!({ "SecretList": secret_list }))
+        AwsResponse::json(200, json!({ "SecretList": page, "NextToken": next_token }))
     }
 
+    /// moto's `FakeSecret.to_dict` rendering for a list entry: rotation
+    /// members only after a RotateSecret request, both version→stage maps
+    /// when versions exist, KmsKeyId hidden for the default alias, and no
+    /// PrimaryRegion (that member appears on moto's replica-region listings,
+    /// which the twin's in-region replica model does not produce).
+    fn secret_to_dict(s: &Arc<Secret>) -> Value {
+        let versions = s.versions.read();
+        let mut version_stages = Map::new();
+        for v in versions.values() {
+            version_stages.insert(v.version_id.clone(), json!(v.stages));
+        }
+        let mut resp = json!({
+            "ARN": s.arn,
+            "Name": s.name,
+            "CreatedDate": s.created_date,
+            "LastChangedDate": s.created_date,
+            "Tags": *s.tags.read(),
+        });
+        let resp_obj = resp.as_object_mut().unwrap();
+        if let Some(ref k) = *s.kms_key_id.read() {
+            if k != "alias/aws/secretsmanager" {
+                resp_obj.insert("KmsKeyId".into(), json!(k));
+            }
+        }
+        if let Some(ref desc) = *s.description.read() {
+            resp_obj.insert("Description".into(), json!(desc));
+        }
+        if !versions.is_empty() {
+            resp_obj.insert(
+                "VersionIdsToStages".into(),
+                Value::Object(version_stages.clone()),
+            );
+            resp_obj.insert(
+                "SecretVersionsToStages".into(),
+                Value::Object(version_stages),
+            );
+        }
+        if *s.rotation_requested.read() {
+            resp_obj.insert("RotationEnabled".into(), json!(*s.rotation_enabled.read()));
+            resp_obj.insert(
+                "RotationLambdaARN".into(),
+                json!(s.rotation_lambda_arn.read().clone().unwrap_or_default()),
+            );
+            let auto = s
+                .rotation_rules
+                .read()
+                .as_ref()
+                .and_then(|r| r.get("AutomaticallyAfterDays").and_then(|d| d.as_u64()))
+                .unwrap_or(0);
+            resp_obj.insert(
+                "RotationRules".into(),
+                json!({ "AutomaticallyAfterDays": auto }),
+            );
+            if *s.rotation_enabled.read() {
+                if let Some(next) = *s.next_rotation_date.read() {
+                    resp_obj.insert("NextRotationDate".into(), json!(next));
+                }
+            }
+        }
+        let replicas = s.replicas.read().clone();
+        if !replicas.is_empty() {
+            resp_obj.insert(
+                "ReplicationStatus".into(),
+                json!(Self::replica_statuses(&replicas)),
+            );
+        }
+        resp
+    }
+
+    /// moto's `list_secret_version_ids` has no pagination, filtering, or
+    /// ordering guarantees: it dumps every version with per-render now()
+    /// dates, an empty-string NextToken always present, and an "ARN" member
+    /// that is actually the secret *name* (moto quirk). The twin keeps its
+    /// real-ARN + true-dates rendering (documented divergences, closer to
+    /// real AWS than moto), reconciles moto's insertion-order list with a
+    /// deterministic created-date order, and omits the empty NextToken the
+    /// way botocore models it.
     fn list_secret_version_ids(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let secret_id = req
@@ -573,8 +1101,19 @@ impl SecretsManagerHandler {
         };
 
         let versions = secret.versions.read();
-        let version_list: Vec<Value> = versions
-            .values()
+        let mut ordered: Vec<&SecretVersion> = versions.values().collect();
+        ordered.sort_by(|a, b| {
+            a.created_date
+                .partial_cmp(&b.created_date)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                // moto's list order is insertion order; the twin's
+                // stage-lifecycle ranks reconstruct it when seconds tie:
+                // stage-less oldest, then AWSPREVIOUS, then AWSCURRENT.
+                .then(stage_rank(a).cmp(&stage_rank(b)))
+                .then(a.version_id.cmp(&b.version_id))
+        });
+        let version_list: Vec<Value> = ordered
+            .iter()
             .map(|v| {
                 json!({
                     "CreatedDate": v.created_date,
@@ -914,10 +1453,11 @@ impl SecretsManagerHandler {
             None => return Self::not_found(secret_id),
         };
         if *secret.removed.read() {
+            // moto 5.2.4 models.py:851-855 — exact text (embedded spaces).
             return AwsResponse::error(
                 400,
                 "InvalidRequestException",
-                "You tried to perform the operation on a secret that's currently marked deleted.",
+                "An error occurred (InvalidRequestException) when calling the RotateSecret operation: You tried to                 perform the operation on a secret that's currently marked deleted.",
             );
         }
 
@@ -931,44 +1471,152 @@ impl SecretsManagerHandler {
             .get("RotationRules")
             .cloned()
             .unwrap_or(Value::Null);
+        let rotate_immediately = req
+            .params
+            .get("RotateImmediately")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !lambda_arn.is_empty() && lambda_arn.len() > 2048 {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "RotationLambdaARN must <= 2048 characters long.",
+            );
+        }
+        // moto only validates an explicitly present AutomaticallyAfterDays;
+        // its range rule is 1..=1000 with 0 explicitly rejected too
+        // (models.py:862-871).
+        let automatically_after = if rules.get("AutomaticallyAfterDays").is_some() {
+            let days = rules
+                .get("AutomaticallyAfterDays")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            if !(1..=1000).contains(&days) {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterException",
+                    "RotationRules.AutomaticallyAfterDays must be within 1-1000.",
+                );
+            }
+            days
+        } else {
+            0
+        };
+
+        // moto refuses to restart rotation while AWSPENDING and AWSCURRENT
+        // still sit on the same version (models.py:883-895).
+        {
+            let versions = secret.versions.read();
+            if let Some(pending) = versions
+                .values()
+                .find(|v| v.stages.iter().any(|s| s == "AWSPENDING"))
+            {
+                if pending.stages.iter().any(|s| s == "AWSCURRENT") {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidRequestException",
+                        "Previous rotation request is still in progress.",
+                    );
+                }
+            }
+        }
+
+        // moto 5.2.4 no-lambda rotation (models.py:897-973 + 966-973): the
+        // new pending version carries *no value* (RotateImmediately defaults
+        // to true) and, without a lambda, becomes AWSCURRENT while the old
+        // current drops to exactly ["AWSPREVIOUS"]. The real value now lives
+        // only in AWSPREVIOUS — matching the live-moto probe, value and all.
+        {
+            let mut versions = secret.versions.write();
+            let has_versions = !versions.is_empty();
+            let new_version_id = if has_versions {
+                match Self::version_id_from_token(
+                    req.params
+                        .get("ClientRequestToken")
+                        .and_then(|v| v.as_str()),
+                ) {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                }
+            } else {
+                String::new()
+            };
+            if has_versions {
+                for v in versions.values_mut() {
+                    v.stages.retain(|s| s != "AWSPENDING" && s != "AWSPREVIOUS");
+                }
+                let current_value = if rotate_immediately {
+                    (None, None)
+                } else {
+                    // moto copies the secret's top-level fields here; the
+                    // twin's source of truth is the current AWSCURRENT
+                    // version.
+                    versions
+                        .values()
+                        .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
+                        .map(|v| (v.secret_string.clone(), v.secret_binary.clone()))
+                        .unwrap_or((None, None))
+                };
+                versions.insert(
+                    new_version_id.clone(),
+                    SecretVersion {
+                        version_id: new_version_id.clone(),
+                        secret_string: current_value.0,
+                        secret_binary: current_value.1,
+                        stages: vec!["AWSPENDING".to_string()],
+                        created_date: Utc::now().timestamp() as f64,
+                    },
+                );
+                // moto's reset_default_version + the explicit AWSCURRENT
+                // relabel of the pending version (no-lambda branch).
+                if let Some(old_current) = versions
+                    .values_mut()
+                    .find(|v| v.stages.iter().any(|s| s == "AWSCURRENT"))
+                {
+                    old_current.stages = vec!["AWSPREVIOUS".to_string()];
+                }
+                if let Some(pending) = versions.get_mut(&new_version_id) {
+                    pending.stages = vec!["AWSCURRENT".to_string()];
+                }
+            }
+        }
+
+        // Rotation metadata: moto sets rotation_requested unconditionally,
+        // rotation_enabled only when AutomaticallyAfterDays > 0, and always
+        // records the lambda or "" (models.py:920-925).
+        *secret.rotation_requested.write() = true;
         if !lambda_arn.is_empty() {
             *secret.rotation_lambda_arn.write() = Some(lambda_arn.to_string());
+        } else {
+            *secret.rotation_lambda_arn.write() = None;
         }
-        let automatically_after = rules
-            .get("AutomaticallyAfterDays")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        if !lambda_arn.is_empty() && automatically_after > 0 {
+        if automatically_after != 0 {
             *secret.rotation_rules.write() = Some(rules.clone());
+            *secret.next_rotation_date.write() =
+                Some(Utc::now().timestamp() as f64 + automatically_after as f64 * 86400.0);
         }
-        if !lambda_arn.is_empty() {
-            *secret.rotation_enabled.write() = true;
-        }
+        *secret.rotation_enabled.write() = automatically_after > 0;
 
-        // New AWSPENDING version carrying the current value.
-        let current = secret.get_version("AWSCURRENT");
-        let pending_id = Self::new_version_id();
-        let mut versions = secret.versions.write();
-        for v in versions.values_mut() {
-            v.stages.retain(|s| s != "AWSPENDING");
-        }
-        let version = SecretVersion {
-            version_id: pending_id.clone(),
-            secret_string: current.as_ref().and_then(|c| c.secret_string.clone()),
-            secret_binary: current.as_ref().and_then(|c| c.secret_binary.clone()),
-            stages: vec!["AWSPENDING".to_string()],
-            created_date: Utc::now().timestamp() as f64,
-        };
-        versions.insert(pending_id.clone(), version);
+        // Divergence note: with a RotationLambdaARN moto additionally
+        // verifies the function and invokes its four rotation steps over the
+        // lambda backend; the twin runs no lambda, so the no-lambda stage
+        // handling above is served for either case (the ARN is stored and
+        // describe-reflected only).
 
-        AwsResponse::json(
-            200,
-            json!({
-                "ARN": secret.arn,
-                "Name": secret.name,
-                "VersionId": pending_id,
-            }),
-        )
+        let current_version_id = secret
+            .get_version("AWSCURRENT")
+            .map(|v| v.version_id.clone())
+            .unwrap_or_default();
+        let mut resp = json!({
+            "ARN": secret.arn,
+            "Name": secret.name,
+        });
+        if !current_version_id.is_empty() {
+            resp.as_object_mut()
+                .unwrap()
+                .insert("VersionId".into(), json!(current_version_id));
+        }
+        AwsResponse::json(200, resp)
     }
 
     fn cancel_rotate_secret(&self, req: &AwsRequest) -> AwsResponse {
@@ -982,11 +1630,21 @@ impl SecretsManagerHandler {
             Some(s) => s,
             None => return Self::not_found(secret_id),
         };
+        if *secret.removed.read() {
+            return AwsResponse::error(
+                400,
+                "InvalidRequestException",
+                "You tried to perform the operation on a secret that's currently marked deleted.",
+            );
+        }
+        // moto requires a configured lambda for CancelRotateSecret — its
+        // message loses the space between "configured" and "and" (an
+        // adjacent-string quirk in models.py:428-434, mirrored verbatim).
         if secret.rotation_lambda_arn.read().is_none() {
             return AwsResponse::error(
                 400,
                 "InvalidRequestException",
-                "You tried to enable rotation on a secret that doesn't already have a Lambda function ARN configured and you didn't include such an ARN as a parameter in this call.",
+                "You tried to enable rotation on a secret that doesn't already have a Lambda function ARN configuredand you didn't include such an ARN as a parameter in this call.",
             );
         }
         *secret.rotation_enabled.write() = false;
@@ -995,6 +1653,7 @@ impl SecretsManagerHandler {
             json!({
                 "ARN": secret.arn,
                 "Name": secret.name,
+                "VersionId": secret.get_version("AWSCURRENT").map(|v| v.version_id.clone()).unwrap_or_default(),
             }),
         )
     }
@@ -1100,55 +1759,150 @@ impl SecretsManagerHandler {
             .map(|arr| {
                 arr.iter()
                     .map(|s| s.as_str().unwrap_or("").to_string())
+                    .filter(|s| !s.is_empty())
                     .collect()
             })
             .unwrap_or_default();
+        let filters = req
+            .params
+            .get("Filters")
+            .and_then(|v| v.as_array())
+            .cloned();
+        if let Err(e) = validate_list_filters(filters.as_deref()) {
+            return e;
+        }
+
+        // moto's cross-checks (models.py:503-551): both selectors rejected;
+        // MaxResults only makes sense with Filters.
+        if !ids.is_empty() && filters.as_ref().map(|f| !f.is_empty()).unwrap_or(false) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Either 'SecretIdList' or 'Filters' must be provided, but not both.",
+            );
+        }
+        let max_results = req.params.get("MaxResults").and_then(|v| v.as_u64());
+        if max_results.is_some() && !filters.as_ref().map(|f| !f.is_empty()).unwrap_or(false) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "'Filters' not specified. 'Filters' must also be specified when 'MaxResults' is provided.",
+            );
+        }
 
         let mut values: Vec<Value> = Vec::new();
         let mut errors: Vec<Value> = Vec::new();
-        for id in &ids {
-            let secret = Self::resolve_secret(&state, id);
-            let secret = match secret {
-                Some(s) if !*s.removed.read() => Some(s),
-                Some(_) => None,
-                None => None,
-            };
-            if let Some(secret) = secret {
-                if let Some(version) = secret.get_version("AWSCURRENT") {
-                    let mut obj = json!({
-                        "ARN": secret.arn,
-                        "Name": secret.name,
-                        "VersionId": version.version_id,
-                        "CreatedDate": version.created_date,
-                    });
-                    if let Some(ref s) = version.secret_string {
-                        obj.as_object_mut()
-                            .unwrap()
-                            .insert("SecretString".into(), json!(s));
-                    }
-                    if let Some(ref b) = version.secret_binary {
-                        obj.as_object_mut()
-                            .unwrap()
-                            .insert("SecretBinary".into(), json!(b));
-                    }
-                    values.push(obj);
-                    continue;
+        let mut no_value = false;
+        if !ids.is_empty() {
+            for id in &ids {
+                match self.batch_single(&state, id, req) {
+                    Ok(v) => values.push(v),
+                    Err(Value::Null) => no_value = true,
+                    Err(entry) => errors.push(entry),
                 }
             }
-            errors.push(json!({
-                "SecretId": id,
-                "ErrorCode": "ResourceNotFoundException",
-                "Message": format!("Secrets Manager can't find the specified secret: {}", id),
-            }));
+        } else if filters.as_ref().map(|f| !f.is_empty()).unwrap_or(false) {
+            for secret in state.secrets.read().values().cloned().collect::<Vec<_>>() {
+                if matches_list_filters(&secret, filters.as_deref()) {
+                    match self.batch_single(&state, &secret.name, req) {
+                        Ok(v) => values.push(v),
+                        Err(Value::Null) => no_value = true,
+                        Err(entry) => errors.push(entry),
+                    }
+                }
+            }
+        }
+        if no_value {
+            // moto's SecretHasNoValueException escapes the per-secret catch
+            // and fails the whole request with the AWSCURRENT staging label.
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                "Secrets Manager can't find the specified secret value for staging label: AWSCURRENT",
+            );
         }
 
-        let mut resp = json!({ "SecretValues": values });
-        if !errors.is_empty() {
+        // moto's _get_secret_values_page_and_next_token.
+        let max = max_results
+            .map(|m| (m as usize).max(1))
+            .unwrap_or(crate::models::LIST_SECRETS_MAX_RESULTS_DEFAULT);
+        let start = req
+            .params
+            .get("NextToken")
+            .and_then(|v| v.as_str())
+            .and_then(|t| t.parse::<usize>().ok())
+            .unwrap_or(0);
+        let end = start + max;
+        let page: Vec<Value> = values.iter().skip(start).take(max).cloned().collect();
+        let next_token = if end < values.len() {
+            json!(end.to_string())
+        } else {
+            Value::Null
+        };
+
+        let mut resp = json!({ "SecretValues": page, "Errors": errors });
+        if !next_token.is_null() {
             resp.as_object_mut()
                 .unwrap()
-                .insert("Errors".into(), json!(errors));
+                .insert("NextToken".into(), next_token);
         }
         AwsResponse::json(200, resp)
+    }
+
+    /// One BatchGetSecretValue entry — moto reuses `get_secret_value` with
+    /// empty version args (models.py:522-535); a deleted secret is caught as
+    /// an `InvalidRequestException` row (moto keeps SecretHasNoValue
+    /// *uncaught*, so a valueless current version fails the whole request —
+    /// mirrored by the Err(None) arm).
+    fn batch_single(&self, state: &SmState, id: &str, req: &AwsRequest) -> Result<Value, Value> {
+        let Some(secret) = Self::resolve_secret(state, id) else {
+            return Err(json!({
+                "SecretId": id,
+                "ErrorCode": "ResourceNotFoundException",
+                "Message": "Secrets Manager can't find the specified secret.",
+            }));
+        };
+        if *secret.removed.read() {
+            return Err(json!({
+                "SecretId": id,
+                "ErrorCode": "InvalidRequestException",
+                "Message": "An error occurred (InvalidRequestException) when calling the GetSecretValue operation: You tried to                 perform the operation on a secret that's currently marked deleted.",
+            }));
+        }
+        let version = secret
+            .get_version("AWSCURRENT")
+            .or_else(|| secret.get_version_by_id(""));
+        let Some(version) = version else {
+            return Err(json!({
+                "SecretId": id,
+                "ErrorCode": "ResourceNotFoundException",
+                "Message": "Secrets Manager can't find the specified secret.",
+            }));
+        };
+        if version.secret_string.is_none() && version.secret_binary.is_none() {
+            // moto's SecretHasNoValueException escapes its catch in
+            // batch_get_secret_value and fails the whole call.
+            return Err(Value::Null);
+        }
+        let mut obj = json!({
+            "ARN": secret.arn,
+            "Name": secret.name,
+            "VersionId": version.version_id,
+            "VersionStages": version.stages,
+            "CreatedDate": version.created_date,
+        });
+        if let Some(ref s) = version.secret_string {
+            obj.as_object_mut()
+                .unwrap()
+                .insert("SecretString".into(), json!(s));
+        }
+        if let Some(ref b) = version.secret_binary {
+            obj.as_object_mut()
+                .unwrap()
+                .insert("SecretBinary".into(), json!(b));
+        }
+        let _ = req;
+        Ok(obj)
     }
 
     fn replicate_secret_to_regions(&self, req: &AwsRequest) -> AwsResponse {
@@ -1267,78 +2021,240 @@ impl SecretsManagerHandler {
             })
             .collect()
     }
-
-    fn new_version_id() -> String {
-        uuid::Uuid::new_v4().simple().to_string()
-    }
 }
 
-/// Name-based list filter with no filters = include everything.
-fn filtered_in(secret: &Arc<Secret>, filters: Option<&[Value]>) -> bool {
-    let filters = match filters {
-        Some(f) => f,
-        None => return true,
-    };
-    for f in filters {
+/// moto's ListSecrets filter validation (secretsmanager/responses.py
+/// `_validate_filters`). The enum list in the error text is moto's own
+/// hardcode — it omits primary-region/owning-service even though those keys
+/// are accepted.
+fn validate_list_filters(filters: Option<&[Value]>) -> Result<(), AwsResponse> {
+    const FILTER_KEYS: [&str; 7] = [
+        "all",
+        "name",
+        "description",
+        "tag-key",
+        "tag-value",
+        "primary-region",
+        "owning-service",
+    ];
+    for (idx, f) in (filters.unwrap_or(&[])).iter().enumerate() {
+        let Some(key) = f.get("Key").and_then(|k| k.as_str()) else {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Invalid filter key",
+            ));
+        };
+        if !FILTER_KEYS.contains(&key) {
+            return Err(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value '{key}' at 'filters.{}.member.key' failed to satisfy constraint: \
+                     Member must satisfy enum value set: [all, name, tag-key, description, tag-value]",
+                    idx + 1
+                ),
+            ));
+        }
+        if f.get("Values").is_none() {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Invalid filter values for key: {key}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// moto's `list_secrets/filters.py` matcher: `!`-prefixed negations first,
+/// then positive prefix/word matches per key.
+fn matches_list_filters(secret: &Arc<Secret>, filters: Option<&[Value]>) -> bool {
+    for f in filters.unwrap_or(&[]) {
         let key = f.get("Key").and_then(|k| k.as_str()).unwrap_or("");
-        let values: Vec<&str> = f
+        let values: Vec<String> = f
             .get("Values")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str()).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let is_match = match key {
-            "name" => values.iter().any(|p| secret.name.starts_with(p)),
+        let matched = match key {
+            "name" => {
+                let strings = vec![secret.name.clone()];
+                moto_matcher(&values, &strings, true, true)
+            }
             "description" => {
-                let desc = secret.description.read().clone().unwrap_or_default();
-                values
-                    .iter()
-                    .any(|p| desc.to_lowercase().contains(&p.to_lowercase()))
+                let desc = secret.description.read().clone();
+                let Some(desc) = desc else {
+                    return false;
+                };
+                moto_matcher(&values, &[desc], false, false)
             }
             "tag-key" => {
-                let tags = secret.tags.read();
-                values.iter().any(|p| {
-                    tags.iter()
-                        .any(|t| t.get("Key").and_then(|k| k.as_str()) == Some(*p))
-                })
+                let keys: Vec<String> = secret
+                    .tags
+                    .read()
+                    .iter()
+                    .filter_map(|t| t.get("Key").and_then(|k| k.as_str()).map(String::from))
+                    .collect();
+                if keys.is_empty() {
+                    return false;
+                }
+                moto_matcher(&values, &keys, true, true)
             }
             "tag-value" => {
-                let tags = secret.tags.read();
-                values.iter().any(|p| {
-                    tags.iter()
-                        .any(|t| t.get("Value").and_then(|k| k.as_str()) == Some(*p))
-                })
+                let vals: Vec<String> = secret
+                    .tags
+                    .read()
+                    .iter()
+                    .filter_map(|t| t.get("Value").and_then(|k| k.as_str()).map(String::from))
+                    .collect();
+                if vals.is_empty() {
+                    return false;
+                }
+                moto_matcher(&values, &vals, true, true)
             }
             "all" => {
-                let desc = (*secret.description.read()).clone().unwrap_or_default();
-                let tags = secret.tags.read().clone();
-                let mut all: Vec<String> = vec![secret.name.clone(), desc];
-                for t in &tags {
-                    all.push(
-                        t.get("Key")
-                            .and_then(|k| k.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    );
-                    all.push(
-                        t.get("Value")
-                            .and_then(|k| k.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    );
+                let desc = (*secret.description.read()).clone();
+                let mut attrs = vec![secret.name.clone()];
+                if let Some(desc) = desc {
+                    if !desc.is_empty() {
+                        attrs.push(desc);
+                    }
                 }
-                values.iter().any(|p| {
-                    all.iter()
-                        .any(|s| s.to_lowercase().contains(&p.to_lowercase()))
-                })
+                for t in secret.tags.read().iter() {
+                    if let Some(k) = t.get("Key").and_then(|x| x.as_str()) {
+                        attrs.push(k.to_string());
+                    }
+                    if let Some(v) = t.get("Value").and_then(|k| k.as_str()) {
+                        attrs.push(v.to_string());
+                    }
+                }
+                moto_matcher(&values, &attrs, false, false)
             }
-            "primary-region" => values.contains(&secret.region.as_str()),
+            // moto's filter_primary_region requires existing replicas.
+            "primary-region" => {
+                !secret.replicas.read().is_empty() && values.iter().any(|v| *v == secret.region)
+            }
+            "owning-service" => false,
             _ => true,
         };
-        if !is_match {
+        if !matched {
             return false;
         }
     }
     true
+}
+
+/// `_matcher` from moto's list_secrets/filters.py.
+fn moto_matcher(
+    patterns: &[String],
+    strings: &[String],
+    match_prefix: bool,
+    case_sensitive: bool,
+) -> bool {
+    for pattern in patterns.iter().filter(|p| p.starts_with('!')) {
+        if strings
+            .iter()
+            .any(|s| !moto_match_pattern(&pattern[1..], s, match_prefix, case_sensitive))
+        {
+            return true;
+        }
+    }
+    for pattern in patterns.iter().filter(|p| !p.starts_with('!')) {
+        if strings
+            .iter()
+            .any(|s| moto_match_pattern(pattern, s, match_prefix, case_sensitive))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// `_match_pattern` from moto's list_secrets/filters.py.
+fn moto_match_pattern(
+    pattern: &str,
+    value: &str,
+    match_prefix: bool,
+    case_sensitive: bool,
+) -> bool {
+    if match_prefix {
+        if case_sensitive {
+            return value.starts_with(pattern);
+        }
+        return value.to_lowercase().starts_with(&pattern.to_lowercase());
+    }
+    let mut pattern_words = moto_split_words(pattern);
+    if pattern_words.is_empty() {
+        return false;
+    }
+    let mut value_words = moto_split_words(value);
+    if !case_sensitive {
+        pattern_words = pattern_words.iter().map(|p| p.to_lowercase()).collect();
+        value_words = value_words.iter().map(|v| v.to_lowercase()).collect();
+    }
+    pattern_words
+        .iter()
+        .all(|pw| value_words.iter().any(|vw| vw.starts_with(pw.as_str())))
+}
+
+/// `split_words` from moto's list_secrets/filters.py: split by one special
+/// character (when no other special character also occurs), then by
+/// uppercase runs.
+fn moto_split_words(s: &str) -> Vec<String> {
+    const SPECIAL: [char; 7] = ['/', '-', '_', '+', '=', '.', '@'];
+    if s.chars().count() == 1 && SPECIAL.contains(&s.chars().next().unwrap_or(' ')) {
+        return vec![];
+    }
+    for ch in SPECIAL {
+        if s.contains(ch) {
+            let others: Vec<char> = SPECIAL.iter().copied().filter(|c| *c != ch).collect();
+            if others.iter().any(|c| s.contains(*c)) {
+                return vec![s.to_string()];
+            }
+            return s.split(ch).flat_map(moto_split_by_uppercase).collect();
+        }
+    }
+    moto_split_by_uppercase(s)
+}
+
+/// `split_by_uppercase` per moto: split before upper-case runs.
+fn moto_split_by_uppercase(s: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut prev_lower = false;
+    for c in s.chars() {
+        if c.is_ascii_uppercase() && prev_lower {
+            words.push(current.clone());
+            current.clear();
+        }
+        prev_lower = c.is_ascii_lowercase();
+        current.push(c);
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+        .into_iter()
+        .map(|w| w.trim().to_string())
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Insertion-order reconstruction for moto's list order: stage-less versions
+/// are oldest, AWSPREVIOUS next, AWSCURRENT newest.
+fn stage_rank(v: &SecretVersion) -> u8 {
+    if v.stages.iter().any(|s| s == "AWSCURRENT") {
+        2
+    } else if v.stages.iter().any(|s| s == "AWSPREVIOUS") {
+        1
+    } else {
+        0
+    }
 }
 
 /// Simple xorshift random generator seeded from the system clock.
@@ -1632,5 +2548,480 @@ mod tests {
         let parsed: Value = serde_json::from_str(&resp.body).unwrap();
         assert!(parsed["SecretValues"].as_array().unwrap().len() == 1);
         assert!(parsed["Errors"].as_array().unwrap().len() == 1);
+    }
+
+    // ---- wave-6 ledger items (moto oracle: secretsmanager/models.py) ----
+
+    fn body_of(resp: &AwsResponse) -> Value {
+        serde_json::from_str(resp.body.as_str()).unwrap()
+    }
+
+    fn created(handler: &SecretsManagerHandler, name: &str, value: &str) -> String {
+        let resp = handler.handle(make_req(
+            "CreateSecret",
+            json!({ "Name": name, "SecretString": value }),
+        ));
+        assert_eq!(resp.status, 200, "{}", resp.body);
+        body_of(&resp)["VersionId"].as_str().unwrap().to_string()
+    }
+
+    /// Item 11: the secret ARN carries moto's 6-letter suffix (no digits).
+    #[test]
+    fn test_secret_arn_suffix() {
+        let handler = SecretsManagerHandler::new();
+        created(&handler, "sfx/secret", "v");
+        let describe = handler.handle(make_req(
+            "DescribeSecret",
+            json!({ "SecretId": "sfx/secret" }),
+        ));
+        let arn = body_of(&describe)["ARN"].as_str().unwrap().to_string();
+        let tail = arn.rsplit(':').next().unwrap();
+        let (_, suffix) = tail.rsplit_once('-').unwrap();
+        assert_eq!(suffix.len(), 6, "suffix is 6 chars: {arn}");
+        assert!(
+            suffix.chars().all(|c| c.is_ascii_alphabetic()),
+            "suffix letters only: {arn}"
+        );
+        // The full ARN resolves as a SecretId (round trip).
+        let resp = handler.handle(make_req("GetSecretValue", json!({ "SecretId": arn })));
+        assert_eq!(resp.status, 200);
+    }
+
+    /// Item 12: VersionId+VersionStage mismatch, stage miss and valueless
+    /// versions discriminate moto-style (statuses + error types + texts).
+    #[test]
+    fn test_get_secret_value_stage_discrimination() {
+        let handler = SecretsManagerHandler::new();
+        let vid = created(&handler, "stage-d/secret", "v1");
+        // Known version id + wrong stage → SecretStageVersionMismatchException
+        // (404 status, errorType InvalidRequestException).
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "stage-d/secret", "VersionId": vid, "VersionStage": "AWSPREVIOUS" }),
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(body_of(&resp)["__type"], "InvalidRequestException");
+        assert_eq!(
+            body_of(&resp)["message"],
+            "You provided a VersionStage that is not associated to the provided VersionId."
+        );
+        // Stage with no holding version → moto's id-less 404.
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "stage-d/secret", "VersionStage": "AWSPENDING" }),
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Secrets Manager can't find the specified secret."
+        );
+        // Unknown VersionId → the VersionId-flavoured 404.
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "stage-d/secret", "VersionId": "no-such-version-id-0000000000000000" }),
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Secrets Manager can't find the specified secret value for VersionId: no-such-version-id-0000000000000000"
+        );
+        // GetSecretValue renders VersionStages (moto's response_data).
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "stage-d/secret" }),
+        ));
+        assert_eq!(body_of(&resp)["VersionStages"], json!(["AWSCURRENT"]));
+        // A valueless secret (create w/o value) → SecretHasNoValue family,
+        // and the create response carries no VersionId.
+        let resp = handler.handle(make_req("CreateSecret", json!({ "Name": "stage-d/empty" })));
+        assert_eq!(resp.status, 200);
+        assert!(body_of(&resp).get("VersionId").is_none());
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "stage-d/empty" }),
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Secrets Manager can't find the specified secret value for staging label: AWSCURRENT"
+        );
+    }
+
+    /// Item 13: UpdateSecret on a deleted secret; DeleteSecret window/force
+    /// permutations with moto's texts.
+    #[test]
+    fn test_update_delete_secret_guards() {
+        let handler = SecretsManagerHandler::new();
+        created(&handler, "guards/secret", "v");
+        // The window range validates regardless of force, then the combo.
+        let resp = handler.handle(make_req(
+            "DeleteSecret",
+            json!({ "SecretId": "guards/secret", "RecoveryWindowInDays": 3 }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "An error occurred (InvalidParameterException) when calling the DeleteSecret operation: The                 RecoveryWindowInDays value must be between 7 and 30 days (inclusive)."
+        );
+        let resp = handler.handle(make_req(
+            "DeleteSecret",
+            json!({
+                "SecretId": "guards/secret",
+                "RecoveryWindowInDays": 10,
+                "ForceDeleteWithoutRecovery": true
+            }),
+        ));
+        assert_eq!(
+            body_of(&resp)["message"],
+            "An error occurred (InvalidParameterException) when calling the DeleteSecret operation: You can't                 use ForceDeleteWithoutRecovery in conjunction with RecoveryWindowInDays."
+        );
+
+        let resp = handler.handle(make_req(
+            "DeleteSecret",
+            json!({ "SecretId": "guards/secret", "RecoveryWindowInDays": 10 }),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "UpdateSecret",
+            json!({
+                "SecretId": "guards/secret",
+                "SecretString": "x",
+                "ClientRequestToken": "upd-upd-upd-upd-upd-upd-upd-upd-013"
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "An error occurred (InvalidRequestException) when calling the UpdateSecret operation: You can't perform this operation on the secret because it was marked for deletion."
+        );
+        // Second delete without force → moto's still-marked-deleted text.
+        let resp = handler.handle(make_req(
+            "DeleteSecret",
+            json!({ "SecretId": "guards/secret" }),
+        ));
+        assert_eq!(
+            body_of(&resp)["message"],
+            "An error occurred (InvalidRequestException) when calling the DeleteSecret operation: You tried to                     perform the operation on a secret that's currently marked deleted."
+        );
+        // Force delete of a scheduled secret still removes it (moto).
+        let resp = handler.handle(make_req(
+            "DeleteSecret",
+            json!({ "SecretId": "guards/secret", "ForceDeleteWithoutRecovery": true }),
+        ));
+        assert_eq!(resp.status, 200, "{}", resp.body);
+    }
+
+    /// Item 14: ListSecrets pages at MaxResults with an offset NextToken and
+    /// renders both version→stage maps; filters validate and match moto-style.
+    #[test]
+    fn test_list_secrets_pagination_and_filters() {
+        let handler = SecretsManagerHandler::new();
+        for i in 0..3 {
+            created(&handler, &format!("lsp/page{i}"), "v");
+        }
+        let resp = handler.handle(make_req(
+            "ListSecrets",
+            json!({ "MaxResults": 2, "Filters": [ { "Key": "name", "Values": ["lsp/"] } ] }),
+        ));
+        let parsed = body_of(&resp);
+        assert_eq!(parsed["SecretList"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["NextToken"], "2");
+        let entry = &parsed["SecretList"][0];
+        assert!(entry["SecretVersionsToStages"].is_object());
+        assert!(entry["VersionIdsToStages"].is_object());
+        // moto's list entries carry no PrimaryRegion (replica-region-only).
+        assert!(entry.get("PrimaryRegion").is_none());
+
+        let resp = handler.handle(make_req(
+            "ListSecrets",
+            json!({ "MaxResults": 2, "NextToken": "2", "Filters": [ { "Key": "name", "Values": ["lsp/"] } ] }),
+        ));
+        let parsed = body_of(&resp);
+        assert_eq!(parsed["SecretList"].as_array().unwrap().len(), 1);
+        assert!(parsed["NextToken"].is_null());
+
+        // Unknown filter key → moto's ValidationException with the hardcoded
+        // enum list (moto quirk: omits primary-region/owning-service).
+        let resp = handler.handle(make_req(
+            "ListSecrets",
+            json!({ "Filters": [ { "Key": "bogus", "Values": ["x"] } ] }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["__type"], "ValidationException");
+        assert_eq!(
+            body_of(&resp)["message"],
+            "1 validation error detected: Value 'bogus' at 'filters.1.member.key' failed to satisfy constraint: Member must satisfy enum value set: [all, name, tag-key, description, tag-value]"
+        );
+
+        // tag-key filter matches moto-style on the tag keys.
+        created(&handler, "lsp/tagged", "v");
+        handler.handle(make_req(
+            "TagResource",
+            json!({ "SecretId": "lsp/tagged", "Tags": [ { "Key": "envtag", "Value": "x" } ] }),
+        ));
+        let resp = handler.handle(make_req(
+            "ListSecrets",
+            json!({ "Filters": [ { "Key": "tag-key", "Values": ["envtag"] } ] }),
+        ));
+        assert_eq!(body_of(&resp)["SecretList"].as_array().unwrap().len(), 1);
+    }
+
+    /// Item 15: BatchGetSecretValue cross-checks — invalid combos, unknown
+    /// ids and deleted secrets land in `Errors` with moto's codes and texts.
+    #[test]
+    fn test_batch_get_secret_value_cross_checks() {
+        let handler = SecretsManagerHandler::new();
+        created(&handler, "bg/secret", "v");
+        created(&handler, "bg/gone", "v");
+        handler.handle(make_req(
+            "DeleteSecret",
+            json!({ "SecretId": "bg/gone", "RecoveryWindowInDays": 7 }),
+        ));
+
+        let resp = handler.handle(make_req(
+            "BatchGetSecretValue",
+            json!({
+                "SecretIdList": ["bg/secret"],
+                "Filters": [ { "Key": "name", "Values": ["bg/"] } ]
+            }),
+        ));
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Either 'SecretIdList' or 'Filters' must be provided, but not both."
+        );
+        let resp = handler.handle(make_req(
+            "BatchGetSecretValue",
+            json!({ "SecretIdList": ["bg/secret"], "MaxResults": 1 }),
+        ));
+        assert_eq!(
+            body_of(&resp)["message"],
+            "'Filters' not specified. 'Filters' must also be specified when 'MaxResults' is provided."
+        );
+
+        let resp = handler.handle(make_req(
+            "BatchGetSecretValue",
+            json!({ "SecretIdList": ["bg/secret", "bg/unknown", "bg/gone"] }),
+        ));
+        let parsed = body_of(&resp);
+        assert_eq!(parsed["SecretValues"].as_array().unwrap().len(), 1);
+        let errors = parsed["Errors"].as_array().unwrap();
+        assert_eq!(errors.len(), 2);
+        // Unknown id → moto's id-less ResourceNotFoundException row.
+        assert_eq!(errors[0]["ErrorCode"], "ResourceNotFoundException");
+        assert_eq!(
+            errors[0]["Message"],
+            "Secrets Manager can't find the specified secret."
+        );
+        // Deleted id → moto catches InvalidRequestException into the row.
+        assert_eq!(errors[1]["ErrorCode"], "InvalidRequestException");
+        assert!(errors[1]["Message"]
+            .as_str()
+            .unwrap()
+            .contains("GetSecretValue operation"));
+    }
+
+    /// Item 16: ClientRequestToken idempotency + KmsKeyId storage, including
+    /// the moto quirk that token-less UpdateSecret raises
+    /// ResourceExistsException (verified against live moto 5.2.4).
+    #[test]
+    fn test_client_request_token_and_kms() {
+        let handler = SecretsManagerHandler::new();
+        let token = "tok-tok-tok-tok-tok-tok-tok-tok-002";
+        let resp = handler.handle(make_req(
+            "CreateSecret",
+            json!({ "Name": "tok/secret", "SecretString": "v" }),
+        ));
+        let arn = body_of(&resp)["ARN"].as_str().unwrap().to_string();
+        // Token-less update → moto quirk: ResourceExistsException.
+        let resp = handler.handle(make_req(
+            "UpdateSecret",
+            json!({ "SecretId": "tok/secret", "SecretString": "v5" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "A resource with the ID you requested already exists."
+        );
+        // Update with a fresh token echoes the token as version id.
+        let resp = handler.handle(make_req(
+            "UpdateSecret",
+            json!({
+                "SecretId": "tok/secret",
+                "SecretString": "v5",
+                "ClientRequestToken": token
+            }),
+        ));
+        assert_eq!(resp.status, 200, "{}", resp.body);
+        assert_eq!(body_of(&resp)["VersionId"], token);
+        // Same token + same value again → idempotent echo (no new version).
+        let resp = handler.handle(make_req(
+            "UpdateSecret",
+            json!({
+                "SecretId": "tok/secret",
+                "SecretString": "v5",
+                "ClientRequestToken": token
+            }),
+        ));
+        assert_eq!(body_of(&resp)["VersionId"], token);
+        // Same token, different value → the moto conflict text.
+        let resp = handler.handle(make_req(
+            "PutSecretValue",
+            json!({
+                "SecretId": "tok/secret",
+                "SecretString": "DIFFERENT",
+                "ClientRequestToken": token
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["__type"], "ResourceExistsException");
+        assert_eq!(
+            body_of(&resp)["message"],
+            format!("You can't use ClientRequestToken {token} because that value is already in use for a version of secret {arn}.")
+        );
+        // Short token → InvalidParameterException.
+        let resp = handler.handle(make_req(
+            "CreateSecret",
+            json!({ "Name": "tok/nope", "SecretString": "v", "ClientRequestToken": "short" }),
+        ));
+        assert_eq!(
+            body_of(&resp)["message"],
+            "ClientRequestToken must be 32-64 characters long."
+        );
+        // KmsKeyId: stored on create, reflected in DescribeSecret; unset and
+        // default-alias secrets render no KmsKeyId (moto).
+        handler.handle(make_req(
+            "CreateSecret",
+            json!({
+                "Name": "kms/secret", "SecretString": "v", "KmsKeyId": "arn:aws:kms:custom:key-1"
+            }),
+        ));
+        let describe = handler.handle(make_req(
+            "DescribeSecret",
+            json!({ "SecretId": "kms/secret" }),
+        ));
+        assert_eq!(body_of(&describe)["KmsKeyId"], "arn:aws:kms:custom:key-1");
+        let describe = handler.handle(make_req(
+            "DescribeSecret",
+            json!({ "SecretId": "tok/secret" }),
+        ));
+        assert!(body_of(&describe).get("KmsKeyId").is_none());
+    }
+
+    /// Item 17: RotateSecret without a lambda mirrors moto — the new
+    /// valueless version becomes AWSCURRENT, the old value survives only
+    /// under AWSPREVIOUS, and days are validated 1-1000.
+    #[test]
+    fn test_rotate_secret_no_lambda() {
+        let handler = SecretsManagerHandler::new();
+        created(&handler, "rot/secret", "v1");
+        let describe_before = body_of(&handler.handle(make_req(
+            "DescribeSecret",
+            json!({ "SecretId": "rot/secret" }),
+        )));
+        assert!(describe_before.get("RotationEnabled").is_none());
+
+        let resp = handler.handle(make_req(
+            "RotateSecret",
+            json!({
+                "SecretId": "rot/secret",
+                "RotationRules": { "AutomaticallyAfterDays": 30 }
+            }),
+        ));
+        assert_eq!(resp.status, 200, "{}", resp.body);
+        // GetSecretValue on the valueless AWSCURRENT → SecretHasNoValue.
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "rot/secret" }),
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Secrets Manager can't find the specified secret value for staging label: AWSCURRENT"
+        );
+        // The old value survives under AWSPREVIOUS only.
+        let resp = handler.handle(make_req(
+            "ListSecretVersionIds",
+            json!({ "SecretId": "rot/secret" }),
+        ));
+        let parsed_ids = body_of(&resp);
+        let versions = parsed_ids["Versions"].as_array().unwrap();
+        assert_eq!(versions.len(), 2);
+        let previous = versions
+            .iter()
+            .find(|v| {
+                v["VersionStages"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("AWSPREVIOUS"))
+            })
+            .unwrap();
+        let resp = handler.handle(make_req(
+            "GetSecretValue",
+            json!({ "SecretId": "rot/secret", "VersionId": previous["VersionId"] }),
+        ));
+        assert_eq!(body_of(&resp)["SecretString"], "v1");
+
+        let describe = body_of(&handler.handle(make_req(
+            "DescribeSecret",
+            json!({ "SecretId": "rot/secret" }),
+        )));
+        assert_eq!(describe["RotationEnabled"], true);
+        assert_eq!(describe["RotationLambdaARN"], "");
+        assert_eq!(describe["RotationRules"]["AutomaticallyAfterDays"], 30);
+        assert!(describe.get("NextRotationDate").is_some());
+
+        // Days validation: 0 and 1001 raise moto's InvalidParameterException.
+        for days in [0, 1001] {
+            let resp = handler.handle(make_req(
+                "RotateSecret",
+                json!({
+                    "SecretId": "rot/secret",
+                    "RotationRules": { "AutomaticallyAfterDays": days }
+                }),
+            ));
+            assert_eq!(resp.status, 400);
+            assert_eq!(
+                body_of(&resp)["message"],
+                "RotationRules.AutomaticallyAfterDays must be within 1-1000."
+            );
+        }
+    }
+
+    /// Item 18: ListSecretVersionIds is deterministic and keeps the
+    /// true-ARN rendering (documented divergence from moto's name-ARN quirk).
+    #[test]
+    fn test_list_secret_version_ids_ordering() {
+        let handler = SecretsManagerHandler::new();
+        let resp = handler.handle(make_req(
+            "CreateSecret",
+            json!({ "Name": "lsi/secret", "SecretString": "v1" }),
+        ));
+        let arn = body_of(&resp)["ARN"].as_str().unwrap().to_string();
+        handler.handle(make_req(
+            "PutSecretValue",
+            json!({ "SecretId": "lsi/secret", "SecretString": "v2" }),
+        ));
+        let resp = handler.handle(make_req(
+            "ListSecretVersionIds",
+            json!({ "SecretId": "lsi/secret" }),
+        ));
+        let parsed = body_of(&resp);
+        assert_eq!(parsed["ARN"], arn);
+        let versions = parsed["Versions"].as_array().unwrap();
+        assert_eq!(versions.len(), 2);
+        let stages: Vec<Vec<String>> = versions
+            .iter()
+            .map(|v| {
+                v["VersionStages"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_string())
+                    .collect()
+            })
+            .collect();
+        // Deterministic (created‑date) order: the older version first.
+        assert_eq!(stages[0], vec!["AWSPREVIOUS".to_string()]);
+        assert_eq!(stages[1], vec!["AWSCURRENT".to_string()]);
     }
 }

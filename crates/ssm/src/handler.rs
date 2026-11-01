@@ -6,9 +6,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::models::{
-    fmt_dt, hex_id, uuid_str, Activation, Association, AutomationExecution, Command, Document,
-    Documents, MaintenanceWindow, MwTarget, MwTask, OpsItem, OpsMetadata, ParamVersion, Parameter,
-    PatchBaseline, ResourceDataSync, SsmState, PARAMETER_BY_PATH_MAX_RESULTS,
+    fmt_dt, hex_id, uuid_str, validate_document_info, Activation, Association, AutomationExecution,
+    Command, Document, Documents, MaintenanceWindow, MwTarget, MwTask, OpsItem, OpsMetadata,
+    ParamVersion, Parameter, ParseError, PatchBaseline, ResourceDataSync, SsmState,
+    PARAMETER_BY_PATH_MAX_RESULTS,
 };
 use crate::protocol::{AwsRequest, AwsResponse};
 
@@ -383,6 +384,14 @@ impl SsmHandler {
         }
 
         if let Some(existing) = state.get_parameter(&name) {
+            // moto validates DataType on every PutParameter, before the
+            // ParameterAlreadyExists short-circuit (models.py:2268-2274); the
+            // response layer defaults an absent DataType to "text".
+            let req_data_type = data_type.clone().unwrap_or_else(|| "text".into());
+            if !matches!(req_data_type.as_str(), "text" | "aws:ec2:image") {
+                return err_validation(&format!(
+                    "The following data type is not supported: {req_data_type} (Data type names are all lowercase.)"));
+            }
             if !overwrite {
                 // moto's exact text (ssm exceptions.py ParameterAlreadyExists).
                 return AwsResponse::error(
@@ -392,18 +401,18 @@ impl SsmHandler {
                      option in the request to true.",
                 );
             }
-            let previous = existing.current().expect("parameter without versions");
-            let new_version = previous.version + 1;
-            // Type/fields are preserved from the previous version when absent.
+            let previous = existing.current().expect("parameter without versions"); // Type/fields are preserved from the previous version when absent.
             let parameter_type = parameter_type
                 .clone()
                 .unwrap_or_else(|| previous.parameter_type.clone());
             let description = description.clone().or(previous.description.clone());
             let allowed_pattern = allowed_pattern.clone().or(previous.allowed_pattern.clone());
             let keyid = keyid.clone().or(previous.keyid.clone());
-            let data_type = data_type
-                .clone()
-                .or_else(|| Some(previous.data_type.clone()));
+            // moto does not inherit the previous DataType: its response layer
+            // passes {"text"} when the caller omits the member, so an
+            // overwrite without DataType resets it to "text" (models.py:
+            // 2307-2311 + responses.py `_get_param("DataType", "text")`).
+            let data_type = req_data_type;
             let tier = tier.clone().or_else(|| Some(previous.tier.clone()));
             let policies = policies.clone().or(previous.policies.clone());
             let stored_value = if parameter_type == "SecureString" {
@@ -412,11 +421,14 @@ impl SsmHandler {
             } else {
                 value.clone()
             };
-            let version = ParamVersion {
+            // The version cap + labeled-oldest check happen under the same
+            // write lock (moto models.py:2290-2292), so a concurrent
+            // overwrite cannot prune a newly-labeled oldest version.
+            let push_result = existing.push_version_with_limit(|new_version| ParamVersion {
                 version: new_version,
                 value: stored_value,
                 parameter_type,
-                data_type: data_type.unwrap_or_else(|| "text".into()),
+                data_type,
                 description,
                 allowed_pattern,
                 keyid,
@@ -424,10 +436,31 @@ impl SsmHandler {
                 policies,
                 labels: Vec::new(),
                 last_modified: chrono::Utc::now(),
-            };
-            existing.push_version(version);
-            let tier_out = tier.unwrap_or_else(|| "Standard".to_string());
-            return AwsResponse::json(200, json!({ "Version": new_version, "Tier": tier_out }));
+            });
+            match push_result {
+                Ok(new_version) => {
+                    let tier_out = tier.unwrap_or_else(|| "Standard".to_string());
+                    return AwsResponse::json(
+                        200,
+                        json!({ "Version": new_version, "Tier": tier_out }),
+                    );
+                }
+                Err(oldest_version) => {
+                    // moto 5.2.4 exceptions.py ParameterMaxVersionLimitExceeded
+                    // (raised from _check_for_parameter_version_limit_exception).
+                    return AwsResponse::error(
+                        400,
+                        "ParameterMaxVersionLimitExceeded",
+                        &format!(
+                            "You attempted to create a new version of {raw_name} by calling the PutParameter API \
+                             with the overwrite flag. Version {}, the oldest version, can't be deleted \
+                             because it has a label associated with it. Move the label to another version \
+                             of the parameter, and try again.",
+                            oldest_version
+                        ),
+                    );
+                }
+            }
         }
 
         // Creating a new parameter.
@@ -458,19 +491,21 @@ impl SsmHandler {
             value.clone()
         };
         let param = Arc::new(Parameter::new(&raw_name));
-        param.push_version(ParamVersion {
-            version: 1,
-            value: stored,
-            parameter_type: param_type,
-            data_type,
-            description,
-            allowed_pattern,
-            keyid: keyid.clone(),
-            tier: tier.clone().unwrap_or_else(|| "Standard".into()),
-            policies,
-            labels: Vec::new(),
-            last_modified: chrono::Utc::now(),
-        });
+        param
+            .push_version_with_limit(|new_version| ParamVersion {
+                version: new_version,
+                value: stored,
+                parameter_type: param_type,
+                data_type,
+                description,
+                allowed_pattern,
+                keyid: keyid.clone(),
+                tier: tier.clone().unwrap_or_else(|| "Standard".into()),
+                policies,
+                labels: Vec::new(),
+                last_modified: chrono::Utc::now(),
+            })
+            .expect("fresh parameter cannot hit the version cap");
         state.parameters.write().insert(name.clone(), param);
 
         if let Some(list) = tags.as_ref().and_then(|t| t.as_array()).cloned() {
@@ -715,12 +750,10 @@ impl SsmHandler {
         if let Err(e) = validate_parameter_filters(parameter_filters.as_ref(), false) {
             return e;
         }
-        let max_results = req
-            .params
-            .get("MaxResults")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(10)
-            .clamp(1, 50);
+        // moto's response layer fixes the page at 10 rows and ignores
+        // MaxResults entirely (responses.py describe_parameters:
+        // `page_size = 10`, `end = token + page_size`); NextToken is the
+        // integer offset of the next row as a string.
         let token = req
             .params
             .get("NextToken")
@@ -770,7 +803,7 @@ impl SsmHandler {
             }
             result.push(version.describe_response_object(&param.name, false, false, req.account));
         }
-        let (page, next_token) = page_slice(&result, token, max_results);
+        let (page, next_token) = page_slice(&result, token, 10);
         AwsResponse::json(200, json!({ "Parameters": page, "NextToken": next_token }))
     }
 
@@ -836,7 +869,9 @@ impl SsmHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
-        let Some(param) = state.get_parameter(&name) else {
+        // moto resolves the name through ParameterDict.__getitem__, which
+        // normalizes ("/foo" → "foo"); the error message keeps the raw name.
+        let Some(param) = state.get_parameter(&SsmState::normalize_name(&name)) else {
             return AwsResponse::error(
                 400,
                 "ParameterNotFound",
@@ -846,32 +881,63 @@ impl SsmHandler {
         let target_version =
             version_number.unwrap_or_else(|| param.current().map(|v| v.version).unwrap_or(1));
         let existing = param.version(target_version);
-        let Some(_) = existing else {
+        let Some(found) = existing else {
             return AwsResponse::error(400, "ParameterVersionNotFound",
                 &format!("Systems Manager could not find version {target_version} of {name}. Verify the version and try again."));
         };
-        let (valid_labels, invalid_labels): (Vec<String>, Vec<String>) =
-            labels.into_iter().partition(|l| {
-                !(l.starts_with("aws")
-                    || l.starts_with("ssm")
-                    || l.chars()
-                        .next()
-                        .map(|c| c.is_ascii_digit())
-                        .unwrap_or(false)
-                    || !l
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-'))
-            });
+        // moto's per-label pass (models.py:2127-2144): reserved/charset
+        // violations are collected as invalid labels; a label that passes the
+        // charset gates but exceeds 100 characters raises ValidationException
+        // immediately.
+        let mut invalid_labels: Vec<String> = Vec::new();
+        let mut labels_to_append: Vec<String> = Vec::new();
+        for label in &labels {
+            if label.starts_with("aws")
+                || label.starts_with("ssm")
+                || label
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+                || !label
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+            {
+                invalid_labels.push(label.clone());
+                continue;
+            }
+            if label.len() > 100 {
+                // moto's exact text (models.py:2137-2142) — no trailing period.
+                return err_validation(&format!(
+                    "1 validation error detected: Value '[{label}]' at 'labels' failed to satisfy constraint: \
+                     Member must satisfy constraint: \
+                     [Member must have length less than or equal to 100, Member must have length greater than or equal to 1]"));
+            }
+            if !found.labels.contains(label) {
+                labels_to_append.push(label.clone());
+            }
+        }
+        if found.labels.len() + labels_to_append.len() > 10 {
+            // models.py:2145-2150 — the two moto literals join without a
+            // space between "labels." and "Move".
+            return AwsResponse::error(
+                400,
+                "ParameterVersionLabelLimitExceeded",
+                "An error occurred (ParameterVersionLabelLimitExceeded) when calling the \
+                 LabelParameterVersion operation: A parameter version can have maximum 10 labels.\
+                 Move one or more labels to another version and try again.",
+            );
+        }
         let mut versions = param.versions.write();
         for v in versions.iter_mut() {
             if v.version == target_version {
-                for l in &valid_labels {
+                for l in &labels_to_append {
                     if !v.labels.contains(l) {
                         v.labels.push(l.clone());
                     }
                 }
             } else {
-                v.labels.retain(|l| !valid_labels.contains(l));
+                v.labels.retain(|l| !labels_to_append.contains(l));
             }
         }
         AwsResponse::json(
@@ -1102,7 +1168,12 @@ impl SsmHandler {
         let (content_json, schema_version, description, parameter_list) =
             match Document::parse_content(&content, &document_format) {
                 Ok(v) => v,
-                Err(_) => {
+                Err(ParseError::InvalidFormat(fmt)) => {
+                    // moto Document.__init__ / _validate_document_format
+                    // (ValidationException, not InvalidDocumentContent).
+                    return err_validation(&format!("Invalid document format {fmt}"));
+                }
+                Err(ParseError::InvalidContent) => {
                     return AwsResponse::error(
                         400,
                         "InvalidDocumentContent",
@@ -1110,6 +1181,11 @@ impl SsmHandler {
                     )
                 }
             };
+        // moto's _validate_document_info runs after the content parse and
+        // before the duplicate check (models.py:1376-1384).
+        if let Err(msg) = validate_document_info(&content, &name, Some(&document_type), true) {
+            return err_validation(&msg);
+        }
         let mut docs = state.documents.write();
         if docs.contains_key(&name) {
             return AwsResponse::error(
@@ -1257,6 +1333,21 @@ impl SsmHandler {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let document_version = req
+            .params
+            .get("DocumentVersion")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let version_name = req
+            .params
+            .get("VersionName")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let force = req
+            .params
+            .get("Force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let state = self.get_state(req.account, &req.region);
         if !state.documents.read().contains_key(&name) {
             return AwsResponse::error(
@@ -1278,13 +1369,133 @@ impl SsmHandler {
                 "Must unshare document first before delete",
             );
         }
-        state.documents.write().remove(&name);
-        state
-            .resource_tags
-            .write()
-            .get_mut("Document")
-            .map(|m| m.remove(&name));
+        // moto's delete_document (models.py:1395-1447): version-scoped deletes
+        // with default-version protections, then whole-document removal only
+        // when no versions remain.
+        let container_arc = state
+            .documents
+            .read()
+            .get(&name)
+            .cloned()
+            .expect("checked contains_key above");
+        let mut container = container_arc.write();
+        let Some(default_doc) = container.versions.get(&container.default_version).cloned() else {
+            return AwsResponse::error(
+                400,
+                "InvalidDocument",
+                "The specified document does not exist.",
+            );
+        };
+        if default_doc.document_type == "ApplicationConfigurationSchema" && !force {
+            return AwsResponse::error(
+                400,
+                "InvalidDocumentOperation",
+                "You attempted to delete a document while it is still shared. \
+                 You must stop sharing the document before you can delete it.",
+            );
+        }
+        if document_version.as_deref() == Some(default_doc.version.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidDocumentOperation",
+                "Default version of the document can't be deleted.",
+            );
+        }
+
+        // moto's Documents.find semantics for the requested scope.
+        let scoped_version: Option<String> = if document_version.is_some() || version_name.is_some()
+        {
+            match Self::find_document_version(
+                &container,
+                document_version.as_deref(),
+                version_name.as_deref(),
+            ) {
+                None => {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidDocument",
+                        "The specified document does not exist.",
+                    )
+                }
+                // The default version can't be deleted while other versions
+                // remain (models.py:1426-1433); with a single version left the
+                // delete removes the whole document.
+                Some(v) if v == container.default_version && container.versions.len() != 1 => {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidDocumentOperation",
+                        "Default version of the document can't be deleted.",
+                    )
+                }
+                Some(v) => Some(v),
+            }
+        } else {
+            // No scope given: every version goes.
+            None
+        };
+
+        match scoped_version {
+            Some(version) => {
+                container.versions.remove(&version);
+            }
+            None => {
+                let all: Vec<String> = container.versions.keys().cloned().collect();
+                for v in all {
+                    container.versions.remove(&v);
+                }
+            }
+        }
+        // moto recomputes only the latest pointer (models.py Documents.delete);
+        // the default version is protected above.
+        if !container.versions.contains_key(&container.latest_version) {
+            if let Some(newest) = container.versions.keys().next_back() {
+                container.latest_version = newest.clone();
+            }
+        }
+        let empty = container.versions.is_empty();
+        drop(container);
+        if empty {
+            state
+                .resource_tags
+                .write()
+                .get_mut("Document")
+                .map(|m| m.remove(&name));
+            state.documents.write().remove(&name);
+        }
         AwsResponse::json(200, json!({}))
+    }
+
+    /// moto's `Documents.find` version resolution (models.py:476-498): "$LATEST"
+    /// resolves to the latest version, then version+name, name, version, and
+    /// finally the default. Returns the version key, or None when missing.
+    fn find_document_version(
+        container: &Documents,
+        document_version: Option<&str>,
+        version_name: Option<&str>,
+    ) -> Option<String> {
+        match (document_version, version_name) {
+            (Some("$LATEST"), _) => Some(container.latest_version.clone()),
+            (Some(version), Some(vname)) => container
+                .versions
+                .iter()
+                .find(|(key, doc)| {
+                    key.as_str() == version && doc.version_name.as_deref() == Some(vname)
+                })
+                .map(|(k, _)| k.clone()),
+            (_version, Some(vname)) => container
+                .versions
+                .values()
+                .find(|doc| doc.version_name.as_deref() == Some(vname))
+                .map(|d| d.version.clone()),
+            (Some(version), None) => {
+                if container.versions.contains_key(version) {
+                    Some(version.to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 
     fn update_document(&self, req: &AwsRequest) -> AwsResponse {
@@ -1319,7 +1530,10 @@ impl SsmHandler {
         let (content_json, schema_version, description, parameter_list) =
             match Document::parse_content(&content, &document_format) {
                 Ok(v) => v,
-                Err(_) => {
+                Err(ParseError::InvalidFormat(fmt)) => {
+                    return err_validation(&format!("Invalid document format {fmt}"));
+                }
+                Err(ParseError::InvalidContent) => {
                     return AwsResponse::error(
                         400,
                         "InvalidDocumentContent",
@@ -1327,6 +1541,11 @@ impl SsmHandler {
                     )
                 }
             };
+        // UpdateDocument validates format/content/name but not the type
+        // (moto's `_validate_document_info(..., strict=False)`).
+        if let Err(msg) = validate_document_info(&content, &name, None, false) {
+            return err_validation(&msg);
+        }
         let mut container = docs.write();
         if container.latest_version != document_version && document_version != "$LATEST" {
             return AwsResponse::error(
@@ -1472,9 +1691,20 @@ impl SsmHandler {
                             }
                         }
                         "Owner" => {
-                            let owner_self =
-                                values.iter().any(|v| v == "Self" || v == "123456789012");
-                            if !owner_self {
+                            // moto's `_document_filter_match` Owner arm
+                            // (models.py:1000-1007): exactly one value,
+                            // "Self" expands to the request account, and the
+                            // value is compared against the document's
+                            // owner (the account that created it).
+                            if values.len() != 1 {
+                                return err_validation("Owner filter can only have one value.");
+                            }
+                            let want = if values[0] == "Self" {
+                                req.account.to_string()
+                            } else {
+                                values[0].clone()
+                            };
+                            if doc.owner.to_string() != want {
                                 matched = false;
                             }
                         }
@@ -1689,7 +1919,9 @@ impl SsmHandler {
             json!({
                 "Name": doc.name,
                 "DocumentVersion": doc.version,
-                "Author": "123456789012",
+                // The Author is the document's owner account — its rendering
+                // replaces the last 123456789012 hardcode of the family.
+                "Author": doc.owner.to_string(),
                 "Metadata": {}
             }),
         )
@@ -2562,17 +2794,42 @@ impl SsmHandler {
             .get(&bid)
             .map(|b| b.operating_system.clone());
         let Some(os) = os else {
+            // moto reuses its maintenance-window text for the baseline-id
+            // DoesNotExistException (exceptions.py `DoesNotExistException`).
             return AwsResponse::error(
                 400,
                 "DoesNotExistException",
-                &format!("{bid} does not exist"),
+                &format!("Maintenance window {bid} does not exist"),
             );
         };
         let mut groups = state.patch_groups.write();
         let entry = groups
             .entry(patch_group.clone())
             .or_insert_with(|| Arc::new(RwLock::new(BTreeMap::new())));
-        entry.write().insert(os, bid.clone());
+        // moto registers a patch group for one baseline per OS: re-assigning a
+        // group that already points elsewhere raises AlreadyExistsException.
+        // (moto's patch groups start pre-seeded with every OS's regional
+        // default baseline, so the KeyError-free missing-arm below covers the
+        // twin's initially empty association maps.)
+        {
+            let mut assoc = entry.write();
+            match assoc.get(&os).cloned() {
+                Some(existing_bid) if existing_bid != bid => {
+                    return AwsResponse::error(
+                        400,
+                        "AlreadyExistsException",
+                        &format!(
+                            "Patch Group baseline already has a baseline registered for \
+                             OperatingSystem {}.",
+                            os.unwrap_or_default()
+                        ),
+                    );
+                }
+                _ => {
+                    assoc.insert(os, bid.clone());
+                }
+            }
+        }
         AwsResponse::json(200, json!({ "BaselineId": bid, "PatchGroup": patch_group }))
     }
 
@@ -2615,6 +2872,22 @@ impl SsmHandler {
             .unwrap_or("WINDOWS")
             .to_string();
         let state = self.get_state(req.account, &req.region);
+        // Fallback when the patch group has no registered association for the
+        // OS (or isn't registered at all). Real AWS and moto serve a canned
+        // AWS-owned managed-baseline ARN here — moto's table
+        // (ssm/resources/default_baselines.json) is a per-region map like
+        // `arn:aws:ssm:us-east-1:075727635805:patchbaseline/pb-…`. The twin
+        // instead renders the *requesting* account's ARN with the same
+        // synthetic pb id its GetDefaultPatchBaseline op produces: the twin
+        // never materializes AWS's managed baselines, so a cross-account
+        // canned ARN would reference resources outside the simulated
+        // account. This replaces the last hardcoded 075727635805 remnant.
+        let short = operating_system
+            .to_lowercase()
+            .chars()
+            .take(8)
+            .collect::<String>();
+        let default_baseline_id = format!("pb-{short}0000000000000");
         let baseline_id = state
             .patch_groups
             .read()
@@ -2622,7 +2895,10 @@ impl SsmHandler {
             .cloned()
             .and_then(|assoc| assoc.read().get(&Some(operating_system.clone())).cloned())
             .unwrap_or_else(|| {
-                "arn:aws:ssm:us-east-1:075727635805:patchbaseline/pb-09ca3fb51f0412ec3".to_string()
+                format!(
+                    "arn:aws:ssm:{}:{}:patchbaseline/{default_baseline_id}",
+                    req.region, req.account
+                )
             });
         AwsResponse::json(
             200,
@@ -3465,10 +3741,15 @@ impl SsmHandler {
             .to_string();
         let state = self.get_state(req.account, &req.region);
         let Some(meta) = self.ops_metadata_by_arn(&state, &arn, req.account, &req.region) else {
+            // moto does not implement the OpsMetadata family at all (its
+            // dispatcher raises NotImplementedError → HTTP 500), and the
+            // twin serves these ops natively instead, so there is no moto
+            // text to copy; the copy-pasted maintenance-window wording is
+            // replaced with the resource the op actually addresses.
             return AwsResponse::error(
                 400,
                 "DoesNotExistException",
-                &format!("Maintenance window {arn} does not exist"),
+                &format!("OpsMetadata {arn} does not exist"),
             );
         };
         let m = meta.read();
@@ -3494,7 +3775,7 @@ impl SsmHandler {
             return AwsResponse::error(
                 400,
                 "DoesNotExistException",
-                &format!("Maintenance window {arn} does not exist"),
+                &format!("OpsMetadata {arn} does not exist"),
             );
         };
         if let Some(update) = req
@@ -3535,7 +3816,7 @@ impl SsmHandler {
             return AwsResponse::error(
                 400,
                 "DoesNotExistException",
-                &format!("Maintenance window {arn} does not exist"),
+                &format!("OpsMetadata {arn} does not exist"),
             );
         };
         let resource_id = meta.read().resource_id.clone();
@@ -5445,5 +5726,433 @@ mod tests {
                 "/other/b".to_string()
             ]
         );
+    }
+
+    // ---- wave-6 ledger items (moto oracle: ssm/models.py) ----
+
+    fn put_param(handler: &SsmHandler, name: &str, overwrite: bool) -> AwsResponse {
+        let mut params = json!({ "Name": name, "Value": "v", "Type": "String" });
+        if overwrite {
+            params["Overwrite"] = json!(true);
+        }
+        handler.handle(make_req("PutParameter", params))
+    }
+
+    /// Item 1: at the version cap, a labeled oldest version must raise
+    /// ParameterMaxVersionLimitExceeded instead of being silently pruned.
+    #[test]
+    fn test_version_cap_labeled_oldest_rejected() {
+        let handler = SsmHandler::default();
+        put_param(&handler, "/cap", false);
+        let resp = handler.handle(make_req(
+            "LabelParameterVersion",
+            json!({ "Name": "/cap", "ParameterVersion": 1, "Labels": ["keep"] }),
+        ));
+        assert_eq!(resp.status, 200);
+        // 1 create + LIMIT-1 overwrites = LIMIT versions at the cap.
+        for _ in 0..crate::models::PARAMETER_VERSION_LIMIT - 1 {
+            let resp = put_param(&handler, "/cap", true);
+            assert_eq!(resp.status, 200);
+        }
+        let blocked = put_param(&handler, "/cap", true);
+        assert_eq!(blocked.status, 400);
+        assert_eq!(
+            body(&blocked)["__type"],
+            "ParameterMaxVersionLimitExceeded",
+            "labeled oldest version must block pruning"
+        );
+        assert!(body(&blocked)["message"].as_str().unwrap().starts_with(
+            "You attempted to create a new version of /cap by calling the PutParameter API"
+        ));
+        // 100 stored versions; the newest survived (moto keeps cap rows).
+        // History pages at its own 50-row limit, so walk the pages.
+        let mut total = 0;
+        let mut token = None;
+        loop {
+            let mut params = json!({ "Name": "/cap" });
+            if let Some(t) = token.take() {
+                params["NextToken"] = t;
+            }
+            let history = handler.handle(make_req("GetParameterHistory", params));
+            total += body(&history)["Parameters"].as_array().unwrap().len();
+            token = body(&history)["NextToken"]
+                .as_str()
+                .map(serde_json::Value::from);
+            if token.is_none() {
+                break;
+            }
+        }
+        assert_eq!(total, 100);
+        // Unlabeled oldests keep pruning silently (moto parity).
+        let handler2 = SsmHandler::default();
+        put_param(&handler2, "/cap2", false);
+        for _ in 0..crate::models::PARAMETER_VERSION_LIMIT {
+            assert_eq!(put_param(&handler2, "/cap2", true).status, 200);
+        }
+        let mut total2 = 0;
+        let mut token2 = None;
+        loop {
+            let mut params = json!({ "Name": "/cap2" });
+            if let Some(t) = token2.take() {
+                params["NextToken"] = t;
+            }
+            let history2 = handler2.handle(make_req("GetParameterHistory", params));
+            total2 += body(&history2)["Parameters"].as_array().unwrap().len();
+            token2 = body(&history2)["NextToken"]
+                .as_str()
+                .map(serde_json::Value::from);
+            if token2.is_none() {
+                break;
+            }
+        }
+        assert_eq!(total2, 100);
+    }
+
+    /// Item 2: DataType is validated on the overwrite path too (moto
+    /// validates on every PutParameter), while a Type change on overwrite is
+    /// accepted (moto does not reject Type downgrades, models.py:2287-2288).
+    #[test]
+    fn test_overwrite_data_type_validated() {
+        let handler = SsmHandler::default();
+        put_param(&handler, "/dt", false);
+        let bad = handler.handle(make_req(
+            "PutParameter",
+            json!({
+                "Name": "/dt", "Value": "v", "Overwrite": true, "DataType": "aws:ec2:imag"
+            }),
+        ));
+        assert_eq!(bad.status, 400);
+        assert_eq!(body(&bad)["message"], "The following data type is not supported: aws:ec2:imag (Data type names are all lowercase.)");
+        // An existing name with overwrite=false still raises
+        // ParameterAlreadyExists (valid DataType short-circuit order).
+        let dup = put_param(&handler, "/dt", false);
+        assert_eq!(body(&dup)["__type"], "ParameterAlreadyExists");
+        // Type change on overwrite: moto allows it (no error).
+        let changed = handler.handle(make_req(
+            "PutParameter",
+            json!({
+                "Name": "/dt", "Value": "v", "Overwrite": true, "Type": "SecureString"
+            }),
+        ));
+        assert_eq!(changed.status, 200);
+        let pp = handler.handle(make_req(
+            "PutParameter",
+            json!({ "Name": "/dt2", "Value": "v", "Type": "String", "DataType": "aws:ec2:image" }),
+        ));
+        assert_eq!(pp.status, 200);
+    }
+
+    /// Item 3: moto's DescribeParameters pages at exactly 10 rows regardless
+    /// of MaxResults; NextToken is the string offset.
+    #[test]
+    fn test_describe_parameters_fixed_page_ten() {
+        let handler = SsmHandler::default();
+        for i in 0..13 {
+            put_param(&handler, &format!("/fixed-page/p{i}"), false);
+        }
+        // MaxResults is ignored (moto response layer hardcodes 10).
+        let resp = handler.handle(make_req("DescribeParameters", json!({ "MaxResults": 50 })));
+        let rows = body(&resp)["Parameters"].as_array().unwrap().len();
+        assert_eq!(rows, 10);
+        assert_eq!(body(&resp)["NextToken"], "10");
+        let resp = handler.handle(make_req(
+            "DescribeParameters",
+            json!({ "NextToken": body(&resp)["NextToken"].clone() }),
+        ));
+        let rows = body(&resp)["Parameters"].as_array().unwrap().len();
+        assert_eq!(rows, 3);
+        assert!(body(&resp)["NextToken"].is_null());
+    }
+
+    /// Item 4: LabelParameterVersion's >100-char ValidationException and the
+    /// >10-labels ParameterVersionLabelLimitExceeded, with moto's texts.
+    #[test]
+    fn test_label_parameter_version_limits() {
+        let handler = SsmHandler::default();
+        put_param(&handler, "/lbl-limits", false);
+        let long = "a".repeat(101);
+        let resp = handler.handle(make_req(
+            "LabelParameterVersion",
+            json!({ "Name": "/lbl-limits", "ParameterVersion": 1, "Labels": [long] }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            format!(
+                "1 validation error detected: Value '[{long}]' at 'labels' failed to satisfy \
+                 constraint: Member must satisfy constraint: [Member must have length less than or \
+                 equal to 100, Member must have length greater than or equal to 1]"
+            )
+        );
+        let labels: Vec<String> = (0..11).map(|i| format!("label-{i}")).collect();
+        let resp = handler.handle(make_req(
+            "LabelParameterVersion",
+            json!({ "Name": "/lbl-limits", "ParameterVersion": 1, "Labels": labels }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "ParameterVersionLabelLimitExceeded");
+        assert_eq!(
+            body(&resp)["message"],
+            "An error occurred (ParameterVersionLabelLimitExceeded) when calling the LabelParameterVersion operation: A parameter version can have maximum 10 labels.Move one or more labels to another version and try again."
+        );
+        // Missing version keeps moto's ParameterVersionNotFound text.
+        let resp = handler.handle(make_req(
+            "LabelParameterVersion",
+            json!({ "Name": "/lbl-limits", "ParameterVersion": 9, "Labels": ["x"] }),
+        ));
+        assert_eq!(body(&resp)["__type"], "ParameterVersionNotFound");
+    }
+
+    /// Item 5: CreateDocument name/type/format validation and the YAML path.
+    #[test]
+    fn test_create_document_validation() {
+        let handler = SsmHandler::default();
+        let content = r#"{"schemaVersion":"2.2","mainSteps":[]}"#;
+        // Too-short name → moto's Invalid document name message.
+        let resp = handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "ab", "Content": content, "DocumentType": "Command" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "Invalid document name ab");
+        // Reject list.
+        let resp = handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "aws-mydoc", "Content": content, "DocumentType": "Command" }),
+        ));
+        assert_eq!(body(&resp)["message"], "Invalid document name aws-mydoc");
+        // Document type enum.
+        let resp = handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "valid-doc", "Content": content, "DocumentType": "Bogus" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "Invalid document type Bogus");
+        // Format enum → ValidationException (not InvalidDocumentContent).
+        let resp = handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "valid-doc", "Content": "{}", "DocumentFormat": "XML" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "ValidationException");
+        assert_eq!(body(&resp)["message"], "Invalid document format XML");
+        // YAML documents parse like moto's yaml.safe_load. GetDocument
+        // without DocumentFormat renders the JSON form (moto's `_get_param`
+        // defaults the format to "JSON" even for YAML documents).
+        let yaml = "schemaVersion: '0.3'\ndescription: yaml-doc\nmainSteps: []";
+        let resp = handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "yaml-doc", "Content": yaml, "DocumentType": "Command", "DocumentFormat": "YAML" }),
+        ));
+        assert_eq!(resp.status, 200);
+        let got = handler.handle(make_req("GetDocument", json!({ "Name": "yaml-doc" })));
+        assert_eq!(body(&got)["DocumentFormat"], "JSON");
+        assert_eq!(body(&got)["Status"], "Active");
+        let parsed: serde_json::Value =
+            serde_json::from_str(body(&got)["Content"].as_str().unwrap()).unwrap();
+        assert_eq!(parsed["description"], "yaml-doc");
+    }
+
+    /// Item 6: DeleteDocument honors DocumentVersion with the default-version
+    /// protection, and removes the document once no versions remain.
+    #[test]
+    fn test_delete_document_version_scoped() {
+        let handler = SsmHandler::default();
+        let content1 = r#"{"schemaVersion":"2.2","mainSteps":[]}"#;
+        let content2 = r#"{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript"}]}"#;
+        handler.handle(make_req(
+            "CreateDocument",
+            json!({ "Name": "scope-doc", "Content": content1, "DocumentType": "Command" }),
+        ));
+        handler.handle(make_req(
+            "UpdateDocument",
+            json!({ "Name": "scope-doc", "Content": content2, "DocumentVersion": "$LATEST" }),
+        ));
+        // Default version protected.
+        let resp = handler.handle(make_req(
+            "DeleteDocument",
+            json!({ "Name": "scope-doc", "DocumentVersion": "1" }),
+        ));
+        assert_eq!(body(&resp)["__type"], "InvalidDocumentOperation");
+        // Non-default version deleted; the document survives with one version.
+        let resp = handler.handle(make_req(
+            "DeleteDocument",
+            json!({ "Name": "scope-doc", "DocumentVersion": "$LATEST" }),
+        ));
+        assert_eq!(resp.status, 200);
+        let versions = handler.handle(make_req(
+            "ListDocumentVersions",
+            json!({ "Name": "scope-doc" }),
+        ));
+        assert_eq!(
+            body(&versions)["DocumentVersions"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        // moto's unconditional default-version guard fires even when it is the
+        // only remaining version (models.py:1416-1419); only an unscoped
+        // delete removes the document then.
+        let resp = handler.handle(make_req(
+            "DeleteDocument",
+            json!({ "Name": "scope-doc", "DocumentVersion": "1" }),
+        ));
+        assert_eq!(body(&resp)["__type"], "InvalidDocumentOperation");
+        let resp = handler.handle(make_req("DeleteDocument", json!({ "Name": "scope-doc" })));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("DescribeDocument", json!({ "Name": "scope-doc" })));
+        assert_eq!(body(&resp)["__type"], "InvalidDocument");
+    }
+
+    fn create_patch_baseline(handler: &SsmHandler, name: &str, os: &str) -> String {
+        let resp = handler.handle(make_req(
+            "CreatePatchBaseline",
+            json!({ "Name": name, "OperatingSystem": os }),
+        ));
+        body(&resp)["BaselineId"].as_str().unwrap().to_string()
+    }
+
+    /// Item 7: patch-group registration errors — moto reuses the
+    /// maintenance-window DoesNotExistException text for unknown baseline ids
+    /// and raises AlreadyExistsException when the group already points
+    /// elsewhere for that OS.
+    #[test]
+    fn test_patch_group_registration_texts() {
+        let handler = SsmHandler::default();
+        let b1 = create_patch_baseline(&handler, "pg-base-1", "WINDOWS");
+        let b2 = create_patch_baseline(&handler, "pg-base-2", "WINDOWS");
+        let b3 = create_patch_baseline(&handler, "pg-base-3", "AMAZON_LINUX_2");
+
+        let resp = handler.handle(make_req(
+            "RegisterPatchBaselineForPatchGroup",
+            json!({ "BaselineId": "pb-unknown00000000000", "PatchGroup": "g" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "DoesNotExistException");
+        assert_eq!(
+            body(&resp)["message"],
+            "Maintenance window pb-unknown00000000000 does not exist"
+        );
+
+        let resp = handler.handle(make_req(
+            "RegisterPatchBaselineForPatchGroup",
+            json!({ "BaselineId": b1, "PatchGroup": "g" }),
+        ));
+        assert_eq!(resp.status, 200);
+        // Same baseline re-registration is a no-op success (moto parity).
+        let resp = handler.handle(make_req(
+            "RegisterPatchBaselineForPatchGroup",
+            json!({ "BaselineId": b1, "PatchGroup": "g" }),
+        ));
+        assert_eq!(resp.status, 200);
+        // Different baseline for the same OS → AlreadyExistsException.
+        let resp = handler.handle(make_req(
+            "RegisterPatchBaselineForPatchGroup",
+            json!({ "BaselineId": b2, "PatchGroup": "g" }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "AlreadyExistsException");
+        assert_eq!(
+            body(&resp)["message"],
+            "Patch Group baseline already has a baseline registered for OperatingSystem WINDOWS."
+        );
+        // A different OS registers fine for the same group.
+        let resp = handler.handle(make_req(
+            "RegisterPatchBaselineForPatchGroup",
+            json!({ "BaselineId": b3, "PatchGroup": "g" }),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "GetPatchBaselineForPatchGroup",
+            json!({ "PatchGroup": "g", "OperatingSystem": "WINDOWS" }),
+        ));
+        assert_eq!(body(&resp)["BaselineId"], b1);
+    }
+
+    /// Item 8: the unregistered-group fallback renders the requesting
+    /// account's ARN (no more canned 075727635805 ARN), consistent with the
+    /// twin's own default-baseline synthesis.
+    #[test]
+    fn test_patch_group_fallback_account_scoped() {
+        let handler = SsmHandler::default();
+        let resp = handler.handle(make_req(
+            "GetPatchBaselineForPatchGroup",
+            json!({ "PatchGroup": "nobody", "OperatingSystem": "WINDOWS" }),
+        ));
+        assert_eq!(
+            body(&resp)["BaselineId"],
+            "arn:aws:ssm:us-east-1:123456789012:patchbaseline/pb-windows0000000000000"
+        );
+    }
+
+    /// Item 9: the OpsMetadata family errors name OpsMetadata, not a
+    /// maintenance window.
+    #[test]
+    fn test_ops_metadata_error_text() {
+        let handler = SsmHandler::default();
+        let arn = "arn:aws:ssm:us-east-1:123456789012:opsmetadata/o1";
+        for op in ["GetOpsMetadata", "UpdateOpsMetadata", "DeleteOpsMetadata"] {
+            let resp = handler.handle(make_req(op, json!({ "OpsMetadataArn": arn })));
+            assert_eq!(resp.status, 400);
+            assert_eq!(body(&resp)["__type"], "DoesNotExistException");
+            assert_eq!(
+                body(&resp)["message"],
+                "OpsMetadata arn:aws:ssm:us-east-1:123456789012:opsmetadata/o1 does not exist"
+            );
+        }
+    }
+
+    /// Item 10: ListDocumentMetadataHistory's Author is the document owner's
+    /// account; ListDocuments' Owner filter resolves Self against the request
+    /// account and compares to the document's own owner.
+    #[test]
+    fn test_document_owner_author_rendering() {
+        let handler = SsmHandler::default();
+        let content = r#"{"schemaVersion":"2.2","mainSteps":[]}"#;
+        let mut req = make_req(
+            "CreateDocument",
+            json!({ "Name": "own-doc-1", "Content": content, "DocumentType": "Command" }),
+        );
+        req.account = 999999999999;
+        let created = handler.handle(req);
+        assert_eq!(created.status, 200);
+
+        let mut meta = make_req(
+            "ListDocumentMetadataHistory",
+            json!({ "Name": "own-doc-1" }),
+        );
+        meta.account = 999999999999;
+        let resp = handler.handle(meta);
+        assert_eq!(body(&resp)["Author"], "999999999999");
+
+        let mut list = make_req(
+            "ListDocuments",
+            json!({ "Filters": [{ "Key": "Owner", "Values": ["Self"] }] }),
+        );
+        list.account = 999999999999;
+        let resp = handler.handle(list);
+        let names: Vec<String> = body(&resp)["DocumentIdentifiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["Name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(names.contains(&"own-doc-1".to_string()));
+
+        // A different account does not see 999999999999's document as its own.
+        let mut list = make_req(
+            "ListDocuments",
+            json!({ "Filters": [{ "Key": "Owner", "Values": ["999999999999"] }] }),
+        );
+        list.account = 111111111111;
+        let resp = handler.handle(list);
+        let names: Vec<String> = body(&resp)["DocumentIdentifiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["Name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(!names.contains(&"own-doc-1".to_string()));
     }
 }
