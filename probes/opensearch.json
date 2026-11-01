@@ -1,7 +1,7 @@
 {
   "service": "opensearch",
-  "generated_at": "2026-10-26T03:43:19.644703+00:00",
-  "endpoint": "http://localhost:4795",
+  "generated_at": "2026-11-01T04:53:07.175258+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 82,
     "needs_params": 0,
@@ -23,7 +23,7 @@
     {
       "operation": "AddDirectQueryDataSource",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "AddTags",
@@ -38,7 +38,7 @@
     {
       "operation": "AssociatePackages",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "AuthorizeVpcEndpointAccess",
@@ -68,7 +68,7 @@
     {
       "operation": "CreateIndex",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "CreateOutboundConnection",
@@ -113,7 +113,7 @@
     {
       "operation": "DeleteIndex",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteOutboundConnection",
@@ -213,7 +213,7 @@
     {
       "operation": "DissociatePackages",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetApplication",
@@ -248,7 +248,7 @@
     {
       "operation": "GetIndex",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetPackageVersionHistory",
@@ -278,7 +278,7 @@
     {
       "operation": "ListDirectQueryDataSources",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "ListDomainMaintenances",
@@ -348,7 +348,7 @@
     {
       "operation": "RejectInboundConnection",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "RemoveTags",
@@ -383,7 +383,7 @@
     {
       "operation": "UpdateDirectQueryDataSource",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdateDomainConfig",
@@ -393,7 +393,7 @@
     {
       "operation": "UpdateIndex",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdatePackage",
@@ -403,7 +403,7 @@
     {
       "operation": "UpdatePackageScope",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdateScheduledAction",

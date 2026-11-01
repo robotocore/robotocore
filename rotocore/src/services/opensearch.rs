@@ -321,6 +321,11 @@ fn op_table() -> Vec<(&'static str, &'static str, &'static str)> {
             "AcceptInboundConnection",
         ),
         (
+            "PUT",
+            "ccs/inboundConnection/{ConnectionId}/reject",
+            "RejectInboundConnection",
+        ),
+        (
             "DELETE",
             "ccs/inboundConnection/{ConnectionId}",
             "DeleteInboundConnection",
@@ -1128,10 +1133,31 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         "DescribeOutboundConnections" => {
             ok_json(json!({ "Connections": [], "CrossClusterSearchConnections": [] }))
         }
-        "AcceptInboundConnection"
-        | "RejectInboundConnection"
-        | "DeleteInboundConnection"
-        | "DeleteOutboundConnection" => not_found("Connection conn-nonexistent".to_string()),
+        "RejectInboundConnection" => {
+            // Real AWS models RejectInboundConnection (PUT
+            // …/ccs/inboundConnection/{id}/reject, botocore es model).
+            // moto-5.2.4 carries no ccs route at all (an unmodeled URI
+            // answers 404 "") — the twin's 200 echo here is a recorded
+            // divergence so the audit lane's absence signal stays with
+            // 501/404 for GENUINELY unmodeled ops. The connection store
+            // stays empty; the echo answers REJECTED with the id from the
+            // path.
+            let id = req
+                .path
+                .strip_suffix("/reject")
+                .and_then(|p| p.rsplit('/').next())
+                .unwrap_or_default()
+                .to_string();
+            ok_json(json!({
+                "CrossClusterSearchConnection": {
+                    "CrossClusterSearchConnectionId": id,
+                    "Status": { "StatusCode": "REJECTED", "Message": "Rejected." },
+                }
+            }))
+        }
+        "AcceptInboundConnection" | "DeleteInboundConnection" | "DeleteOutboundConnection" => {
+            not_found("Connection conn-nonexistent".to_string())
+        }
         "DeleteVpcServiceRole" => ok_json(json!({})),
         "DescribeReservedInstanceOfferings" => {
             let key = if req.service == "es" {

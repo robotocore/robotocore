@@ -459,7 +459,7 @@ fn user_group_xml(ug: &UserGroup, account: u64, region: &str) -> String {
         .map(|u| format!("<member>{}</member>", esc(u)))
         .collect();
     format!(
-        "<UserGroupId><UserGroupId>{id}</UserGroupId><Status>{status}</Status><Engine>{engine}</Engine><UserIds>{ids}</UserIds><MinimumEngineVersion>6.0</MinimumEngineVersion><ReplicationGroups/><ServerlessCaches/><ARN>arn:aws:elasticache:{region}:{account}:usergroup:{id}</ARN>",
+        "<UserGroupId>{id}</UserGroupId><Status>{status}</Status><Engine>{engine}</Engine><UserIds>{ids}</UserIds><MinimumEngineVersion>6.0</MinimumEngineVersion><ReplicationGroups/><ServerlessCaches/><ARN>arn:aws:elasticache:{region}:{account}:usergroup:{id}</ARN>",
         id = esc(&ug.id),
         status = esc(&ug.status),
         engine = esc(&ug.engine),
@@ -528,7 +528,7 @@ fn global_rg_xml(g: &GlobalReplicationGroup, account: u64, region: &str) -> Stri
 
 fn serverless_cache_xml(sc: &ServerlessCache, account: u64, region: &str) -> String {
     format!(
-        "<ServerlessCache><ServerlessCacheName>{}</ServerlessCacheName><Description>{}</Description><CreateTime>{}</CreateTime><Status>{}</Status><Engine>{}</Engine><MajorEngineVersion>7</MajorEngineVersion><FullEngineVersion>7.1.0</FullEngineVersion><CacheUsageLimits><DataStorage><Maximum>5</Maximum><Minimum>1</Minimum><Unit>GB</Unit></DataStorage><ECPUPerSecond><Maximum>15000</Maximum><Minimum>1000</Minimum></ECPUPerSecond></CacheUsageLimits><SecurityGroupIds/><Endpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></Endpoint><ReaderEndpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></ReaderEndpoint><ARN>arn:aws:elasticache:{region}:{account}:serverlesscache:{}</ARN><SubnetIds/><SnapshotRetentionLimit>0</SnapshotRetentionLimit><DailySnapshotTime>03:00</DailySnapshotTime></ServerlessCache>",
+        "<ServerlessCache><ServerlessCacheName>{name}</ServerlessCacheName><Description>{desc}</Description><CreateTime>{created}</CreateTime><Status>{status}</Status><Engine>{engine}</Engine><MajorEngineVersion>7</MajorEngineVersion><FullEngineVersion>7.1.0</FullEngineVersion><CacheUsageLimits><DataStorage><Maximum>5</Maximum><Minimum>1</Minimum><Unit>GB</Unit></DataStorage><ECPUPerSecond><Maximum>15000</Maximum><Minimum>1000</Minimum></ECPUPerSecond></CacheUsageLimits><SecurityGroupIds/><Endpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></Endpoint><ReaderEndpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></ReaderEndpoint><ARN>arn:aws:elasticache:{region}:{account}:serverlesscache:{name}</ARN><SubnetIds/><SnapshotRetentionLimit>0</SnapshotRetentionLimit><DailySnapshotTime>03:00</DailySnapshotTime></ServerlessCache>",
         name = esc(&sc.name),
         part = esc(&sc.name),
         desc = esc(&sc.description),
