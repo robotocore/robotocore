@@ -120,8 +120,11 @@ def impl_fingerprint(name: str) -> dict[str, str]:
         if path.is_file():
             out[pattern] = _hash_files([(pattern, path.read_bytes())])
         elif path.is_dir():
-            files = [(str(p.relative_to(ROOT)), p.read_bytes())
-                     for p in sorted(path.rglob("*")) if p.is_file()]
+            files = [
+                (str(p.relative_to(ROOT)), p.read_bytes())
+                for p in sorted(path.rglob("*"))
+                if p.is_file()
+            ]
             out[pattern] = _hash_files(files) if files else "absent"
         else:
             out[pattern] = "absent"
