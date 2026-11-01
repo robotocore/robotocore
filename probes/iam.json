@@ -1,6 +1,6 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-01T06:36:45.525653+00:00",
+  "generated_at": "2026-11-01T06:55:05.900720+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 176,
