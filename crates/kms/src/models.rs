@@ -52,12 +52,60 @@ pub struct Key {
     #[serde(default, with = "crate::snapshot::rw")]
     pub pending_window_days: RwLock<Option<u64>>,
     /// RSA private key for asymmetric RSA specs.
+    ///
+    /// Snapshot hole (intentional): `serde(skip)` means RSA material is
+    /// regenerated on restore, so Sign/Verify/GetPublicKey and RSA
+    /// ciphertexts do not survive a snapshot round trip — see
+    /// `snapshot.rs` for the recorded semantics.
     #[serde(skip)]
     pub rsa_key: RwLock<Option<rsa::RsaPrivateKey>>,
-    /// EC secret key for ECC specs.
+    /// EC secret key for ECC specs (same snapshot hole as `rsa_key`).
+    ///
+    /// Material limitation: P-384/P-521 specs are served with P-256
+    /// material — the `p256` dependency is the only EC curve in this crate;
+    /// sign/verify still honor the ECC spec's own digest (see `sign_raw`).
     #[serde(skip)]
     pub ec_key: RwLock<Option<p256::SecretKey>>,
 }
+
+/// moto kms/utils.py `RESERVED_ALIASES` — the 14 service-owned `alias/aws/*`
+/// names. moto matches these EXACTLY (not as a prefix), so e.g.
+/// `alias/myaws/s3` is createable while `alias/aws/s3` is not.
+pub(crate) const RESERVED_ALIASES: [&str; 14] = [
+    "alias/aws/acm",
+    "alias/aws/dynamodb",
+    "alias/aws/ebs",
+    "alias/aws/elasticfilesystem",
+    "alias/aws/es",
+    "alias/aws/glue",
+    "alias/aws/kinesisvideo",
+    "alias/aws/lambda",
+    "alias/aws/rds",
+    "alias/aws/redshift",
+    "alias/aws/s3",
+    "alias/aws/secretsmanager",
+    "alias/aws/ssm",
+    "alias/aws/xray",
+];
+
+/// moto `KeySpec.key_specs()` — the sorted enum value set used by
+/// `__ensure_valid_key_spec` (models.py:747-753). The `HMAC_284` member's
+/// value is "HMAC_384", which is why HMAC_384 appears here.
+pub(crate) const VALID_KEY_SPECS: [&str; 13] = [
+    "ECC_NIST_P256",
+    "ECC_NIST_P384",
+    "ECC_NIST_P521",
+    "ECC_SECG_P256K1",
+    "HMAC_224",
+    "HMAC_256",
+    "HMAC_384",
+    "HMAC_512",
+    "RSA_2048",
+    "RSA_3072",
+    "RSA_4096",
+    "SM2",
+    "SYMMETRIC_DEFAULT",
+];
 
 impl Key {
     pub fn new(account: u64, region: String, key_usage: &str, key_spec: &str) -> Self {
@@ -221,7 +269,7 @@ pub struct KmsState {
 /// (`arn:...:kms:<region>:<account>:alias/<name>`) becomes
 /// `alias/<name>`, a key ARN (`arn:...:key/<id>`) becomes the raw key id,
 /// and other inputs pass through unchanged.
-fn normalize_key_ref(id: &str) -> String {
+pub(crate) fn normalize_key_ref(id: &str) -> String {
     if id.starts_with("arn:") {
         if let Some(idx) = id.find(":alias/") {
             return format!("alias/{}", &id[idx + ":alias/".len()..]);
@@ -258,6 +306,16 @@ impl KmsState {
 
     pub fn delete_alias(&self, alias_name: &str) {
         self.aliases.write().remove(alias_name);
+    }
+
+    /// moto `KmsBackend::alias_exists` — does this exact alias name exist?
+    pub fn alias_exists(&self, alias_name: &str) -> bool {
+        self.aliases.read().contains_key(alias_name)
+    }
+
+    /// Target key id behind an existing alias, if any.
+    pub fn alias_target(&self, alias_name: &str) -> Option<String> {
+        self.aliases.read().get(alias_name).cloned()
     }
 
     pub fn list_aliases(&self) -> Vec<(String, String)> {
