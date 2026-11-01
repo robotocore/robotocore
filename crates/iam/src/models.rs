@@ -257,6 +257,20 @@ impl Group {
 /// ListGroupsForUser, aligned with moto's dict-iteration order).
 static NEXT_GROUP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// Re-seed the counter beyond the highest restored `created_seq`. The
+/// counter is process-global and a restart restarts it at 1, so a restore
+/// must push it past the restored max — otherwise a post-restore create
+/// gets a colliding seq and sorts FIRST, inverting creation order (w7-store
+/// N1). Legacy seq-0 groups (pre-created_seq snapshots) contribute nothing
+/// (the sweep takes the max over non-zero entries only); `fetch_max` keeps
+/// concurrent creates safe.
+pub(crate) fn reseed_group_seq(max_restored: u64) {
+    NEXT_GROUP_SEQ.fetch_max(
+        max_restored.saturating_add(1),
+        std::sync::atomic::Ordering::SeqCst,
+    );
+}
+
 /// An IAM policy.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Policy {
@@ -276,6 +290,13 @@ pub struct Policy {
     pub tags: RwLock<Vec<serde_json::Value>>,
     #[serde(with = "crate::snapshot::rw")]
     pub versions: RwLock<Vec<serde_json::Value>>,
+    /// moto's `next_version_num` (models.py:2394-2396): monotonic per-
+    /// policy counter — version ids never recycle after deletes (v1, v2 →
+    /// delete v1 → next create is v3). `default` keeps pre-field snapshots
+    /// restorable; create_policy_version seeds the counter past any live
+    /// legacy "v{n}" ids.
+    #[serde(default, with = "crate::snapshot::rw")]
+    pub next_version_num: RwLock<u32>,
     #[serde(with = "crate::snapshot::rw")]
     pub attached_users: RwLock<Vec<String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -317,6 +338,8 @@ impl Policy {
             modified: now,
             policy_document: RwLock::new(document.clone()),
             tags: RwLock::new(tags),
+            // v1 is seeded as the first version; the next minted id is v2.
+            next_version_num: RwLock::new(2),
             versions: RwLock::new(vec![json!({
                 "VersionId": "v1",
                 "IsDefaultVersion": true,
@@ -446,6 +469,11 @@ pub struct IamState {
     pub instance_profile_tags: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub instance_profile_ids: Arc<RwLock<HashMap<String, String>>>,
+    /// Instance-profile Path (moto honors the Path param at create,
+    /// models.py:2429-2449 — the ARN embeds it). `default` is the
+    /// load-bearing F1 serde pattern for every added IamState field.
+    #[serde(default, with = "crate::snapshot::arc_rw")]
+    pub instance_profile_paths: Arc<RwLock<HashMap<String, String>>>,
     /// Instance-profile CreateDate (RFC3339 seconds) stamped once at
     /// creation and rendered from this store (wave: per-read now() dates
     /// drifted on every Get/List). `default` is load-bearing forward-compat:
@@ -482,6 +510,7 @@ impl IamState {
             instance_profiles: Arc::new(RwLock::new(HashMap::new())),
             instance_profile_tags: Arc::new(RwLock::new(HashMap::new())),
             instance_profile_ids: Arc::new(RwLock::new(HashMap::new())),
+            instance_profile_paths: Arc::new(RwLock::new(HashMap::new())),
             instance_profile_created: Arc::new(RwLock::new(HashMap::new())),
             virtual_mfas: Arc::new(RwLock::new(HashMap::new())),
             saml_providers: Arc::new(RwLock::new(HashMap::new())),
@@ -549,6 +578,7 @@ impl IamState {
         let removed = self.instance_profiles.write().remove(name).is_some();
         self.instance_profile_tags.write().remove(name);
         self.instance_profile_ids.write().remove(name);
+        self.instance_profile_paths.write().remove(name);
         self.instance_profile_created.write().remove(name);
         removed
     }

@@ -576,7 +576,7 @@ impl KinesisHandler {
                         "Shard {shard_id} in stream {name} under account {} does not exist",
                         req.account
                     ),
-                )
+                );
             }
         };
 

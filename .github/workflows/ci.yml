@@ -181,6 +181,28 @@ jobs:
             results-unit-infra-${{ matrix.python-version }}.xml
             coverage-unit-infra-${{ matrix.python-version }}.xml
 
+  # ── Rust unit suite (the native Rust server lanes) ────────────────────────
+
+  rust-unit-tests:
+    # The Rust crates (robotocore-rust gateway, rotocore, crates/*) never had
+    # a CI lane — their suites ran only via `make rust-test` locally (w7
+    # review: the wave-6 engine park test's "met in CI" was a local gate).
+    # Same toolchain/cache setup as the twin action; debug tests only —
+    # release builds add minutes without signal.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      # Same cache shape as the twin action: keyed on Cargo.lock + rustc;
+      # warm runs stay around the minute mark, cold first runs longer.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo test --workspace --locked
+
   # ── Integration + compatibility ────────────────────────────────────────────
 
   integration-tests:
