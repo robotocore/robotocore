@@ -66,10 +66,31 @@ impl FirehoseHandler {
         }
         let state = self.get_state(req.account, &req.region);
         if state.get(&name).is_some() {
+            // moto (firehose models.py:217-221); note moto's "accountId"
+            // spelling here.
             return AwsResponse::error(
                 400,
                 "ResourceInUseException",
-                &format!("Stream {name} already exists"),
+                &format!(
+                    "Firehose {name} under accountId {} already exists",
+                    req.account
+                ),
+            );
+        }
+        // moto's per-region stream quota (firehose models.py:223-228): the
+        // 51st stream raises LimitExceededException.
+        let existing = state.list_names();
+        if existing.len() >= MAX_STREAMS_PER_REGION {
+            // moto renders Python's list repr (models.py:226-228)
+            let quoted: Vec<String> = existing.iter().map(|n| format!("'{n}'")).collect();
+            return AwsResponse::error(
+                400,
+                "LimitExceededException",
+                &format!(
+                    "You have already consumed your firehose quota of {} hoses. Firehose names: [{}]",
+                    MAX_STREAMS_PER_REGION,
+                    quoted.join(", ")
+                ),
             );
         }
         let arn = format!(
@@ -114,6 +135,11 @@ impl FirehoseHandler {
             last_failure: None,
             s3_config,
             encryption: None,
+            http_endpoint_config: req
+                .params
+                .get("HttpEndpointDestinationConfiguration")
+                .and_then(|v| v.as_object())
+                .cloned(),
         };
         state.put(stream);
         AwsResponse::json(200, json!({ "DeliveryStreamARN": arn }))
@@ -128,11 +154,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         match state.remove(name) {
             Some(_) => AwsResponse::json(200, json!({})),
-            None => AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Stream {name} not found"),
-            ),
+            None => stream_not_found(name, req.account),
         }
     }
 
@@ -190,8 +212,11 @@ impl FirehoseHandler {
                     // processing/s3backup members) vs the minimal
                     // `S3DestinationDescription` for the plain shape (moto
                     // keeps S3/ExtendedS3 separate, models.py:146-164). The
-                    // stream remembers which flavor was configured.
-                    let mut destination = json!({ "DestinationId": "dest-1" });
+                    // stream remembers which flavor was configured. Restore
+                    // paths from older snapshots may have dropped the flag —
+                    // default back to ExtendedS3 (the description the twin
+                    // always rendered before it existed).
+                    let mut destination = json!({ "DestinationId": dest_id_for(&s) });
                     let key = if s.s3_config_is_extended {
                         "ExtendedS3DestinationDescription"
                     } else {
@@ -199,6 +224,18 @@ impl FirehoseHandler {
                     };
                     destination[key] = Value::Object(s3_desc);
                     destinations.push(destination);
+                }
+                // The HttpEndpoint destination renders verbatim with moto's
+                // `{key}DestinationDescription` naming (firehose
+                // models.py:331-340: every destination dict key other than
+                // destination_id becomes `{key}DestinationDescription`).
+                if let Some(http_cfg) = &s.http_endpoint_config {
+                    if !http_cfg.is_empty() {
+                        destinations.push(json!({
+                            "DestinationId": dest_id_for(&s),
+                            "HttpEndpointDestinationDescription": Value::Object(http_cfg.clone()),
+                        }));
+                    }
                 }
 
                 let mut desc = json!({
@@ -226,22 +263,30 @@ impl FirehoseHandler {
                 }
                 AwsResponse::json(200, json!({ "DeliveryStreamDescription": desc }))
             }
-            None => AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Stream {name} not found"),
-            ),
+            None => stream_not_found(name, req.account),
         }
     }
 
     fn list_streams(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
+        // moto's list_delivery_streams (firehose models.py:344-382): the
+        // DeliveryStreamType filter is honored, the list is alphabetical, an
+        // unknown exclusive-start name is ignored, and the default limit is
+        // MAX_STREAMS_PER_REGION (50), not 100.
+        let type_filter = req
+            .params
+            .get("DeliveryStreamType")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty());
         let mut names = state.list_names();
+        if let Some(want) = type_filter {
+            names.retain(|n| state.get(n).map(|s| s.stream_type == want).unwrap_or(false));
+        }
         let limit = req
             .params
             .get("Limit")
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .unwrap_or(MAX_STREAMS_PER_REGION as u64) as usize;
         if let Some(start) = req
             .params
             .get("ExclusiveStartDeliveryStreamName")
@@ -270,11 +315,7 @@ impl FirehoseHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         if state.get(name).is_none() {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Stream {name} not found"),
-            );
+            return stream_not_found(name, req.account);
         }
         let data_b64 = req
             .params
@@ -289,9 +330,9 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut failed = 0u32;
         if let Some(stream) = state.get(name) {
-            match self.put_s3_records(req, name, stream.version_id, &[data]) {
-                DeliveredRecords::All => self.record_delivery_success(req, name),
-                DeliveredRecords::Failed(reason) => {
+            match self.deliver_records(req, name, &stream, &[data]) {
+                Ok(()) => self.record_delivery_success(req, name),
+                Err(reason) => {
                     failed = 1;
                     self.record_delivery_failure(req, name, &reason);
                 }
@@ -394,6 +435,38 @@ impl FirehoseHandler {
         }
     }
 
+    /// moto's `put_record_batch` destination sweep (firehose
+    /// models.py:496-542): the S3 flavors deliver via `put_s3_records`,
+    /// HttpEndpoint posts real HTTP via `put_http_records`, and the
+    /// unimplemented destination kinds (Elasticsearch/Redshift/Snowflake)
+    /// answer "proper response" RecordIds with `FailedPutCount` 0 — data
+    /// with no destination is honestly reported as succeeded, like moto.
+    /// `Err` carries moto's literal failure message when the delivery
+    /// itself failed (moto raises its RuntimeError and 500-crashes there;
+    /// the twin keeps the 200 and records the failure on the stream — the
+    /// crate's documented put failure contract, see `put_s3_records`).
+    fn deliver_records(
+        &self,
+        req: &AwsRequest,
+        name: &str,
+        stream: &DeliveryStream,
+        records: &[Vec<u8>],
+    ) -> Result<(), String> {
+        if !stream.s3_config.is_empty() {
+            // ExtendedS3 must win over the mirrored S3 entry, like moto's
+            // if/elif chain (models.py:508-530); the twin keeps the single
+            // `s3_config` either way.
+            return match self.put_s3_records(req, name, stream.version_id, records) {
+                DeliveredRecords::All => Ok(()),
+                DeliveredRecords::Failed(reason) => Err(reason),
+            };
+        }
+        if let Some(http) = &stream.http_endpoint_config {
+            return put_http_records(http, records);
+        }
+        Ok(())
+    }
+
     fn put_record_batch(&self, req: &AwsRequest) -> AwsResponse {
         let name = req
             .params
@@ -408,11 +481,7 @@ impl FirehoseHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         if state.get(name).is_none() {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Stream {name} not found"),
-            );
+            return stream_not_found(name, req.account);
         }
         let mut responses = Vec::with_capacity(records.len());
         let mut decoded: Vec<Vec<u8>> = Vec::with_capacity(records.len());
@@ -430,16 +499,13 @@ impl FirehoseHandler {
         // FailedPutCount by the whole put's records — the caller-visible
         // honest failure signal.
         let mut failed_put_count = 0u32;
-        match self.put_s3_records(
-            req,
-            name,
-            state.get(name).map(|s| s.version_id).unwrap_or(1),
-            &decoded,
-        ) {
-            DeliveredRecords::All => self.record_delivery_success(req, name),
-            DeliveredRecords::Failed(reason) => {
-                failed_put_count = decoded.len() as u32;
-                self.record_delivery_failure(req, name, &reason);
+        if let Some(stream) = state.get(name) {
+            match self.deliver_records(req, name, &stream, &decoded) {
+                Ok(()) => self.record_delivery_success(req, name),
+                Err(reason) => {
+                    failed_put_count = decoded.len() as u32;
+                    self.record_delivery_failure(req, name, &reason);
+                }
             }
         }
         AwsResponse::json(
@@ -454,70 +520,172 @@ impl FirehoseHandler {
         )
     }
 
+    /// moto's `update_destination` (firehose models.py:604-702), including
+    /// its check order: exactly one `*DestinationUpdate` argument (its
+    /// `find_destination_config_in_args`), stream existence, then the
+    /// `ConcurrentModificationException` version check, then the
+    /// destination-id lookup, then the type-switch guard for
+    /// Elasticsearch/HttpEndpoint, then the apply.
     fn update_destination(&self, req: &AwsRequest) -> AwsResponse {
         let name = req
             .params
             .get("DeliveryStreamName")
             .and_then(|v| v.as_str())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_string();
         let destination_id = req
             .params
             .get("DestinationId")
             .and_then(|v| v.as_str())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_string();
+        // Exactly one destination configuration in the request. moto's
+        // DESTINATION_TYPES_TO_NAMES mapping (models.py:45-54): the request
+        // member name minus `_destination` (Snowflake keeps its
+        // `Configuration` name on the update path, responses.py:113).
+        let update_kinds: &[(&str, &str)] = &[
+            ("S3", "S3DestinationUpdate"),
+            ("ExtendedS3", "ExtendedS3DestinationUpdate"),
+            ("Redshift", "RedshiftDestinationUpdate"),
+            ("Elasticsearch", "ElasticsearchDestinationUpdate"),
+            ("Splunk", "SplunkDestinationUpdate"),
+            ("HttpEndpoint", "HttpEndpointDestinationUpdate"),
+            ("Snowflake", "SnowflakeDestinationConfiguration"),
+            ("Iceberg", "IcebergDestinationUpdate"),
+        ];
+        let found: Vec<(&str, &Map<String, Value>)> = update_kinds
+            .iter()
+            .filter_map(|(dest, param)| {
+                req.params
+                    .get(*param)
+                    .and_then(|v| v.as_object())
+                    .filter(|cfg| !cfg.is_empty())
+                    .map(|cfg| (*dest, cfg))
+            })
+            .collect();
+        if found.len() != 1 {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                "Exactly one destination configuration is supported for a Firehose",
+            );
+        }
+        let (dest_name, dest_config) = found[0];
         let state = self.get_state(req.account, &req.region);
-        let mut s = match state.get(name) {
+        let mut s = match state.get(&name) {
             Some(s) => s,
+            // moto's own update lookup spells it `accountId` (models.py:624).
             None => {
                 return AwsResponse::error(
                     400,
                     "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
+                    &format!("Firehose {name} under accountId {} not found.", req.account),
                 )
             }
         };
-        if destination_id.is_empty() {
-            return AwsResponse::error(400, "ValidationException", "DestinationId is required");
+        // moto compares the string version id and its message interpolates
+        // `None` when the request omitted it (models.py:633-639).
+        let provided = match req.params.get("CurrentDeliveryStreamVersionId") {
+            Some(Value::String(v)) => v.clone(),
+            Some(Value::Number(n)) => n.to_string(),
+            Some(other) => other.to_string(),
+            None => "None".to_string(),
+        };
+        let current = s.version_id.to_string();
+        if provided != current {
+            return AwsResponse::error(
+                400,
+                "ConcurrentModificationException",
+                &format!(
+                    "Cannot update firehose: {name} since the current version id: {current} and specified version id: {provided} do not match"
+                ),
+            );
         }
-        if let Some(current_version) = req.params.get("CurrentDeliveryStreamVersionId") {
-            let expected = s.version_id.to_string();
-            let provided = match current_version {
-                Value::String(v) => v.clone(),
-                Value::Number(n) => n.to_string(),
-                other => other.to_string(),
-            };
-            if provided != expected {
-                return AwsResponse::error(
-                    400,
-                    "InvalidArgumentException",
-                    &format!("Version mismatch: expected {expected}, got {provided}"),
-                );
+        // moto's destinations carry `destinationId-000000000001` as the id of
+        // the first entry (models.py:146-152); the unknown id is a genuine
+        // InvalidArgumentException (models.py:641-648), not a silent
+        // version bump.
+        if destination_id != dest_id_for(&s) {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!("Destination Id {destination_id} not found"),
+            );
+        }
+        // Switching to or from (Elasticsearch|HttpEndpoint) is rejected
+        // (models.py:650-659).
+        if (dest_name == "Elasticsearch" && s.s3_config.is_empty())
+            || (dest_name == "HttpEndpoint" && s.http_endpoint_config.is_none())
+        {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!(
+                    "Changing the destination type to or from {dest_name} is not supported at this time."
+                ),
+            );
+        }
+        // Apply. moto: same destination type → shallow top-level `update`
+        // (models.py:663-664) — keys in this request REPLACE the stored ones
+        // wholesale, keys not named are kept; a different destination type
+        // replaces the whole entry (models.py:666-669).
+        match dest_name {
+            "HttpEndpoint" => {
+                let mut updated = s.http_endpoint_config.clone().unwrap_or_default();
+                for (k, v) in dest_config {
+                    updated.insert(k.clone(), v.clone());
+                }
+                s.http_endpoint_config = Some(updated);
             }
-        }
-        let s3_update = req
-            .params
-            .get("ExtendedS3DestinationUpdate")
-            .or_else(|| req.params.get("S3DestinationUpdate"))
-            .and_then(|v| v.as_object())
-            .cloned()
-            .unwrap_or_default();
-        for (field, value) in s3_update {
-            match (
-                value.as_object(),
-                s.s3_config.get(&field).and_then(|v| v.as_object()),
-            ) {
-                (Some(upd), Some(existing)) => {
-                    let mut merged = existing.clone();
-                    for (k, v) in upd {
-                        merged.insert(k.clone(), v.clone());
+            "S3" | "ExtendedS3" => {
+                let same_flavor = (dest_name == "ExtendedS3") == s.s3_config_is_extended
+                    && !s.s3_config.is_empty();
+                if same_flavor {
+                    // Same flavor: moto's `destinations[idx][dest_name].update
+                    // (dest_config)` (models.py:663-664) — this request's
+                    // top-level keys REPLACE the stored ones wholesale, and
+                    // keys not named here are kept — then the
+                    // S3Update/S3BackupUpdate/S3BackupConfiguration →
+                    // *Description renames (models.py:671-678) shallow-merge
+                    // into the stored description. moto keeps the
+                    // update-spelled key too; the twin's describe renders a
+                    // fixed member set, so the leftover is invisible either
+                    // way.
+                    for (k, v) in dest_config.clone() {
+                        s.s3_config.insert(k, v);
                     }
-                    s.s3_config.insert(field, Value::Object(merged));
-                }
-                _ => {
-                    s.s3_config.insert(field, value);
+                    alt_field_shallow_update(
+                        &mut s.s3_config,
+                        "S3DestinationDescription",
+                        dest_config.get("S3Update"),
+                    );
+                    alt_field_shallow_update(
+                        &mut s.s3_config,
+                        "S3BackupDescription",
+                        dest_config.get("S3BackupConfiguration"),
+                    );
+                    alt_field_shallow_update(
+                        &mut s.s3_config,
+                        "S3BackupDescription",
+                        dest_config.get("S3BackupUpdate"),
+                    );
+                } else {
+                    // Different destination type: moto replaces the whole
+                    // entry (models.py:666-668). The ExtendedS3 mirror
+                    // pruning at models.py:688-693 mutates a stale dict in
+                    // moto (a no-op there — the else branch replaced it).
+                    s.s3_config = dest_config.clone();
+                    s.s3_config_is_extended = dest_name == "ExtendedS3";
                 }
             }
+            _ => {
+                // Destination kinds the twin's create path cannot store
+                // (Redshift/ES/Splunk/Snowflake/Iceberg): unreachable
+                // through the twin's own surface. moto still bumps the
+                // version here — the twin does the same, store as-is.
+            }
         }
+        // moto's version bump (models.py:696).
         s.version_id += 1;
         state.put(s);
         AwsResponse::json(200, json!({}))
@@ -532,13 +700,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
-                )
-            }
+            None => return stream_not_found(name, req.account),
         };
         if let Some(tags) = req.params.get("Tags").and_then(|v| v.as_array()).cloned() {
             for tag in tags {
@@ -566,13 +728,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
-                )
-            }
+            None => return stream_not_found(name, req.account),
         };
         let keys: Vec<String> = req
             .params
@@ -605,13 +761,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
-                )
-            }
+            None => return stream_not_found(name, req.account),
         };
         let mut all_tags: Vec<Value> = s
             .tags
@@ -641,13 +791,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
-                )
-            }
+            None => return stream_not_found(name, req.account),
         };
         let input = req
             .params
@@ -673,13 +817,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream {name} not found"),
-                )
-            }
+            None => return stream_not_found(name, req.account),
         };
         // moto only flips Status on the existing config (firehose models.py:
         // 595-602) — a whole-config replace erased KeyType/KeyARN from
@@ -703,7 +841,118 @@ enum DeliveredRecords {
     Failed(String),
 }
 
-/// moto's `MissingBucket` wire text (s3 exceptions.py:54-59).
+/// moto's `DeliveryStream.MAX_STREAMS_PER_REGION` (firehose models.py:118)
+/// — the ListDeliveryStreams default limit and the per-region quota.
+const MAX_STREAMS_PER_REGION: usize = 50;
+
+/// moto's `ResourceNotFoundException` text:
+/// `Firehose {name} under account {account} not found.`
+/// (firehose models.py:284-287 and the sibling lookups). UpdateDestination's
+/// own lookup spells it `accountId` (models.py:624) — see `update_stream`.
+fn stream_not_found(name: &str, account: u64) -> AwsResponse {
+    AwsResponse::error(
+        400,
+        "ResourceNotFoundException",
+        &format!("Firehose {name} under account {account} not found."),
+    )
+}
+
+/// moto's destination id for the stream's first (only) destination —
+/// `destinationId-000000000001` (firehose models.py:146-152).
+fn dest_id_for(_stream: &DeliveryStream) -> String {
+    "destinationId-000000000001".to_string()
+}
+
+/// moto's ALTERNATIVE_FIELD_NAMES apply on UpdateDestination
+/// (firehose models.py:671-678): `dest_config[old]` shallow-updates into a
+/// (created-if-absent) `{new}` member of the destination config.
+fn alt_field_shallow_update(
+    dest_config: &mut Map<String, Value>,
+    new: &str,
+    update: Option<&Value>,
+) {
+    let Some(update) = update else {
+        return;
+    };
+    let mut slot = dest_config
+        .get(new)
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    if let Some(upd_obj) = update.as_object() {
+        for (k, v) in upd_obj {
+            slot.insert(k.clone(), v.clone());
+        }
+        dest_config.insert(new.to_string(), Value::Object(slot));
+        return;
+    }
+    dest_config.insert(new.to_string(), update.clone());
+}
+
+/// moto's `put_http_records` (firehose models.py:426-449): the HttpEndpoint
+/// destination is delivered for real — one POST of
+/// `{requestId: uuid4, timestamp: epoch-seconds, records: [{data: <base64>}]}`
+/// with `Content-Type: application/json`, and one `(hyphenated) uuid4`
+/// RecordId per record. moto raises its RuntimeError on any failure — the
+/// twin surfaces that same literal through the crate's documented 200 +
+/// FailedPutCount + last_failure contract.
+fn put_http_records(
+    http_destination: &Map<String, Value>,
+    records: &[Vec<u8>],
+) -> Result<(), String> {
+    let url = http_destination
+        .get("EndpointConfiguration")
+        .and_then(|e| e.get("Url"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if url.is_empty() {
+        // moto KeyErrors on the absent URL (a client-side validation case
+        // botocore already blocks); answer the failure literal instead.
+        return Err(HTTP_DELIVERY_FAILED_MESSAGE.to_string());
+    }
+    let record_to_send = json!({
+        "requestId": uuid::Uuid::new_v4().to_string(),
+        "timestamp": chrono::Utc::now().timestamp(),
+        "records": records
+            .iter()
+            .map(|r| {
+                json!({ "data": base64::engine::general_purpose::STANDARD.encode(r) })
+            })
+            .collect::<Vec<_>>(),
+    });
+    // Loopback one-shot posts: close each connection (moto's mirror agent
+    // pattern, rotocore cloudformation/mirror.rs client()).
+    let outcome = http_agent()
+        .post(url)
+        .set("Content-Type", "application/json")
+        .set("Connection", "close")
+        .send_json(&record_to_send);
+    match outcome {
+        Ok(_) => Ok(()),
+        Err(_) => Err(HTTP_DELIVERY_FAILED_MESSAGE.to_string()),
+    }
+}
+
+/// Shared blocking agent for HttpEndpoint delivery (same shape as
+/// rotocore's `client()`: bounded connect/read timeouts).
+fn http_agent() -> ureq::Agent {
+    use std::sync::OnceLock;
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT
+        .get_or_init(|| {
+            ureq::AgentBuilder::new()
+                .timeout_connect(std::time::Duration::from_secs(5))
+                .timeout_read(std::time::Duration::from_secs(20))
+                .build()
+        })
+        .clone()
+}
+
+/// moto's literal RuntimeError text for a failed HTTP delivery
+/// (firehose models.py:445-448).
+const HTTP_DELIVERY_FAILED_MESSAGE: &str = "Firehose PutRecord(Batch) to HTTP destination failed";
+
+/// moto's MissingBucket wire text (s3 exceptions.py:54-59).
 const MISSING_BUCKET_MESSAGE: &str = "The specified bucket does not exist";
 
 /// moto's `_format_s3_object_path` (firehose models.py:510-541): the
@@ -783,7 +1032,7 @@ mod tests {
         assert_eq!(d["DeliveryStreamType"], json!("DirectPut"));
         assert_eq!(d["VersionId"], json!("1"));
         let dest = &d["Destinations"][0];
-        assert_eq!(dest["DestinationId"], json!("dest-1"));
+        assert_eq!(dest["DestinationId"], json!("destinationId-000000000001"));
         assert_eq!(
             dest["ExtendedS3DestinationDescription"]["CompressionFormat"],
             json!("GZIP")
@@ -793,13 +1042,14 @@ mod tests {
             json!(5)
         );
 
-        // Update destination bumps version and merges config
+        // Update destination bumps version and replaces the named top-level
+        // keys (moto's shallow update — firehose models.py:663-664).
         let upd = handler.handle(make_req(
             "UpdateDestination",
             json!({
                 "DeliveryStreamName": "test-stream",
                 "CurrentDeliveryStreamVersionId": "1",
-                "DestinationId": "dest-1",
+                "DestinationId": "destinationId-000000000001",
                 "ExtendedS3DestinationUpdate": {
                     "BufferingHints": {"SizeInMBs": 10, "IntervalInSeconds": 120}
                 }
@@ -822,17 +1072,17 @@ mod tests {
                 ["SizeInMBs"],
             json!(10)
         );
-        // Wrong version raises InvalidArgumentException
+        // Wrong version raises moto's ConcurrentModificationException
         let bad = handler.handle(make_req(
             "UpdateDestination",
             json!({
                 "DeliveryStreamName": "test-stream",
                 "CurrentDeliveryStreamVersionId": "999",
-                "DestinationId": "dest-1",
-                "ExtendedS3DestinationUpdate": {}
+                "DestinationId": "destinationId-000000000001",
+                "ExtendedS3DestinationUpdate": {"CompressionFormat": "GZIP"}
             }),
         ));
-        assert!(bad.body.contains("InvalidArgumentException"));
+        assert!(bad.body.contains("ConcurrentModificationException"));
     }
 
     #[test]
@@ -1128,5 +1378,500 @@ mod tests {
                 .is_none(),
             "the recovered stream must render no FailureDescription: {desc}"
         );
+    }
+
+    /// moto's `ResourceNotFoundException` text, used everywhere a stream
+    /// lookup fails (firehose models.py:284-287 et al).
+    #[test]
+    fn test_not_found_text_matches_moto() {
+        let handler = FirehoseHandler::new();
+        let put = handler.handle(make_req(
+            "PutRecord",
+            json!({"DeliveryStreamName": "ghost", "Record": {"Data": "aGk="}}),
+        ));
+        assert_eq!(put.status, 400);
+        let parsed: Value = serde_json::from_str(&put.body).unwrap();
+        assert_eq!(parsed["__type"], json!("ResourceNotFoundException"));
+        assert_eq!(
+            parsed["message"],
+            json!("Firehose ghost under account 123456789012 not found.")
+        );
+        let del = handler.handle(make_req(
+            "DeleteDeliveryStream",
+            json!({"DeliveryStreamName": "ghost"}),
+        ));
+        assert_eq!(
+            serde_json::from_str::<Value>(&del.body).unwrap()["message"],
+            json!("Firehose ghost under account 123456789012 not found.")
+        );
+    }
+
+    /// moto's UpdateDestination branches (firehose models.py:604-702): the
+    /// unknown destination id and type-switch are
+    /// `InvalidArgumentException`s, the version conflict a
+    /// `ConcurrentModificationException` (with `None` when the request
+    /// omitted the id), and a same-type update REPLACES the named
+    /// top-level keys wholesale while keeping the others.
+    #[test]
+    fn test_update_destination_moto_branches() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "upd",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::bkt",
+                    "RoleARN": "arn:aws:iam::123456789012:role/r",
+                    "BufferingHints": {"SizeInMBs": 5, "IntervalInSeconds": 300}
+                }
+            }),
+        ));
+        let moto_dest_id = "destinationId-000000000001";
+
+        // Unknown destination id: InvalidArgumentException "Destination Id …
+        // not found", and the version is NOT bumped.
+        let unknown = handler.handle(make_req(
+            "UpdateDestination",
+            json!({
+                "DeliveryStreamName": "upd",
+                "CurrentDeliveryStreamVersionId": "1",
+                "DestinationId": "destinationId-999999999999",
+                "ExtendedS3DestinationUpdate": {"CompressionFormat": "GZIP"}
+            }),
+        ));
+        assert_eq!(unknown.status, 400);
+        let parsed: Value = serde_json::from_str(&unknown.body).unwrap();
+        assert_eq!(parsed["__type"], json!("InvalidArgumentException"));
+        assert_eq!(
+            parsed["message"],
+            json!("Destination Id destinationId-999999999999 not found")
+        );
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "upd"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(desc["DeliveryStreamDescription"]["VersionId"], json!("1"));
+
+        // Omitted version id: moto interpolates `None` in the message.
+        let no_version = handler.handle(make_req(
+            "UpdateDestination",
+            json!({
+                "DeliveryStreamName": "upd",
+                "DestinationId": moto_dest_id,
+                "ExtendedS3DestinationUpdate": {"CompressionFormat": "GZIP"}
+            }),
+        ));
+        let parsed: Value = serde_json::from_str(&no_version.body).unwrap();
+        assert_eq!(parsed["__type"], json!("ConcurrentModificationException"));
+        assert_eq!(
+            parsed["message"],
+            json!("Cannot update firehose: upd since the current version id: 1 and specified version id: None do not match")
+        );
+
+        // Same-type update REPLACES named keys wholesale: BufferingHints
+        // loses SizeInMBs, and the untouched BucketARN survives.
+        let ok = handler.handle(make_req(
+            "UpdateDestination",
+            json!({
+                "DeliveryStreamName": "upd",
+                "CurrentDeliveryStreamVersionId": "1",
+                "DestinationId": moto_dest_id,
+                "ExtendedS3DestinationUpdate": {
+                    "BufferingHints": {"IntervalInSeconds": 120}
+                }
+            }),
+        ));
+        assert_eq!(ok.status, 200);
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "upd"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        let ext = &desc["DeliveryStreamDescription"]["Destinations"][0]
+            ["ExtendedS3DestinationDescription"];
+        assert_eq!(
+            ext["BufferingHints"].get("SizeInMBs"),
+            None,
+            "moto replaces the nested member wholesale: {ext}"
+        );
+        assert_eq!(ext["BufferingHints"]["IntervalInSeconds"], json!(120));
+        assert_eq!(
+            ext["BucketARN"],
+            json!("arn:aws:s3:::bkt"),
+            "keys not named in the update are kept"
+        );
+        assert_eq!(desc["DeliveryStreamDescription"]["VersionId"], json!("2"));
+
+        // A plain S3DestinationUpdate on an ExtendedS3 stream replaces the
+        // whole destination entry and flips the flavor (models.py:666-668).
+        let switch = handler.handle(make_req(
+            "UpdateDestination",
+            json!({
+                "DeliveryStreamName": "upd",
+                "CurrentDeliveryStreamVersionId": "2",
+                "DestinationId": moto_dest_id,
+                "S3DestinationUpdate": {
+                    "BucketARN": "arn:aws:s3:::plain",
+                    "RoleARN": "arn:aws:iam::123456789012:role/r"
+                }
+            }),
+        ));
+        assert_eq!(switch.status, 200);
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "upd"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        let switched = &desc["DeliveryStreamDescription"]["Destinations"][0];
+        assert!(
+            switched.get("S3DestinationDescription").is_some(),
+            "the flavor flipped to plain S3: {switched}"
+        );
+        assert_eq!(
+            switched["S3DestinationDescription"]["BucketARN"],
+            json!("arn:aws:s3:::plain")
+        );
+        // The old keys are gone from the stored entry (the describe
+        // renderer renders an empty BufferingHints object when the store
+        // has none — a shallow MERGE would have kept {SizeInMBs, …}).
+        assert_eq!(
+            switched["S3DestinationDescription"]["BufferingHints"],
+            json!({}),
+            "a different destination type replaces the whole entry: {switched}"
+        );
+    }
+
+    /// moto's exactly-one-destination rule on UpdateDestination
+    /// (find_destination_config_in_args, firehose models.py:57-87).
+    #[test]
+    fn test_update_destination_exactly_one_config() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "one-of",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::bkt",
+                    "RoleARN": "arn:aws:iam::123456789012:role/r"
+                }
+            }),
+        ));
+        let none = handler.handle(make_req(
+            "UpdateDestination",
+            json!({"DeliveryStreamName": "one-of", "DestinationId": "destinationId-000000000001"}),
+        ));
+        assert_eq!(none.status, 400);
+        assert_eq!(
+            serde_json::from_str::<Value>(&none.body).unwrap()["message"],
+            json!("Exactly one destination configuration is supported for a Firehose")
+        );
+    }
+
+    /// The HttpEndpoint destination is really delivered: moto's envelope
+    /// (requestId/timestamp/records[.data]) lands on the configured URL.
+    #[test]
+    fn test_http_endpoint_delivery_posts_envelope() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 16384];
+            let mut raw: Vec<u8> = Vec::new();
+            // Read until the JSON body is complete (Content-Length).
+            loop {
+                let n = sock.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&raw);
+                if let Some(idx) = text.find("\r\n\r\n") {
+                    let headers = &text[..idx];
+                    let clen = headers
+                        .lines()
+                        .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+                        .and_then(|l| l.split(':').nth(1))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if raw.len() >= idx + 4 + clen {
+                        break;
+                    }
+                }
+            }
+            let body = |raw: &[u8]| -> serde_json::Value {
+                let text = String::from_utf8_lossy(raw).to_string();
+                let idx = text.find("\r\n\r\n").unwrap();
+                match text
+                    .find("Content-Length:")
+                    .or_else(|| text.find("content-length:"))
+                {
+                    Some(_) => {
+                        let body = &raw[idx + 4..];
+                        serde_json::from_slice(body).unwrap()
+                    }
+                    None => serde_json::from_slice(&raw[idx + 4..]).unwrap(),
+                }
+            };
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+                .unwrap();
+            body(&raw)
+        });
+
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "http-stream",
+                "HttpEndpointDestinationConfiguration": {
+                    "EndpointConfiguration": {
+                        "Url": format!("http://127.0.0.1:{port}/endpoint"),
+                        "Name": "local"
+                    }
+                }
+            }),
+        ));
+        // Describe renders the HttpEndpoint destination member (moto's
+        // `{key}DestinationDescription`).
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "http-stream"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            desc["DeliveryStreamDescription"]["Destinations"][0]
+                ["HttpEndpointDestinationDescription"]["EndpointConfiguration"]["Url"],
+            json!(format!("http://127.0.0.1:{port}/endpoint"))
+        );
+
+        let resp = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "PutRecordBatch",
+                    json!({
+                        "DeliveryStreamName": "http-stream",
+                        "Records": [
+                            {"Data": base64::engine::general_purpose::STANDARD.encode(b"one")},
+                            {"Data": base64::engine::general_purpose::STANDARD.encode(b"two")}
+                        ]
+                    }),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(resp["FailedPutCount"], json!(0));
+        assert_eq!(resp["RequestResponses"].as_array().unwrap().len(), 2);
+        for r in resp["RequestResponses"].as_array().unwrap() {
+            assert_eq!(r["RecordId"].as_str().map(str::len), Some(36));
+        }
+
+        let received = server.join().unwrap();
+        assert!(received["requestId"].as_str().map(str::len) == Some(36));
+        assert!(received["timestamp"].is_i64());
+        let records = received["records"].as_array().unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(records[0]["data"].as_str().unwrap())
+                .unwrap(),
+            b"one"
+        );
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(records[1]["data"].as_str().unwrap())
+                .unwrap(),
+            b"two"
+        );
+    }
+
+    /// A failed HttpEndpoint delivery keeps the 200 (the crate's documented
+    /// put-failure contract) and answers moto's RuntimeError literal with
+    /// FailedPutCount = record count, surfaced on the stream too.
+    #[test]
+    fn test_http_endpoint_delivery_failure_is_honest() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "http-fail",
+                "HttpEndpointDestinationConfiguration": {
+                    "EndpointConfiguration": {
+                        "Url": "http://127.0.0.1:9/unreachable"
+                    }
+                }
+            }),
+        ));
+        let resp = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "PutRecordBatch",
+                    json!({
+                        "DeliveryStreamName": "http-fail",
+                        "Records": [{"Data": "aGk="}, {"Data": "aGk="}]
+                    }),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(resp["FailedPutCount"], json!(2));
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "http-fail"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            desc["DeliveryStreamDescription"]["FailureDescription"],
+            json!({
+                "Type": "UNKNOWN_ERROR",
+                "Details": "Firehose PutRecord(Batch) to HTTP destination failed"
+            })
+        );
+    }
+
+    /// The HttpEndpoint stream's PutRecord without a bucket-level failure
+    /// answers FailedPutCount 0 and a per-record RecordId (moto's success
+    /// path shape).
+    #[test]
+    fn test_put_record_http_ok() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 8192];
+            loop {
+                let n = sock.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&raw);
+                if let Some(idx) = text.find("\r\n\r\n") {
+                    let clen = text[..idx]
+                        .split("\r\n")
+                        .find_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            k.eq_ignore_ascii_case("content-length")
+                                .then(|| v.trim().parse::<usize>().ok())?
+                        })
+                        .unwrap_or(0);
+                    if raw.len() >= idx + 4 + clen {
+                        break;
+                    }
+                }
+            }
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+                .unwrap();
+        });
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "http-put",
+                "HttpEndpointDestinationConfiguration": {
+                    "EndpointConfiguration": {"Url": format!("http://127.0.0.1:{port}/e")}
+                }
+            }),
+        ));
+        let resp = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "PutRecord",
+                    json!({
+                        "DeliveryStreamName": "http-put",
+                        "Record": {"Data": base64::engine::general_purpose::STANDARD.encode(b"hi")}
+                    }),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(resp["RecordId"].as_str().map(str::len), Some(36));
+        assert_eq!(resp.get("FailedPutCount"), None);
+        server.join().unwrap();
+    }
+
+    /// moto's per-region stream quota (firehose models.py:223-228): the
+    /// 51st create raises LimitExceededException with moto's message.
+    #[test]
+    fn test_create_quota_limit() {
+        let handler = FirehoseHandler::new();
+        for i in 0..MAX_STREAMS_PER_REGION {
+            let resp = handler.handle(make_req(
+                "CreateDeliveryStream",
+                json!({"DeliveryStreamName": format!("quota-{i:02}")}),
+            ));
+            assert_eq!(resp.status, 200, "stream {i} should create");
+        }
+        let over = handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({"DeliveryStreamName": "over-quota"}),
+        ));
+        assert_eq!(over.status, 400);
+        assert!(over.body.contains("LimitExceededException"));
+        assert!(over
+            .body
+            .contains("You have already consumed your firehose quota of 50 hoses."));
+    }
+
+    /// moto's ListDeliveryStreams (firehose models.py:344-382): the
+    /// DeliveryStreamType filter narrows by the stream's type.
+    #[test]
+    fn test_list_streams_type_filter() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({"DeliveryStreamName": "direct1"}),
+        ));
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({"DeliveryStreamName": "kinesis1", "DeliveryStreamType": "KinesisStreamAsSource"}),
+        ));
+        let all = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req("ListDeliveryStreams", json!({})))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(all["DeliveryStreamNames"].as_array().unwrap().len(), 2);
+        let filtered = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "ListDeliveryStreams",
+                    json!({"DeliveryStreamType": "KinesisStreamAsSource"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        let names: Vec<&str> = filtered["DeliveryStreamNames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n.as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["kinesis1"]);
     }
 }

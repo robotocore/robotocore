@@ -114,6 +114,7 @@ mod tests {
             last_failure: None,
             s3_config: Default::default(),
             encryption: None,
+            http_endpoint_config: None,
         });
 
         let snap = handler.snapshot_json();

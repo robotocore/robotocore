@@ -1,6 +1,6 @@
 {
   "service": "route53domains",
-  "generated_at": "2026-10-26T04:02:23.496306+00:00",
+  "generated_at": "2026-11-01T17:08:06.113313+00:00",
   "endpoint": "http://localhost:4786",
   "counts": {
     "working": 34,

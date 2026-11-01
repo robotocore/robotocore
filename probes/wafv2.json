@@ -1,6 +1,6 @@
 {
   "service": "wafv2",
-  "generated_at": "2026-10-26T09:23:56.022801+00:00",
+  "generated_at": "2026-11-01T17:08:06.113313+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 54,

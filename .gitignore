@@ -42,3 +42,6 @@ docker-extension/vm/target/
 .parity/*
 !.parity/expectations_current.json
 .worktrees/
+
+# worktree-local rustc build dirs (wave lanes)
+ctarget*/

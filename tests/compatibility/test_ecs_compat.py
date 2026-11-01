@@ -593,7 +593,14 @@ class TestTaskOperations:
         ecs.deregister_task_definition(taskDefinition=f"{family}:1")
 
     def test_run_task(self, ecs, cluster, task_def_arn):
-        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        # FARGATE placements need no container instance (moto:
+        # models.py:1292-1311); an EC2 default WOULD need one
+        # (models.py:1313-1317), so name the launch type explicitly.
+        resp = ecs.run_task(
+            cluster=cluster,
+            taskDefinition=task_def_arn,
+            launchType="FARGATE",
+        )
         assert "tasks" in resp
         assert len(resp["tasks"]) >= 1
         task = resp["tasks"][0]
@@ -601,18 +608,23 @@ class TestTaskOperations:
         assert task["clusterArn"].endswith(f"/{cluster}")
 
     def test_run_task_with_count(self, ecs, cluster, task_def_arn):
-        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, count=2)
+        resp = ecs.run_task(
+            cluster=cluster,
+            taskDefinition=task_def_arn,
+            count=2,
+            launchType="FARGATE",
+        )
         assert len(resp["tasks"]) == 2
 
     def test_stop_task(self, ecs, cluster, task_def_arn):
-        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE")
         task_arn = run_resp["tasks"][0]["taskArn"]
         stop_resp = ecs.stop_task(cluster=cluster, task=task_arn, reason="testing")
         assert "task" in stop_resp
         assert stop_resp["task"]["taskArn"] == task_arn
 
     def test_describe_tasks(self, ecs, cluster, task_def_arn):
-        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, launchType="FARGATE")
         task_arn = run_resp["tasks"][0]["taskArn"]
         desc_resp = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
         assert len(desc_resp["tasks"]) == 1
@@ -844,6 +856,9 @@ class TestDeleteTaskDefinitions:
             family=family,
             containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
         )
+        # moto: only a non-ACTIVE (deregistered) definition can be batch
+        # deleted (models.py:2394-2402).
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
         resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
         assert "taskDefinitions" in resp
         assert len(resp["taskDefinitions"]) >= 1
@@ -854,9 +869,25 @@ class TestDeleteTaskDefinitions:
             family=family,
             containerDefinitions=[{"name": "app", "image": "busybox", "memory": 64}],
         )
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
         resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
         td = resp["taskDefinitions"][0]
         assert td["status"] == "DELETE_IN_PROGRESS"
+
+    def test_delete_task_definitions_refuses_active(self, ecs):
+        """moto refuses an ACTIVE definition with the still-in-ACTIVE row."""
+        family = _unique("del-tds-active")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "busybox", "memory": 64}],
+        )
+        resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
+        assert resp["taskDefinitions"] == []
+        reason = (
+            "The specified task definition is still in ACTIVE status. "
+            "Please deregister the target and try again."
+        )
+        assert resp["failures"][0]["reason"] == reason
 
 
 class TestContainerInstanceOperations:
@@ -1074,7 +1105,39 @@ class TestAttributeOperations:
         yield name
         ecs.delete_cluster(cluster=name)
 
-    def test_put_attributes(self, ecs, cluster):
+    @pytest.fixture
+    def container_instance(self, ecs, cluster):
+        """A real container instance — attribute targets must exist
+        (moto raises TargetNotFoundException for a bogus targetId,
+        models.py_put_attribute:1939-1973)."""
+        from botocore.exceptions import ClientError
+
+        # A bogus target is rejected, exactly like moto.
+        with pytest.raises(ClientError) as exc:
+            ecs.put_attributes(
+                cluster=cluster,
+                attributes=[
+                    {
+                        "name": "env",
+                        "value": "x",
+                        "targetType": "container-instance",
+                        "targetId": "no-such-instance",
+                    }
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] == "TargetNotFoundException"
+
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-attr", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        yield ci_arn
+        ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+
+    def test_put_attributes(self, ecs, cluster, container_instance):
         resp = ecs.put_attributes(
             cluster=cluster,
             attributes=[
@@ -1082,7 +1145,7 @@ class TestAttributeOperations:
                     "name": "env",
                     "value": "production",
                     "targetType": "container-instance",
-                    "targetId": "fake-ci-id",
+                    "targetId": container_instance,
                 }
             ],
         )
@@ -1090,7 +1153,7 @@ class TestAttributeOperations:
         assert len(resp["attributes"]) == 1
         assert resp["attributes"][0]["name"] == "env"
 
-    def test_list_attributes_after_put(self, ecs, cluster):
+    def test_list_attributes_after_put(self, ecs, cluster, container_instance):
         ecs.put_attributes(
             cluster=cluster,
             attributes=[
@@ -1098,7 +1161,7 @@ class TestAttributeOperations:
                     "name": "team",
                     "value": "platform",
                     "targetType": "container-instance",
-                    "targetId": "fake-ci-id-2",
+                    "targetId": container_instance,
                 }
             ],
         )
@@ -1107,7 +1170,7 @@ class TestAttributeOperations:
         names = [a["name"] for a in resp["attributes"]]
         assert "team" in names
 
-    def test_delete_attributes(self, ecs, cluster):
+    def test_delete_attributes(self, ecs, cluster, container_instance):
         ecs.put_attributes(
             cluster=cluster,
             attributes=[
@@ -1115,7 +1178,7 @@ class TestAttributeOperations:
                     "name": "temp-attr",
                     "value": "temp-val",
                     "targetType": "container-instance",
-                    "targetId": "fake-ci-id-3",
+                    "targetId": container_instance,
                 }
             ],
         )
@@ -1125,14 +1188,14 @@ class TestAttributeOperations:
                 {
                     "name": "temp-attr",
                     "targetType": "container-instance",
-                    "targetId": "fake-ci-id-3",
+                    "targetId": container_instance,
                 }
             ],
         )
         assert "attributes" in resp
         # Verify it's gone
         listed = ecs.list_attributes(cluster=cluster, targetType="container-instance")
-        names = [a["name"] for a in listed["attributes"] if a.get("targetId") == "fake-ci-id-3"]
+        names = [a["name"] for a in listed["attributes"] if a.get("targetId") == container_instance]
         assert "temp-attr" not in names
 
 

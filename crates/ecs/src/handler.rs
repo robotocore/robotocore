@@ -118,14 +118,7 @@ impl EcsHandler {
             | "DeleteExpressGatewayService"
             | "DescribeExpressGatewayService"
             | "UpdateExpressGatewayService" => AwsResponse::json(200, json!({})),
-            "DiscoverPollEndpoint" => AwsResponse::json(
-                200,
-                json!({
-                    "endpoint": "http://localhost:4567",
-                    "agentArgs": [],
-                    "agentConfig": {},
-                }),
-            ),
+            "DiscoverPollEndpoint" => self.discover_poll_endpoint(),
             other => AwsResponse::error(
                 400,
                 "InvalidAction",
@@ -298,7 +291,13 @@ impl EcsHandler {
                         .unwrap_or(0));
                     found.push(c);
                 }
-                None => failures.push(json!({ "arn": cid, "reason": "MISSING" })),
+                // moto's ClusterFailure synthesizes the typed cluster ARN
+                // for the missing name (ecs/models.py:831-836) instead of
+                // echoing the raw request reference.
+                None => failures.push(json!({
+                    "arn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, resolve_name(&cid)),
+                    "reason": "MISSING",
+                })),
             }
         }
         AwsResponse::json(200, json!({ "clusters": found, "failures": failures }))
@@ -437,8 +436,11 @@ impl EcsHandler {
         for n in names {
             match cps.get(&n) {
                 Some(cp) => found.push(cp.clone()),
+                // moto's CapacityProviderFailure spells the resource type
+                // with an underscore in the failure ARN
+                // (ecs/models.py:466-469): capacity_provider/{name}.
                 None => failures.push(json!({
-                    "arn": format!("arn:aws:ecs:{}:{}:capacity-provider/{}", req.region, req.account, n),
+                    "arn": format!("arn:aws:ecs:{}:{}:capacity_provider/{}", req.region, req.account, n),
                     "reason": "MISSING",
                 })),
             }
@@ -509,6 +511,15 @@ impl EcsHandler {
     // Task definitions
     // ------------------------------------------------------------------
 
+    /// moto's `register_task_definition` (ecs/models.py:1112-1199): fields
+    /// are stored as passed (no invented cpu "256"/memory "512"/networkMode
+    /// "awsvpc"/requiresCompatibilities; absent task/execution roles are
+    /// omitted), `compatibilities` is computed (["EC2"] default — the whole
+    /// ["EC2","FARGATE"] bucket for any other input), networkMode follows
+    /// moto's rule (FARGATE → "awsvpc", absent → "bridge"), container
+    /// definitions get moto's default members, the revision is
+    /// max(revision)+1, and the FARGATE pidMode + container-def checks run
+    /// in moto's order.
     fn register_task_definition(&self, req: &AwsRequest) -> AwsResponse {
         let family = req
             .params
@@ -519,12 +530,109 @@ impl EcsHandler {
             return AwsResponse::error(400, "ClientException", "family is required.");
         }
         let state = self.get_state(req.account, &req.region);
+        let requires: Option<Vec<String>> = req
+            .params
+            .get("requiresCompatibilities")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            });
+        let pid_mode = req
+            .params
+            .get("pidMode")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let fargate_required = requires
+            .as_ref()
+            .map(|r| r.iter().any(|c| c == "FARGATE"))
+            .unwrap_or(false);
+        // moto (models.py:1132-1137): the FARGATE pidMode check runs first.
+        if fargate_required && !pid_mode.is_empty() && pid_mode != "task" {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                &format!(
+                    "Tasks using the Fargate launch type do not support pidMode '{pid_mode}'. The supported value for pidMode is 'task'."
+                ),
+            );
+        }
+        let top_memory = req.params.get("memory").and_then(|v| v.as_str());
+        let container_definitions: Vec<Value> = req
+            .params
+            .get("containerDefinitions")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .map(|cd| {
+                // moto's default_container_definition (models.py:159-171):
+                // fields the request left out fall back to these.
+                let mut full = json!({
+                    "cpu": 0,
+                    "portMappings": [],
+                    "essential": true,
+                    "environment": [],
+                    "mountPoints": [],
+                    "volumesFrom": [],
+                });
+                if let (Some(slot), Some(passed)) = (full.as_object_mut(), cd.as_object()) {
+                    for (k, v) in passed {
+                        slot.insert(k.clone(), v.clone());
+                    }
+                }
+                full
+            })
+            .collect();
+        for cd in &container_definitions {
+            // moto's _validate_container_defs (models.py:1174-1199); the
+            // capitalized variants only arrive from CloudFormation, which
+            // never reaches this handler.
+            let has = |keys: &[&str]| {
+                keys.iter()
+                    .any(|k| cd.get(*k).map(|v| !v.is_null()).unwrap_or(false))
+            };
+            if !has(&["name"]) {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    "Container.name should not be null or empty.",
+                );
+            }
+            let name = cd["name"].as_str().unwrap_or_default().to_string();
+            if !has(&["image"]) {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    "Container.image should not be null or empty.",
+                );
+            }
+            if !has(&["memory", "memoryReservation"]) && top_memory.is_none() {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    &format!(
+                        "Invalid setting for container '{name}'. At least one of 'memory' or 'memoryReservation' must be specified."
+                    ),
+                );
+            }
+        }
         let td_arn;
         let tags: Vec<Value>;
         let td = {
             let mut tds = state.task_definitions.write();
+            // moto numbers revisions via _get_last_task_definition_revision_id
+            // (max revision) + 1 — len()+1 duplicates ids once a delete
+            // removed a middle revision.
             let revisions = tds.entry(family.to_string()).or_default();
-            let revision = revisions.len() + 1;
+            let revision = revisions
+                .iter()
+                .map(|td| td["revision"].as_i64().unwrap_or(0))
+                .max()
+                .unwrap_or(0)
+                + 1;
             td_arn = format!(
                 "arn:aws:ecs:{}:{}:task-definition/{}:{}",
                 req.region, req.account, family, revision
@@ -535,22 +643,54 @@ impl EcsHandler {
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
-            let td = json!({
+            // compatibilities/networkMode: TaskDefinition.__init__
+            // (models.py:186-196).
+            let compatibilities: Value = if requires
+                .as_ref()
+                .map(|r| r.is_empty() || r == &["EC2"])
+                .unwrap_or(true)
+            {
+                json!(["EC2"])
+            } else {
+                json!(["EC2", "FARGATE"])
+            };
+            let fargate_compat = compatibilities
+                .as_array()
+                .map(|c| c.iter().any(|c| c == &json!("FARGATE")))
+                .unwrap_or(false);
+            let mut td = json!({
                 "taskDefinitionArn": td_arn.clone(),
                 "family": family,
                 "revision": revision,
+                "compatibilities": compatibilities,
                 "status": "ACTIVE",
-                "containerDefinitions": req.params.get("containerDefinitions").cloned().unwrap_or(json!([])),
-                "cpu": req.params.get("cpu").and_then(|v| v.as_str()).unwrap_or("256"),
-                "memory": req.params.get("memory").and_then(|v| v.as_str()).unwrap_or("512"),
-                "networkMode": req.params.get("networkMode").and_then(|v| v.as_str()).unwrap_or("awsvpc"),
-                "requiresCompatibilities": req.params.get("requiresCompatibilities")
-                    .cloned().unwrap_or(json!(["FARGATE"])),
-                "executionRoleArn": req.params.get("executionRoleArn").and_then(|v| v.as_str()).unwrap_or(""),
-                "taskRoleArn": req.params.get("taskRoleArn").and_then(|v| v.as_str()).unwrap_or(""),
+                "containerDefinitions": container_definitions,
                 "volumes": req.params.get("volumes").cloned().unwrap_or(json!([])),
-                "tags": tags.clone(),
+                "placementConstraints": req.params.get("placementConstraints").cloned().unwrap_or(json!([])),
             });
+            if fargate_compat {
+                td["networkMode"] = json!("awsvpc");
+            } else if let Some(nm) = req.params.get("networkMode").and_then(|v| v.as_str()) {
+                td["networkMode"] = json!(nm);
+            } else {
+                td["networkMode"] = json!("bridge");
+            }
+            if let Some(cpu) = req.params.get("cpu").and_then(|v| v.as_str()) {
+                td["cpu"] = json!(cpu);
+            }
+            if let Some(memory) = req.params.get("memory").and_then(|v| v.as_str()) {
+                td["memory"] = json!(memory);
+            }
+            if let Some(task_role) = req.params.get("taskRoleArn").and_then(|v| v.as_str()) {
+                td["taskRoleArn"] = json!(task_role);
+            }
+            if let Some(exec_role) = req.params.get("executionRoleArn").and_then(|v| v.as_str()) {
+                td["executionRoleArn"] = json!(exec_role);
+            }
+            if let Some(rc) = req.params.get("requiresCompatibilities") {
+                td["requiresCompatibilities"] = rc.clone();
+            }
+            td["tags"] = json!(tags.clone());
             revisions.push(td.clone());
             td
         };
@@ -581,10 +721,12 @@ impl EcsHandler {
                     "tags": td.get("tags").cloned().unwrap_or(json!([])),
                 }),
             ),
+            // moto's TaskDefinitionNotFoundException (ecs/exceptions.py:13-18)
+            // — the message does NOT interpolate the reference.
             None => AwsResponse::error(
                 400,
                 "ClientException",
-                &format!("Unable to describe task definition {}.", td_ref),
+                "Unable to describe task definition.",
             ),
         }
     }
@@ -664,6 +806,14 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "families": families }))
     }
 
+    /// moto's `deregister_task_definition` (ecs/models.py:1218-1238): the
+    /// reference MUST be `family:revision` — a bare family raises
+    /// `RevisionNotFoundException` ("Revision is missing."), a non-numeric
+    /// revision `InvalidParameterException`, and a missing pair the
+    /// `TaskDefinitionNotFoundException` text ("Unable to describe task
+    /// definition."). A hit flips the stored revision INACTIVE in place
+    /// (the twin's comment at resolve_task_definition used to decode the
+    /// status handling — moto keeps INACTIVE rows discoverable).
     fn deregister_task_definition(&self, req: &AwsRequest) -> AwsResponse {
         let td_ref = req
             .params
@@ -671,34 +821,54 @@ impl EcsHandler {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let found = resolve_task_definition(&state, td_ref);
-        let td = match found {
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ClientException",
-                    &format!("Unable to deregister task definition {}.", td_ref),
-                )
-            }
-            Some(td) => td,
+        let name = td_ref.split('/').next_back().unwrap_or(td_ref);
+        let Some((family, revision)) = name.split_once(':') else {
+            return AwsResponse::error(400, "ClientException", "Revision is missing.");
         };
-        let family = td["family"].as_str().unwrap_or_default().to_string();
-        let revision = td["revision"].as_i64().unwrap_or(0);
+        let Ok(revision) = revision.parse::<i64>() else {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Invalid revision number. Number: {revision}"),
+            );
+        };
+        let hit = state
+            .task_definitions
+            .read()
+            .get(family)
+            .and_then(|revisions| {
+                revisions
+                    .iter()
+                    .find(|td| td["revision"].as_i64() == Some(revision))
+                    .cloned()
+            });
+        let Some(mut td) = hit else {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Unable to describe task definition.",
+            );
+        };
         {
             let mut tds = state.task_definitions.write();
-            if let Some(revisions) = tds.get_mut(&family) {
-                for rev in revisions.iter_mut() {
-                    if rev["revision"].as_i64() == Some(revision) {
-                        rev["status"] = json!("INACTIVE");
+            if let Some(revisions) = tds.get_mut(family) {
+                for rev_td in revisions.iter_mut() {
+                    if rev_td["revision"].as_i64() == Some(revision) {
+                        rev_td["status"] = json!("INACTIVE");
                     }
                 }
             }
         }
-        let mut updated = td;
-        updated["status"] = json!("INACTIVE");
-        AwsResponse::json(200, json!({ "taskDefinition": updated }))
+        td["status"] = json!("INACTIVE");
+        AwsResponse::json(200, json!({ "taskDefinition": td }))
     }
 
+    /// moto's `delete_task_definitions` (ecs/models.py:2350-2409): empty and
+    /// >10 lists are client errors; every reference must be `family:rev`;
+    /// an ACTIVE definition is refused with the still-in-ACTIVE failure row;
+    /// a hit is REMOVED from the store (not just marked) and returned with
+    /// status DELETE_IN_PROGRESS; failures echo the raw reference with
+    /// moto's reason text (its DeleteTaskDefinitionFailure row shape).
     fn delete_task_definitions(&self, req: &AwsRequest) -> AwsResponse {
         let refs: Vec<String> = req
             .params
@@ -710,23 +880,67 @@ impl EcsHandler {
                     .collect()
             })
             .unwrap_or_default();
+        if refs.is_empty() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "size of TaskDefinition references list must be greater than 0",
+            );
+        }
+        if refs.len() > 10 {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Size of TaskDefinition references list cannot exceed 10",
+            );
+        }
         let state = self.get_state(req.account, &req.region);
         let mut deleted: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         for td_ref in &refs {
-            let found = resolve_task_definition(&state, td_ref);
-            match found {
+            let name = td_ref.split('/').next_back().unwrap_or(td_ref);
+            let parsed = name
+                .split_once(':')
+                .and_then(|(f, r)| r.parse::<i64>().ok().map(|rev| (f, rev)));
+            let Some((family, revision)) = parsed else {
+                // moto bare-families this row ("…identifier is invalid…");
+                // its unguarded int() on a non-numeric revision would be a
+                // crash there — answer the same invalid-identifier row.
+                failures.push(json!({
+                    "arn": td_ref,
+                    "reason": "The specified task definition identifier is invalid. Specify a valid name or ARN and try again.",
+                }));
+                continue;
+            };
+            let hit = state
+                .task_definitions
+                .read()
+                .get(family)
+                .and_then(|revisions| {
+                    revisions
+                        .iter()
+                        .find(|td| td["revision"].as_i64() == Some(revision))
+                        .cloned()
+                });
+            match hit {
+                Some(td) if td["status"] == json!("ACTIVE") => failures.push(json!({
+                    "arn": td_ref,
+                    "reason": "The specified task definition is still in ACTIVE status. Please deregister the target and try again.",
+                })),
                 Some(td) => {
-                    let family = td["family"].as_str().unwrap_or_default().to_string();
-                    let revision = td["revision"].as_i64().unwrap_or(0);
-                    let mut tds = state.task_definitions.write();
-                    if let Some(revisions) = tds.get_mut(&family) {
-                        for rev in revisions.iter_mut() {
-                            if rev["revision"].as_i64() == Some(revision) {
-                                rev["status"] = json!("DELETE_IN_PROGRESS");
-                            }
+                    {
+                        // moto `del self.task_definitions[family][revision]`
+                        // — the row leaves the store entirely.
+                        let mut tds = state.task_definitions.write();
+                        if let Some(revisions) = tds.get_mut(family) {
+                            revisions.retain(|row| row["revision"].as_i64() != Some(revision));
                         }
                     }
+                    let arn = td["taskDefinitionArn"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    state.tags.write().remove(&arn);
                     let mut updated = td;
                     updated["status"] = json!("DELETE_IN_PROGRESS");
                     deleted.push(updated);
@@ -771,6 +985,22 @@ impl EcsHandler {
             "ecs-svc/{}",
             &uuid::Uuid::new_v4().simple().to_string()[..20]
         );
+        // moto's create_service launch-type handling (ecs/models.py:
+        // 1622-1625): absent → "EC2", anything outside [EC2, FARGATE] is a
+        // ClientException ("launch type should be one of [EC2,FARGATE]").
+        let launch_type = req
+            .params
+            .get("launchType")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty())
+            .unwrap_or("EC2");
+        if launch_type != "EC2" && launch_type != "FARGATE" {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "launch type should be one of [EC2,FARGATE]",
+            );
+        }
         let task_definition = req
             .params
             .get("taskDefinition")
@@ -822,7 +1052,7 @@ impl EcsHandler {
             "runningCount": running_count,
             "pendingCount": pending_count,
             "status": "ACTIVE",
-            "launchType": req.params.get("launchType").and_then(|v| v.as_str()).unwrap_or("FARGATE"),
+            "launchType": launch_type,
             "networkConfiguration": req.params.get("networkConfiguration").cloned().unwrap_or(json!({})),
             "loadBalancers": req.params.get("loadBalancers").cloned().unwrap_or(json!([])),
             "deployments": [{
@@ -926,7 +1156,22 @@ impl EcsHandler {
                 .unwrap_or(None);
             match lookup {
                 Some(svc) => found.push(svc),
-                None => failures.push(json!({ "arn": sid, "reason": "MISSING" })),
+                // moto's describe_services failure ARN (ecs/models.py:
+                // 1694-1698): the input as-is when it is already an ARN,
+                // otherwise the synthesized typed service ARN.
+                None => failures.push(json!({
+                    "arn": if sid.starts_with("arn:") {
+                        sid.clone()
+                    } else {
+                        format!(
+                            "arn:aws:ecs:{}:{}:service/{}",
+                            req.region,
+                            req.account,
+                            resolve_name(sid)
+                        )
+                    },
+                    "reason": "MISSING",
+                })),
             }
         }
         AwsResponse::json(200, json!({ "services": found, "failures": failures }))
@@ -1076,6 +1321,18 @@ impl EcsHandler {
     // Tasks
     // ------------------------------------------------------------------
 
+    /// moto's `run_task` (ecs/models.py:1240-1359): the launchType
+    /// vocabulary check, the launchType/strategy conflict, the cluster
+    /// lookup, the task-definition resolution (moto's family resolution —
+    /// "Unable to describe task definition."), the cluster default strategy
+    /// fallback, and placement: FARGATE/FARGATE_SPOT (or the FARGATE launch
+    /// type) tasks need no instance; any other capacity provider needs an
+    /// ACTIVE container instance in the cluster — moto raises
+    /// `No instances found in cluster …` there (a crash page in moto); the
+    /// twin answers real-AWS's RunTask failure row (200, tasks=[], a
+    /// RESOURCE:TASK failure citing moto's sentence in detail). startedBy
+    /// and group are stored on the task like moto; launchType defaults to
+    /// "" (moto stores `launch_type or ""`; it does NOT default FARGATE).
     fn run_task(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1083,15 +1340,28 @@ impl EcsHandler {
                 .map(|v| v.as_str().unwrap_or("default"))
                 .unwrap_or("default"),
         );
-        // moto 5.2.3: an explicit capacity provider strategy cannot be
-        // combined with a launch type.
-        let launch_type_param = req.params.get("launchType").and_then(|v| v.as_str());
+        // moto's check order (models.py:1254-1262): vocabulary first, then
+        // the conflict.
+        let launch_type_param = req
+            .params
+            .get("launchType")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty());
+        if let Some(t) = launch_type_param {
+            if t != "EC2" && t != "FARGATE" && t != "EXTERNAL" {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterException",
+                    "launch type should be one of [EC2,FARGATE,EXTERNAL]",
+                );
+            }
+        }
         let explicit_strategy = req
             .params
             .get("capacityProviderStrategy")
             .and_then(|v| v.as_array())
             .filter(|a| !a.is_empty());
-        let has_launch_type = launch_type_param.is_some_and(|t| !t.is_empty());
+        let has_launch_type = launch_type_param.is_some();
         if has_launch_type && explicit_strategy.is_some() {
             return AwsResponse::error(
                 400,
@@ -1110,11 +1380,13 @@ impl EcsHandler {
             .unwrap_or_default();
         let td = match resolve_task_definition(&state, td_ref) {
             Some(td) => td,
+            // moto surfaces its TaskDefinitionNotFoundException here
+            // (models.py:1281 → exceptions.py:13-18).
             None => {
                 return AwsResponse::error(
                     400,
                     "ClientException",
-                    &format!("Task definition {} not found.", td_ref),
+                    "Unable to describe task definition.",
                 )
             }
         };
@@ -1147,6 +1419,75 @@ impl EcsHandler {
             .and_then(|v| v.as_str())
             .map(String::from);
         drop(clusters);
+        // FARGATE/FARGATE_SPOT are managed providers that need no container
+        // instance (models.py:1274-1279).
+        let use_fargate = launch_type_param == Some("FARGATE")
+            || capacity_provider_name
+                .as_deref()
+                .map(|c| c == "FARGATE" || c == "FARGATE_SPOT")
+                .unwrap_or(false);
+        // moto places EC2 runs onto the cluster's ACTIVE container
+        // instances and raises `No instances found in cluster …` when there
+        // is none (models.py:1313-1317). That raise is a moto crash page —
+        // the twin answers real-AWS's RunTask failure row instead (200, no
+        // tasks, one RESOURCE:TASK failure carrying moto's sentence).
+        let active_instances: Vec<String> = if use_fargate {
+            Vec::new()
+        } else {
+            state
+                .container_instances
+                .read()
+                .get(cluster_name)
+                .map(|m| {
+                    let mut arns: Vec<String> = m
+                        .values()
+                        .filter(|ci| ci.get("status").and_then(|v| v.as_str()) == Some("ACTIVE"))
+                        .filter_map(|ci| ci["containerInstanceArn"].as_str().map(String::from))
+                        .collect();
+                    arns.sort();
+                    arns
+                })
+                .unwrap_or_default()
+        };
+        if !use_fargate && active_instances.is_empty() {
+            return AwsResponse::json(
+                200,
+                json!({
+                    "tasks": [],
+                    "failures": [{
+                        "arn": td["taskDefinitionArn"].clone(),
+                        "reason": "RESOURCE:TASK",
+                        "detail": format!("No instances found in cluster {cluster_name}."),
+                    }]
+                }),
+            );
+        }
+        // moto's Task.__init__ (models.py:358-362): an awsvpc task needs a
+        // network configuration.
+        if td.get("networkMode").and_then(|v| v.as_str()) == Some("awsvpc")
+            && req.params.get("networkConfiguration").is_none()
+        {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Network Configuration must be provided when networkMode 'awsvpc' is specified.",
+            );
+        }
+        let started_by = req
+            .params
+            .get("startedBy")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        // moto (models.py:1282-1284): group defaults to family:{family},
+        // otherwise the explicit `group` parameter.
+        let group = req
+            .params
+            .get("group")
+            .and_then(|v| v.as_str())
+            .filter(|g| !g.is_empty())
+            .map(String::from)
+            .unwrap_or_else(|| format!("family:{}", td["family"].as_str().unwrap_or_default()));
         let containers: Vec<Value> = td
             .get("containerDefinitions")
             .and_then(|v| v.as_array())
@@ -1175,6 +1516,7 @@ impl EcsHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        let mut task_index: i64 = 0;
         for _ in 0..count {
             let task_id = uuid::Uuid::new_v4().to_string();
             let task_arn = format!(
@@ -1193,20 +1535,31 @@ impl EcsHandler {
                 "clusterArn": cluster_arn,
                 "lastStatus": "RUNNING",
                 "desiredStatus": "RUNNING",
-                "cpu": td.get("cpu").and_then(|v| v.as_str()).unwrap_or("256"),
-                "memory": td.get("memory").and_then(|v| v.as_str()).unwrap_or("512"),
-                "launchType": req.params.get("launchType").and_then(|v| v.as_str()).unwrap_or("FARGATE"),
+                // moto's Task model carries NO cpu/memory members — the twin
+                // used to invent "256"/"512" here from the old task-def
+                // defaults.
+                "launchType": launch_type_param.unwrap_or(""),
                 "startedAt": now,
                 "createdAt": now,
                 "containers": containers.clone(),
-                "tags": [],
+                "tags": task_tags.clone(),
                 "overrides": req.params.get("overrides").cloned().unwrap_or(json!({})),
+                "startedBy": started_by.clone(),
+                "group": group.clone(),
             });
             // moto 5.2.3 surfaces the strategy's primary provider as the Task
             // model's capacityProviderName member.
             if let Some(provider) = &capacity_provider_name {
                 task["capacityProviderName"] = json!(provider);
             }
+            // EC2 placements carry the instance they landed on (moto's
+            // container_instance_arn; placed round-robin — moto's
+            // resource-check placement is not modeled).
+            if !active_instances.is_empty() {
+                task["containerInstanceArn"] =
+                    json!(&active_instances[(task_index % active_instances.len() as i64) as usize]);
+            }
+            task_index += 1;
             tasks.push(task.clone());
             inserted.push((task_id, task));
         }
@@ -1219,6 +1572,13 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "tasks": tasks, "failures": [] }))
     }
 
+    /// moto's `start_task` (ecs/models.py:1439-1485): the empty
+    /// containerInstances list is a ClientException ("Container Instances
+    /// cannot be empty."), each reference resolves against the cluster's
+    /// instance map, and the created task carries containerInstanceArn,
+    /// startedBy and group as moto stores them. moto's unknown instance
+    /// KeyErrors into a crash; the twin answers moto's
+    /// ContainerInstanceFailure row for those instead.
     fn start_task(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1241,33 +1601,98 @@ impl EcsHandler {
                 return AwsResponse::error(
                     400,
                     "ClientException",
-                    &format!("Task definition {} not found.", td_ref),
+                    "Unable to describe task definition.",
                 )
             }
         };
+        // moto (models.py:1458-1459).
+        let instance_refs: Vec<String> = req
+            .params
+            .get("containerInstances")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if instance_refs.is_empty() {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Container Instances cannot be empty.",
+            );
+        }
+        // moto (models.py:1282-1284): group defaults to family:{family}.
+        let group = req
+            .params
+            .get("group")
+            .and_then(|v| v.as_str())
+            .filter(|g| !g.is_empty())
+            .map(String::from)
+            .unwrap_or_else(|| format!("family:{}", td["family"].as_str().unwrap_or_default()));
+        let started_by = req
+            .params
+            .get("startedBy")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let now = now_f64();
-        let task_id = uuid::Uuid::new_v4().to_string();
-        let task_arn = format!(
-            "arn:aws:ecs:{}:{}:task/{}/{}",
-            req.region, req.account, cluster_name, task_id
-        );
-        let task = json!({
-            "taskArn": task_arn.clone(),
-            "taskDefinitionArn": td["taskDefinitionArn"].clone(),
-            "clusterArn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, cluster_name),
-            "lastStatus": "RUNNING",
-            "desiredStatus": "RUNNING",
-            "createdAt": now,
-            "startedAt": now,
-            "tags": [],
-        });
-        state
-            .tasks
-            .write()
-            .entry(cluster_name.to_string())
-            .or_default()
-            .insert(task_id, task.clone());
-        AwsResponse::json(200, json!({ "tasks": [task], "failures": [] }))
+        let mut tasks: Vec<Value> = Vec::new();
+        let mut failures: Vec<Value> = Vec::new();
+        {
+            let mut cis = state.container_instances.write();
+            let cluster_cis = cis.entry(cluster_name.to_string()).or_default();
+            for reference in &instance_refs {
+                let ci_id = resolve_name(reference).to_string();
+                let Some(ci) = cluster_cis.get_mut(&ci_id) else {
+                    // moto's ContainerInstanceFailure("MISSING", id, …)!
+                    failures.push(json!({
+                        "arn": format!(
+                            "arn:aws:ecs:{}:{}:container-instance/{}",
+                            req.region, req.account, ci_id
+                        ),
+                        "reason": "MISSING",
+                    }));
+                    continue;
+                };
+                let ci_arn = ci["containerInstanceArn"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let task_id = uuid::Uuid::new_v4().to_string();
+                let task_arn = format!(
+                    "arn:aws:ecs:{}:{}:task/{}/{}",
+                    req.region, req.account, cluster_name, task_id
+                );
+                let task = json!({
+                    "taskArn": task_arn.clone(),
+                    "taskDefinitionArn": td["taskDefinitionArn"].clone(),
+                    "clusterArn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, cluster_name),
+                    "containerInstanceArn": ci_arn.clone(),
+                    "lastStatus": "RUNNING",
+                    "desiredStatus": "RUNNING",
+                    "createdAt": now,
+                    "startedAt": now,
+                    "tags": [],
+                    "startedBy": started_by.clone(),
+                    "group": group.clone(),
+                });
+                state
+                    .tasks
+                    .write()
+                    .entry(cluster_name.to_string())
+                    .or_default()
+                    .insert(task_id, task.clone());
+                let running = ci
+                    .get("runningTasksCount")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                ci["runningTasksCount"] = json!(running + 1);
+                tasks.push(task);
+            }
+        }
+        AwsResponse::json(200, json!({ "tasks": tasks, "failures": failures }))
     }
 
     fn stop_task(&self, req: &AwsRequest) -> AwsResponse {
@@ -1305,6 +1730,9 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "task": updated }))
     }
 
+    /// moto's `describe_tasks` (ecs/models.py:1487-1494): the cluster must
+    /// exist and an empty task list is
+    /// InvalidParameterException("Tasks cannot be empty.").
     fn describe_tasks(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1323,6 +1751,12 @@ impl EcsHandler {
             })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        if !state.clusters.read().contains_key(cluster_name) {
+            return cluster_not_found(cluster_name);
+        }
+        if ids.is_empty() {
+            return AwsResponse::error(400, "InvalidParameterException", "Tasks cannot be empty.");
+        }
         let mut found: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         let tasks = state.tasks.read();
@@ -1349,6 +1783,11 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "tasks": found, "failures": failures }))
     }
 
+    /// moto's `list_tasks` (ecs/models.py:1509-1561): the containerInstance
+    /// (substring), family (exact, against ACTIVE task-definition ARNs),
+    /// startedBy (equality) and desiredStatus (only when the request names
+    /// one — moto does NOT default to RUNNING; it returns every status)
+    /// filters, all optional.
     fn list_tasks(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1360,8 +1799,46 @@ impl EcsHandler {
             .params
             .get("desiredStatus")
             .and_then(|v| v.as_str())
-            .unwrap_or("RUNNING");
+            .filter(|s| !s.is_empty());
+        let container_instance = req
+            .params
+            .get("containerInstance")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let family = req
+            .params
+            .get("family")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let started_by = req
+            .params
+            .get("startedBy")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
         let state = self.get_state(req.account, &req.region);
+        // moto's family filter narrows to the ACTIVE revisions of the exact
+        // family (models.py:1537-1544 via list_task_definitions, whose
+        // default status is ACTIVE).
+        let family_arns: Vec<String> = family
+            .map(|fam| {
+                let mut arns = Vec::new();
+                let tds = state.task_definitions.read();
+                let Some(revisions) = tds.get(fam) else {
+                    return arns;
+                };
+                for td in revisions {
+                    if td["status"] == json!("ACTIVE") {
+                        arns.push(
+                            td["taskDefinitionArn"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string(),
+                        );
+                    }
+                }
+                arns
+            })
+            .unwrap_or_default();
         let arns: Vec<String> = state
             .tasks
             .read()
@@ -1369,7 +1846,38 @@ impl EcsHandler {
             .map(|m| {
                 m.values()
                     .filter(|t| {
-                        t.get("desiredStatus").and_then(|v| v.as_str()) == Some(status_filter)
+                        status_filter
+                            .map(|want| {
+                                t.get("desiredStatus").and_then(|v| v.as_str()) == Some(want)
+                            })
+                            .unwrap_or(true)
+                    })
+                    .filter(|t| {
+                        container_instance
+                            .map(|ci| {
+                                t.get("containerInstanceArn")
+                                    .and_then(|v| v.as_str())
+                                    .map(|arn| arn.contains(ci))
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(true)
+                    })
+                    .filter(|t| {
+                        family
+                            .map(|_| {
+                                family_arns.contains(
+                                    &t["taskDefinitionArn"]
+                                        .as_str()
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                )
+                            })
+                            .unwrap_or(true)
+                    })
+                    .filter(|t| {
+                        started_by
+                            .map(|by| t.get("startedBy").and_then(|v| v.as_str()) == Some(by))
+                            .unwrap_or(true)
                     })
                     .map(|t| t["taskArn"].as_str().unwrap_or_default().to_string())
                     .collect()
@@ -1468,7 +1976,39 @@ impl EcsHandler {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         let ci_id = resolve_name(ci_ref);
+        // moto's deregister guard (ecs/models.py:1901-1904): without
+        // `force`, an instance still running tasks is refused with
+        // InvalidParameterException "Found running tasks on the instance.".
+        let running: i64 = state
+            .tasks
+            .read()
+            .get(cluster_name)
+            .map(|m| {
+                m.values()
+                    .filter(|t| {
+                        t.get("containerInstanceArn")
+                            .and_then(|v| v.as_str())
+                            .map(|arn| arn.ends_with(ci_id))
+                            .unwrap_or(false)
+                    })
+                    .filter(|t| t["desiredStatus"] == json!("RUNNING"))
+                    .count() as i64
+            })
+            .unwrap_or(0);
         let mut cis = state.container_instances.write();
+        if !req
+            .params
+            .get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            && running > 0
+        {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Found running tasks on the instance.",
+            );
+        }
         let removed = cis.get_mut(cluster_name).and_then(|m| m.remove(ci_id));
         let Some(mut ci) = removed else {
             return AwsResponse::error(
@@ -1495,6 +2035,11 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "containerInstance": updated }))
     }
 
+    /// moto's `describe_container_instances` (ecs/models.py:1802-1828): the
+    /// cluster must exist, an empty list is a ClientException ("Container
+    /// Instances cannot be empty."), and missing ids answer moto's
+    /// ContainerInstanceFailure rows — a synthesized typed ARN (the raw
+    /// reference used to ride through verbatim).
     fn describe_container_instances(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1513,14 +2058,25 @@ impl EcsHandler {
             })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        if !state.clusters.read().contains_key(cluster_name) {
+            return cluster_not_found(cluster_name);
+        }
+        if refs.is_empty() {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Container Instances cannot be empty.",
+            );
+        }
         let mut found: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         let cis = state.container_instances.read();
         let cluster_cis = cis.get(cluster_name);
         for reference in &refs {
+            let ci_id = resolve_name(reference);
             let lookup = cluster_cis
                 .map(|m| {
-                    m.get(resolve_name(reference)).cloned().or_else(|| {
+                    m.get(ci_id).cloned().or_else(|| {
                         m.iter()
                             .find(|(_, t)| {
                                 t.get("containerInstanceArn").and_then(|a| a.as_str())
@@ -1532,7 +2088,10 @@ impl EcsHandler {
                 .unwrap_or(None);
             match lookup {
                 Some(c) => found.push(c),
-                None => failures.push(json!({ "arn": reference, "reason": "MISSING" })),
+                None => failures.push(json!({
+                    "arn": format!("arn:aws:ecs:{}:{}:container-instance/{}", req.region, req.account, ci_id),
+                    "reason": "MISSING",
+                })),
             }
         }
         AwsResponse::json(
@@ -1549,7 +2108,8 @@ impl EcsHandler {
                 .unwrap_or("default"),
         );
         let state = self.get_state(req.account, &req.region);
-        let arns: Vec<String> = state
+        // moto sorts the ARNs (ecs/models.py:1800).
+        let mut arns: Vec<String> = state
             .container_instances
             .read()
             .get(cluster_name)
@@ -1564,6 +2124,7 @@ impl EcsHandler {
                     .collect()
             })
             .unwrap_or_default();
+        arns.sort();
         AwsResponse::json(200, json!({ "containerInstanceArns": arns }))
     }
 
@@ -1578,11 +2139,21 @@ impl EcsHandler {
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
+        // moto (ecs/models.py:1835-1839): the status is uppercased and
+        // validated against [ACTIVE, DRAINING].
         let new_status = req
             .params
             .get("status")
             .and_then(|v| v.as_str())
-            .unwrap_or("ACTIVE");
+            .unwrap_or("ACTIVE")
+            .to_uppercase();
+        if new_status != "ACTIVE" && new_status != "DRAINING" {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Container instance status should be one of [ACTIVE, DRAINING]",
+            );
+        }
         let mut found: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         {
@@ -1602,7 +2173,15 @@ impl EcsHandler {
                             ci["status"] = json!(new_status);
                             found.push(ci.clone());
                         }
-                        None => failures.push(json!({ "arn": reference, "reason": "MISSING" })),
+                        None => failures.push(json!({
+                            "arn": format!(
+                                "arn:aws:ecs:{}:{}:container-instance/{}",
+                                req.region,
+                                req.account,
+                                resolve_name(&r)
+                            ),
+                            "reason": "MISSING",
+                        })),
                     }
                 }
             }
@@ -1688,20 +2267,55 @@ impl EcsHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        // moto (ecs/models.py:2170-2172): launchType absent → "EC2",
+        // anything outside [EC2, FARGATE] is a ClientException.
+        let launch_type = req
+            .params
+            .get("launchType")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty())
+            .unwrap_or("EC2");
+        if launch_type != "EC2" && launch_type != "FARGATE" {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "launch type should be one of [EC2,FARGATE]",
+            );
+        }
+        // moto resolves the task definition via describe_task_definition
+        // (models.py:2199-2202) — the stored taskDefinition is the
+        // versioned ARN, and an unknown reference is a ClientException
+        // ("Unable to describe task definition.").
+        let td_ref = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let resolved = resolve_task_definition(&state, td_ref);
+        let Some(td) = resolved else {
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Unable to describe task definition.",
+            );
+        };
+        let task_def_arn = td["taskDefinitionArn"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         let task_set = json!({
             "id": ts_id,
             "taskSetArn": ts_arn.clone(),
             "serviceArn": svc_arn.clone(),
             "clusterArn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, cluster_name),
-            "taskDefinition": req.params.get("taskDefinition").cloned().unwrap_or(json!("")),
+            "taskDefinition": task_def_arn,
             "status": "ACTIVE",
-            "computedDesiredCount": 0,
             "pendingCount": 0,
             "runningCount": 0,
             "stabilityStatus": "STEADY_STATE",
             "scale": req.params.get("scale").cloned()
                 .unwrap_or(json!({ "value": 100.0, "unit": "PERCENT" })),
-            "launchType": req.params.get("launchType").and_then(|v| v.as_str()).unwrap_or("FARGATE"),
+            "launchType": launch_type,
             "networkConfiguration": req.params.get("networkConfiguration").cloned().unwrap_or(json!({})),
             "loadBalancers": req.params.get("loadBalancers").cloned().unwrap_or(json!([])),
             "tags": tags.clone(),
@@ -1871,6 +2485,74 @@ impl EcsHandler {
     // Attributes
     // ------------------------------------------------------------------
 
+    /// moto's attribute target checks (ecs/models.py _put_attribute
+    /// 1939-1973): with a `targetId` (no `targetType`) the reference is a
+    /// container-instance ARN resolved against the cluster's instances;
+    /// with a `targetType` it MUST be "container-instance" and the id is
+    /// used raw; anything unresolved raises TargetNotFoundException
+    /// ("Could not find {targetId}"). Attributes carry no task-definition
+    /// targets — the target surface is container instances only.
+    fn validate_attribute_target(
+        &self,
+        state: &EcsState,
+        cluster_name: &str,
+        attr: &Value,
+    ) -> Option<AwsResponse> {
+        let target_id = attr.get("targetId").and_then(|v| v.as_str());
+        let target_type = attr.get("targetType").and_then(|v| v.as_str());
+        let not_found = |id: &str| {
+            AwsResponse::error(
+                400,
+                "TargetNotFoundException",
+                &format!("Could not find {id}"),
+            )
+        };
+        match (target_id, target_type) {
+            (None, None) => None,
+            (Some(id), None) => {
+                let arn = id.rsplit('/').next().unwrap_or(id);
+                if state
+                    .container_instances
+                    .read()
+                    .get(cluster_name)
+                    .map(|m| m.contains_key(arn))
+                    .unwrap_or(false)
+                {
+                    None
+                } else {
+                    Some(not_found(id))
+                }
+            }
+            (id_opt, Some(kind)) => {
+                if kind != "container-instance" {
+                    return Some(not_found(id_opt.unwrap_or_default()));
+                }
+                match id_opt {
+                    Some(id) => {
+                        // moto indexes the raw id (models.py:1967); real AWS
+                        // accepts full ARNs here too — resolve the ARN's
+                        // last segment the same way the no-targetType branch
+                        // does (a benign superset over moto's uuid-only
+                        // lookup).
+                        let key = id.rsplit('/').next().unwrap_or(id);
+                        if state
+                            .container_instances
+                            .read()
+                            .get(cluster_name)
+                            .map(|m| m.contains_key(key))
+                            .unwrap_or(false)
+                        {
+                            None
+                        } else {
+                            Some(not_found(id))
+                        }
+                    }
+                    None => Some(not_found("")),
+                }
+            }
+        }
+    }
+
     fn put_attributes(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1886,8 +2568,14 @@ impl EcsHandler {
             .params
             .get("attributes")
             .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+            .map(|arr| arr.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+        for attr in &attrs {
+            if let Some(err) = self.validate_attribute_target(&state, cluster_name, attr) {
+                return err;
+            }
+        }
         let mut all = state.attributes.write();
         let existing = all.entry(cluster_name.to_string()).or_default();
         for attr in &attrs {
@@ -1914,8 +2602,14 @@ impl EcsHandler {
             .params
             .get("attributes")
             .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+            .map(|arr| arr.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+        for attr in &attrs_to_del {
+            if let Some(err) = self.validate_attribute_target(&state, cluster_name, attr) {
+                return err;
+            }
+        }
         {
             let mut all = state.attributes.write();
             let existing = all.entry(cluster_name.to_string()).or_default();
@@ -1928,6 +2622,9 @@ impl EcsHandler {
         AwsResponse::json(200, json!({ "attributes": attributes }))
     }
 
+    /// moto's `list_attributes` (ecs/models.py:1975-1986): targetType must
+    /// be "container-instance" (absent or anything else is
+    /// InvalidParameterException "targetType must be container-instance").
     fn list_attributes(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -1940,8 +2637,20 @@ impl EcsHandler {
             .get("targetType")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        if target_type != "container-instance" {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "targetType must be container-instance",
+            );
+        }
         let name_filter = req.params.get("attributeName").and_then(|v| v.as_str());
         let state = self.get_state(req.account, &req.region);
+        // moto lists attributes stored against container instances and
+        // renders {name, targetId[, value]} — no targetType member at all
+        // (models.py:1998-2011 + the responses transform); target
+        // validation meanwhile guarantees the entries are
+        // container-instance targets.
         let filtered: Vec<Value> = state
             .attributes
             .read()
@@ -1949,10 +2658,6 @@ impl EcsHandler {
             .map(|attrs| {
                 attrs
                     .iter()
-                    .filter(|a| {
-                        let t = a.get("targetType").and_then(|v| v.as_str()).unwrap_or("");
-                        target_type.is_empty() || t == target_type
-                    })
                     .filter(|a| {
                         name_filter
                             .map(|n| a.get("name").and_then(|v| v.as_str()) == Some(n))
@@ -2404,6 +3109,12 @@ impl EcsHandler {
         )
     }
 
+    /// GetTaskProtection with durable state: the stored
+    /// UpdateTaskProtection flag is returned (keyed by the task's ARN) —
+    /// the pair used to be a tautology (update echoed the request, get
+    /// always answered false). moto 5.2.4 does not implement these list
+    /// members at all, so the protection surface is stored per task-ARN
+    /// like real AWS and verified by the round-trip test below.
     fn get_task_protection(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -2428,12 +3139,16 @@ impl EcsHandler {
         let mut protected: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         let tasks = state.tasks.read();
+        let protection = state.task_protection.read();
         let cluster_tasks = tasks.get(cluster_name);
         if task_refs.is_empty() {
             for task in cluster_tasks.iter().flat_map(|m| m.values()) {
                 protected.push(json!({
                     "taskArn": task["taskArn"].clone(),
-                    "protectionEnabled": false,
+                    "protectionEnabled": protection
+                        .get(task["taskArn"].as_str().unwrap_or_default())
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 }));
             }
         } else {
@@ -2442,9 +3157,13 @@ impl EcsHandler {
                 let found = cluster_tasks
                     .and_then(|m| m.get(short).cloned().or_else(|| m.get(&task_ref).cloned()))
                     .map(|t| {
+                        let arn = t["taskArn"].as_str().unwrap_or_default().to_string();
                         json!({
-                            "taskArn": t["taskArn"].clone(),
-                            "protectionEnabled": false,
+                            "taskArn": arn,
+                            "protectionEnabled": protection
+                                .get(&arn)
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
                         })
                     });
                 match found {
@@ -2463,6 +3182,10 @@ impl EcsHandler {
         )
     }
 
+    /// UpdateTaskProtection stores the flag per task ARN (the returned
+    /// entries cite the STORED task ARN, not the raw request reference)
+    /// and reports missing tasks in the failures list, matching the
+    /// get-side shape.
     fn update_task_protection(&self, req: &AwsRequest) -> AwsResponse {
         let cluster_name = resolve_name(
             req.params
@@ -2490,13 +3213,72 @@ impl EcsHandler {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let mut protected: Vec<Value> = Vec::new();
-        for task_ref in task_refs {
+        let mut failures: Vec<Value> = Vec::new();
+        let stored: Vec<(String, String)> = task_refs
+            .iter()
+            .filter_map(|r| {
+                let short = resolve_name(r);
+                state
+                    .tasks
+                    .read()
+                    .get(cluster_name)
+                    .and_then(|m| m.get(short).cloned().or_else(|| m.get(r).cloned()))
+                    .map(|t| {
+                        (
+                            r.clone(),
+                            t["taskArn"].as_str().unwrap_or_default().to_string(),
+                        )
+                    })
+            })
+            .collect();
+        for (_task_ref, arn) in stored {
+            state
+                .task_protection
+                .write()
+                .insert(arn.clone(), json!(enabled));
             protected.push(json!({
-                "taskArn": task_ref,
+                "taskArn": arn,
                 "protectionEnabled": enabled,
             }));
         }
-        AwsResponse::json(200, json!({ "protectedTasks": protected, "failures": [] }))
+        for task_ref in &task_refs {
+            let short = resolve_name(task_ref);
+            let exists = state.tasks.read().get(cluster_name).map(|m| {
+                m.contains_key(short)
+                    || m.values().any(|t| {
+                        t.get("taskArn").and_then(|a| a.as_str()) == Some(task_ref.as_str())
+                    })
+            });
+            if exists != Some(true) {
+                failures.push(json!({
+                    "arn": task_ref.clone(),
+                    "reason": "TASK_NOT_FOUND",
+                    "detail": format!("The referenced task was not found: {}", task_ref),
+                }));
+            }
+        }
+        AwsResponse::json(
+            200,
+            json!({ "protectedTasks": protected, "failures": failures }),
+        )
+    }
+
+    /// The agent poll endpoint. moto's stub (ecs/responses.py:453-458)
+    /// answers static `http://localhost`; the twin follows the repo's
+    /// no-portability rule and reports the port the server is actually
+    /// reachable on: `GATEWAY_PORT` (the env other crates build gateway
+    /// URLs from, crates/lambda/src/docker_runtime.rs), then
+    /// `ROBOTOCORE_PORT`/`RUST_PORT`, falling back to 4566 with a log line
+    /// when none is set.
+    fn discover_poll_endpoint(&self) -> AwsResponse {
+        let endpoint = poll_endpoint_value();
+        AwsResponse::json(
+            200,
+            json!({
+                "endpoint": endpoint,
+                "telemetryEndpoint": endpoint,
+            }),
+        )
     }
 }
 
@@ -2508,6 +3290,30 @@ impl EcsHandler {
 /// segment.
 fn resolve_name(value: &str) -> &str {
     value.split('/').next_back().unwrap_or(value)
+}
+
+/// DiscoverPollEndpoint's base URL: env-derived gateway port, logging the
+/// fallback when no port env is set (the repo's portability rule).
+fn poll_endpoint_value() -> String {
+    match std::env::var("GATEWAY_PORT")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            std::env::var("ROBOTOCORE_PORT")
+                .ok()
+                .filter(|v| !v.is_empty())
+        })
+        .or_else(|| std::env::var("RUST_PORT").ok().filter(|v| !v.is_empty()))
+    {
+        Some(port) => format!("http://localhost:{port}"),
+        None => {
+            eprintln!(
+                "[ecs] DiscoverPollEndpoint: GATEWAY_PORT/ROBOTOCORE_PORT/RUST_PORT unset; \
+                 falling back to http://localhost:4566"
+            );
+            "http://localhost:4566".to_string()
+        }
+    }
 }
 
 /// Python `time.time()`-style epoch seconds with sub-second precision.
@@ -2564,7 +3370,14 @@ fn service_not_found(name: &str) -> AwsResponse {
 }
 
 /// Resolve a task-definition reference: family, `family:revision`, or ARN.
-/// Returns the stored revision (latest ACTIVE revision for a bare family).
+///
+/// moto's family resolution (fork ecs/models.py
+/// `_get_last_task_definition_revision_id`, via
+/// `describe_task_definition`): a bare family resolves to the LATEST
+/// revision by number REGARDLESS of status — deregistered (INACTIVE) ones
+/// are discoverable, so a bare family keeps resolving after a
+/// deregister. A `family:rev` reference needs that exact revision, any
+/// status.
 fn resolve_task_definition(state: &EcsState, td_ref: &str) -> Option<Value> {
     let parts = if td_ref.starts_with("arn:") {
         td_ref.split('/').next_back().unwrap_or(td_ref)
@@ -2586,8 +3399,7 @@ fn resolve_task_definition(state: &EcsState, td_ref: &str) -> Option<Value> {
     tds.get(parts).and_then(|revisions| {
         revisions
             .iter()
-            .rev()
-            .find(|td| td["status"] == json!("ACTIVE"))
+            .max_by_key(|td| td["revision"].as_i64().unwrap_or(0))
             .cloned()
     })
 }
@@ -3085,7 +3897,38 @@ mod tests {
         let run: Value = serde_json::from_str(&run.body).unwrap();
         assert_eq!(run["tasks"][0]["capacityProviderName"], json!("FARGATE"));
 
-        // A strategy on the task wins over the cluster default.
+        // A strategy on the task wins over the cluster default — and a
+        // non-FARGATE placement needs a registered ACTIVE container
+        // instance (moto raises `No instances found in cluster …` per
+        // models.py:1313-1317; the twin answers a RESOURCE:TASK failure row
+        // when there is none).
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "capacityProviderStrategy": [{"capacityProvider": "EC2_PROVIDER"}],
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert!(
+            run["tasks"]
+                .as_array()
+                .map(|t| t.is_empty())
+                .unwrap_or(true),
+            "no instances -> no placed tasks: {run}"
+        );
+        assert_eq!(
+            run["failures"][0]["reason"],
+            json!("RESOURCE:TASK"),
+            "moto's missing-instances raise becomes the failure row: {run}"
+        );
+        h.handle(make_req(
+            "RegisterContainerInstance",
+            json!({"cluster": "cls", "instanceIdentityDocument":
+                "{\"region\": \"us-east-1\", \"instanceId\": \"i-abc\"}" }),
+        ));
         let run = h.handle(make_req(
             "RunTask",
             json!({
@@ -3098,6 +3941,10 @@ mod tests {
         assert_eq!(
             run["tasks"][0]["capacityProviderName"],
             json!("EC2_PROVIDER")
+        );
+        assert!(
+            run["tasks"][0]["containerInstanceArn"].is_string(),
+            "the placed task cites its instance: {run}"
         );
     }
 
@@ -3140,6 +3987,576 @@ mod tests {
         assert_eq!(
             described["clusters"][0]["defaultCapacityProviderStrategy"][0]["capacityProvider"],
             json!("FARGATE")
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // moto parity: task-definition lifecycle guards (ecs/models.py)
+    // ------------------------------------------------------------------
+
+    /// moto's delete_task_definitions (models.py:2350-2409): empty/oversize
+    /// lists are client errors, an ACTIVE definition is refused with the
+    /// still-in-ACTIVE failure row, a deregistered one is REMOVED from the
+    /// store (not just marked), and a bare identifier lands an
+    /// invalid-identifier failure row.
+    #[test]
+    fn delete_task_definitions_moto_branches() {
+        let h = EcsHandler::new();
+        let empty = h.handle(make_req(
+            "DeleteTaskDefinitions",
+            json!({"taskDefinitions": []}),
+        ));
+        assert_eq!(empty.status, 400);
+        assert_eq!(
+            serde_json::from_str::<Value>(&empty.body).unwrap()["message"],
+            json!("size of TaskDefinition references list must be greater than 0")
+        );
+        let big = h.handle(make_req(
+            "DeleteTaskDefinitions",
+            json!({"taskDefinitions": (0..11).map(|i| format!("f:{i}")).collect::<Vec<_>>()}),
+        ));
+        assert_eq!(big.status, 400);
+        assert_eq!(
+            serde_json::from_str::<Value>(&big.body).unwrap()["message"],
+            json!("Size of TaskDefinition references list cannot exceed 10")
+        );
+
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "del-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        // ACTIVE → refusal row (and the row stays in the store).
+        let active = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "DeleteTaskDefinitions",
+                json!({"taskDefinitions": ["del-fam:1"]}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(active["taskDefinitions"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            active["failures"][0]["reason"],
+            json!("The specified task definition is still in ACTIVE status. Please deregister the target and try again.")
+        );
+        h.handle(make_req(
+            "DeregisterTaskDefinition",
+            json!({"taskDefinition": "del-fam:1"}),
+        ));
+        // INACTIVE → actually removed now, plus a bogus bare identifier row.
+        let deleted = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "DeleteTaskDefinitions",
+                json!({"taskDefinitions": ["del-fam:1", "del-fam"]}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(
+            deleted["taskDefinitions"][0]["status"],
+            json!("DELETE_IN_PROGRESS")
+        );
+        assert_eq!(
+            deleted["failures"][0]["reason"],
+            json!("The specified task definition identifier is invalid. Specify a valid name or ARN and try again.")
+        );
+        // The revision left the store: describing it now errors with moto's
+        // TaskDefinitionNotFoundException text.
+        let gone = h.handle(make_req(
+            "DescribeTaskDefinition",
+            json!({"taskDefinition": "del-fam:1"}),
+        ));
+        assert_eq!(gone.status, 400);
+        let parsed: Value = serde_json::from_str(&gone.body).unwrap();
+        assert_eq!(parsed["__type"], json!("ClientException"));
+        assert_eq!(
+            parsed["message"],
+            json!("Unable to describe task definition.")
+        );
+    }
+
+    /// moto's deregister (models.py:1218-1238): a bare family answers
+    /// "Revision is missing." and INACTIVE rows remain discoverable by
+    /// bare family (moto's max-revision resolve,describe).
+    #[test]
+    fn deregister_and_bare_family_resolution() {
+        let h = EcsHandler::new();
+        let bare = h.handle(make_req(
+            "DeregisterTaskDefinition",
+            json!({"taskDefinition": "fam"}),
+        ));
+        assert_eq!(bare.status, 400);
+        let parsed: Value = serde_json::from_str(&bare.body).unwrap();
+        assert_eq!(parsed["__type"], json!("ClientException"));
+        assert_eq!(parsed["message"], json!("Revision is missing."));
+
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "res-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        h.handle(make_req(
+            "DeregisterTaskDefinition",
+            json!({"taskDefinition": "res-fam:1"}),
+        ));
+        // moto's family resolution is max-revision-across-STATUS: the
+        // deregistered revision still resolves by bare family (the old
+        // resolve only ever found ACTIVE ones and errored instead).
+        let by_family = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "DescribeTaskDefinition",
+                json!({"taskDefinition": "res-fam"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(by_family["taskDefinition"]["status"], json!("INACTIVE"));
+    }
+
+    /// moto's launch-type validation: CreateService defaults EC2 and
+    /// errors outside [EC2, FARGATE]; RunTask validates
+    /// [EC2, FARGATE, EXTERNAL] (ecs/models.py:1254-1257, 1622-1625).
+    #[test]
+    fn launch_type_defaults_and_validation() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "ltn"})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "lt-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        let bogus = h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "ltn", "serviceName": "s", "taskDefinition": "lt-fam",
+                "launchType": "EXTERNAL"
+            }),
+        ));
+        assert_eq!(bogus.status, 400);
+        let parsed: Value = serde_json::from_str(&bogus.body).unwrap();
+        assert_eq!(parsed["__type"], json!("ClientException"));
+        assert_eq!(
+            parsed["message"],
+            json!("launch type should be one of [EC2,FARGATE]")
+        );
+        // Absent launchType defaults to EC2 (not FARGATE).
+        let created = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "CreateService",
+                json!({"cluster": "ltn", "serviceName": "s", "taskDefinition": "lt-fam"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(created["service"]["launchType"], json!("EC2"));
+
+        let bogus_run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "ltn", "taskDefinition": "lt-fam", "launchType": "SLURP"
+            }),
+        ));
+        assert_eq!(bogus_run.status, 400);
+        let parsed: Value = serde_json::from_str(&bogus_run.body).unwrap();
+        assert_eq!(
+            parsed["message"],
+            json!("launch type should be one of [EC2,FARGATE,EXTERNAL]")
+        );
+    }
+
+    /// moto's register pass-through (models.py:131-217): fields the caller
+    /// left out carry no invented values, compatibilities/networkMode are
+    /// computed, container definitions get the default members, and the
+    /// FARGATE pidMode + name/image/memory checks fire.
+    #[test]
+    fn register_task_definition_stores_what_was_passed() {
+        let h = EcsHandler::new();
+        let reg = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "RegisterTaskDefinition",
+                json!({
+                    "family": "pass-fam",
+                    "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+                }),
+            ))
+            .body,
+        )
+        .unwrap();
+        let td = &reg["taskDefinition"];
+        assert!(td.get("cpu").is_none(), "no invented cpu: {td}");
+        assert!(td.get("memory").is_none(), "no invented memory: {td}");
+        assert!(td.get("requiresCompatibilities").is_none());
+        assert_eq!(td["compatibilities"], json!(["EC2"]));
+        assert_eq!(td["networkMode"], json!("bridge"));
+        let cd = &td["containerDefinitions"][0];
+        // moto's default_container_definition (models.py:159-166).
+        assert_eq!(cd["cpu"], json!(0));
+        assert_eq!(cd["essential"], json!(true));
+        assert_eq!(cd["portMappings"], json!([]));
+
+        // FARGATE requires + pidMode → moto's exact text.
+        let pid = h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "pid-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+                "requiresCompatibilities": ["FARGATE"],
+                "pidMode": "host"
+            }),
+        ));
+        let parsed: Value = serde_json::from_str(&pid.body).unwrap();
+        assert_eq!(
+            parsed["message"],
+            json!("Tasks using the Fargate launch type do not support pidMode 'host'. The supported value for pidMode is 'task'.")
+        );
+        // FARGATE-compat + explicit name/image but NO memory → memory error.
+        let mem = h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "mem-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx"}],
+                "requiresCompatibilities": ["FARGATE"]
+            }),
+        ));
+        let parsed: Value = serde_json::from_str(&mem.body).unwrap();
+        assert_eq!(
+            parsed["message"],
+            json!("Invalid setting for container 'app'. At least one of 'memory' or 'memoryReservation' must be specified.")
+        );
+        // Missing image → moto's TaskDefinitionMissingPropertyError text.
+        let img = h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "img-fam",
+                "containerDefinitions": [{"name": "app", "memory": 64}]
+            }),
+        ));
+        let parsed: Value = serde_json::from_str(&img.body).unwrap();
+        assert_eq!(
+            parsed["message"],
+            json!("Container.image should not be null or empty.")
+        );
+    }
+
+    /// run_task stores startedBy/group (moto Stores both, models.py:1302)
+    /// and list_tasks honors the filters with NO RUNNING default
+    /// (models.py:1509-1561) — stopped tasks are listed unless desiredStatus
+    /// is named.
+    #[test]
+    fn run_task_stores_references_and_list_filters() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "fl"})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "fl-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        let run = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "RunTask",
+                json!({
+                    "cluster": "fl", "taskDefinition": "fl-fam",
+                    "launchType": "FARGATE", "startedBy": "jenkins"
+                }),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(run["tasks"][0]["startedBy"], json!("jenkins"));
+        assert_eq!(run["tasks"][0]["group"], json!("family:fl-fam"));
+        assert_eq!(run["tasks"][0]["launchType"], json!("FARGATE"));
+        // moto invents no cpu/memory on the task from the old defaults.
+        assert!(run["tasks"][0].get("cpu").is_none());
+
+        let arn = run["tasks"][0]["taskArn"].as_str().unwrap().to_string();
+        h.handle(make_req(
+            "StopTask",
+            json!({"cluster": "fl", "task": arn, "reason": "done"}),
+        ));
+        // moto: no desiredStatus filter → stopped tasks are listed.
+        let all = serde_json::from_str::<Value>(
+            &h.handle(make_req("ListTasks", json!({"cluster": "fl"})))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(all["taskArns"].as_array().unwrap().len(), 1);
+        let stopped = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "ListTasks",
+                json!({"cluster": "fl", "desiredStatus": "STOPPED"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(stopped["taskArns"].as_array().unwrap().len(), 1);
+        let started_by = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "ListTasks",
+                json!({"cluster": "fl", "startedBy": "jenkins"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(started_by["taskArns"].as_array().unwrap().len(), 1);
+        let none = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "ListTasks",
+                json!({"cluster": "fl", "startedBy": "nobody"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(none["taskArns"].as_array().unwrap().len(), 0);
+    }
+
+    /// UpdateTaskProtection stores the flag; GetTaskProtection reads it
+    /// back (the pair used to be a tautology). moto 5.2.4 has no models
+    /// here — real-AWS semantics keyed by the stored task ARN.
+    #[test]
+    fn task_protection_round_trip() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "tp"})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "tp-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        let run = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "RunTask",
+                json!({"cluster": "tp", "taskDefinition": "tp-fam", "launchType": "FARGATE"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        let arn = run["tasks"][0]["taskArn"].as_str().unwrap().to_string();
+        let up = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "UpdateTaskProtection",
+                json!({"cluster": "tp", "tasks": [arn.clone()], "protectionEnabled": true}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(up["protectedTasks"][0]["taskArn"], json!(arn.clone()));
+        assert_eq!(up["protectedTasks"][0]["protectionEnabled"], json!(true));
+        let got = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "GetTaskProtection",
+                json!({"cluster": "tp", "tasks": [arn.clone()]}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(got["protectedTasks"][0]["protectionEnabled"], json!(true));
+        // Off again.
+        h.handle(make_req(
+            "UpdateTaskProtection",
+            json!({"cluster": "tp", "tasks": [arn.clone()], "protectionEnabled": false}),
+        ));
+        let got = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "GetTaskProtection",
+                json!({"cluster": "tp", "tasks": [arn]}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(got["protectedTasks"][0]["protectionEnabled"], json!(false));
+        // Unknown task → failure row, not an echo.
+        let miss = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "UpdateTaskProtection",
+                json!({"cluster": "tp", "tasks": ["arn:aws:ecs:us-east-1:123456789012:task/tp/nope"], "protectionEnabled": true}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(miss["protectedTasks"].as_array().unwrap().len(), 0);
+        assert_eq!(miss["failures"][0]["reason"], json!("TASK_NOT_FOUND"));
+    }
+
+    /// DiscoverPollEndpoint answers the env-derived gateway port (no
+    /// portability constants).
+    #[test]
+    fn discover_poll_endpoint_follows_gateway_port() {
+        std::env::set_var("GATEWAY_PORT", "4583");
+        let h = EcsHandler::new();
+        let resp = serde_json::from_str::<Value>(
+            &h.handle(make_req("DiscoverPollEndpoint", json!({}))).body,
+        )
+        .unwrap();
+        assert_eq!(resp["endpoint"], json!("http://localhost:4583"));
+        assert_eq!(resp["telemetryEndpoint"], json!("http://localhost:4583"));
+        std::env::remove_var("GATEWAY_PORT");
+    }
+
+    /// The attribute target must be a container instance in the cluster;
+    /// list_attributes demands targetType=container-instance (moto
+    /// models.py:1939-1986).
+    #[test]
+    fn attributes_target_validation() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "attr"})));
+        // bogus targetId with targetType → TargetNotFoundException.
+        let bogus = h.handle(make_req(
+            "PutAttributes",
+            json!({
+                "cluster": "attr",
+                "attributes": [{"name": "env", "value": "prod",
+                    "targetType": "container-instance", "targetId": "fake-ci"}]
+            }),
+        ));
+        assert_eq!(bogus.status, 400);
+        let parsed: Value = serde_json::from_str(&bogus.body).unwrap();
+        assert_eq!(parsed["__type"], json!("TargetNotFoundException"));
+        assert_eq!(parsed["message"], json!("Could not find fake-ci"));
+
+        // list_attributes requires the targetType.
+        let no_type = h.handle(make_req("ListAttributes", json!({"cluster": "attr"})));
+        assert_eq!(no_type.status, 400);
+        assert_eq!(
+            serde_json::from_str::<Value>(&no_type.body).unwrap()["message"],
+            json!("targetType must be container-instance")
+        );
+
+        // A real instance accepts the attribute and lists it back.
+        let reg = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "RegisterContainerInstance",
+                json!({"cluster": "attr", "instanceIdentityDocument":
+                    "{\"region\": \"us-east-1\", \"instanceId\": \"i-a1\"}" }),
+            ))
+            .body,
+        )
+        .unwrap();
+        let ci_arn = reg["containerInstance"]["containerInstanceArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let ok = h.handle(make_req(
+            "PutAttributes",
+            json!({
+                "cluster": "attr",
+                "attributes": [{"name": "env", "value": "prod", "targetId": ci_arn.clone()}]
+            }),
+        ));
+        assert_eq!(ok.status, 200);
+        let listed = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "ListAttributes",
+                json!({"cluster": "attr", "targetType": "container-instance"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(
+            listed["attributes"][0]["targetId"],
+            json!(ci_arn),
+            "moto lists the ARN-typed target: {listed}"
+        );
+    }
+
+    /// moto's deregister guard (models.py:1901-1904): running tasks on the
+    /// instance refuse the deregister without force.
+    #[test]
+    fn deregister_container_instance_running_guard() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "dci"})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "dci-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        let reg = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "RegisterContainerInstance",
+                json!({"cluster": "dci", "instanceIdentityDocument":
+                    "{\"region\": \"us-east-1\", \"instanceId\": \"i-dci\"}" }),
+            ))
+            .body,
+        )
+        .unwrap();
+        let ci_arn = reg["containerInstance"]["containerInstanceArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        h.handle(make_req(
+            "StartTask",
+            json!({"cluster": "dci", "taskDefinition": "dci-fam", "containerInstances": [ci_arn.clone()]}),
+        ));
+        let refused = h.handle(make_req(
+            "DeregisterContainerInstance",
+            json!({"cluster": "dci", "containerInstance": ci_arn.clone()}),
+        ));
+        assert_eq!(refused.status, 400);
+        assert_eq!(
+            serde_json::from_str::<Value>(&refused.body).unwrap()["message"],
+            json!("Found running tasks on the instance.")
+        );
+        // force=true goes through (moto models.py:1907-1912).
+        let forced = h.handle(make_req(
+            "DeregisterContainerInstance",
+            json!({"cluster": "dci", "containerInstance": ci_arn, "force": true}),
+        ));
+        assert_eq!(forced.status, 200);
+    }
+
+    /// The failures list carries moto's synthesized typed ARNs
+    /// (ClusterFailure / the service-ARN rule / ContainerInstanceFailure).
+    #[test]
+    fn failure_rows_use_typed_arns() {
+        let h = EcsHandler::new();
+        let dc = h.handle(make_req("DescribeClusters", json!({"clusters": ["ghost"]})));
+        let parsed: Value = serde_json::from_str(&dc.body).unwrap();
+        assert_eq!(parsed["failures"][0]["reason"], json!("MISSING"));
+        assert_eq!(
+            parsed["failures"][0]["arn"],
+            json!("arn:aws:ecs:us-east-1:123456789012:cluster/ghost"),
+            "moto's ClusterFailure synthesizes the typed cluster ARN: {parsed}"
+        );
+        let ds = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "c", "services": ["missing-svc"]}),
+        ));
+        let parsed: Value = serde_json::from_str(&ds.body).unwrap();
+        assert_eq!(
+            parsed["failures"][0]["arn"],
+            json!("arn:aws:ecs:us-east-1:123456789012:service/missing-svc")
+        );
+        h.handle(make_req("CreateCluster", json!({"clusterName": "c"})));
+        let dci = h.handle(make_req(
+            "DescribeContainerInstances",
+            json!({"cluster": "c", "containerInstances": ["arn:aws:ecs:us-east-1:123456789012:container-instance/c/ghost"]}),
+        ));
+        let parsed: Value = serde_json::from_str(&dci.body).unwrap();
+        assert_eq!(
+            parsed["failures"][0]["arn"],
+            json!("arn:aws:ecs:us-east-1:123456789012:container-instance/ghost")
+        );
+        // The service-name ARN rule (models.py:1694-1698): an input that IS
+        // an ARN rides through verbatim.
+        let ds2 = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "c", "services": ["arn:aws:ecs:eu-west-1:111111111111:service/x/y"]}),
+        ));
+        let parsed: Value = serde_json::from_str(&ds2.body).unwrap();
+        assert_eq!(
+            parsed["failures"][0]["arn"],
+            json!("arn:aws:ecs:eu-west-1:111111111111:service/x/y")
         );
     }
 }
