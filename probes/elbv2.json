@@ -265,5 +265,10 @@
       "status": "working",
       "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/elbv2.rs": "812e28d9e112ca90cc6f15ae70a27adf89e2d4d515533b0100c7fc484b3fc60b",
+    "rotocore/src/services/elbv2/": "absent",
+    "crates/elbv2/src/": "absent"
+  }
 }

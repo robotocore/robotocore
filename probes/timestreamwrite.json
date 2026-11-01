@@ -100,5 +100,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/timestreamwrite.rs": "b81acfc25fe7a78ee294a6ce0d4001351cd00eec4ff7c0aa70b25e9633c96c40",
+    "rotocore/src/services/timestreamwrite/": "absent",
+    "crates/timestreamwrite/src/": "absent"
+  }
 }

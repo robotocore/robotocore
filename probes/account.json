@@ -85,5 +85,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/account.rs": "absent",
+    "rotocore/src/services/account/": "27cc6595a32aa9350deae5a04a575172c21baf05b3b0411c392f9894d05dee5e",
+    "crates/account/src/": "absent"
+  }
 }

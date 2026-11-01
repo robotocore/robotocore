@@ -455,5 +455,10 @@
       "status": "working",
       "message": "implemented (ValidationError)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudformation.rs": "absent",
+    "rotocore/src/services/cloudformation/": "c6e04a239b0426fd43aef508f96c55163cb833576874c671352cf43778a12e68",
+    "crates/cloudformation/src/": "absent"
+  }
 }

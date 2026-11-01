@@ -60,5 +60,10 @@
       "status": "working",
       "message": "implemented via required-only (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/pipes.rs": "864ffb871bb725455154201539d9f363675a4b77cd389c344d2318dd4a0c80d5",
+    "rotocore/src/services/pipes/": "absent",
+    "crates/pipes/src/": "absent"
+  }
 }

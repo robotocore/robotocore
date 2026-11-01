@@ -230,5 +230,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/amp.rs": "aab1cc381ba57ba0b4912f162219e0c37336dc73d786f9d9c0bf2b3444dd45f2",
+    "rotocore/src/services/amp/": "absent",
+    "crates/amp/src/": "absent"
+  }
 }

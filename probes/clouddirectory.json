@@ -340,5 +340,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/clouddirectory.rs": "absent",
+    "rotocore/src/services/clouddirectory/": "d61a7533a24584206c798abf354af91864484455bd23fd6378b761616f2d074c",
+    "crates/clouddirectory/src/": "absent"
+  }
 }

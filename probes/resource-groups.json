@@ -125,5 +125,16 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/resource-groups.rs": "absent",
+    "rotocore/src/services/resource-groups/": "absent",
+    "crates/resource-groups/src/": "absent",
+    "rotocore/src/services/resource_groups.rs": "8acad3a8f1c11dc3cf763728b58d88ccb3af2e184f8b8e0b1e57e4239e910582",
+    "rotocore/src/services/resource_groups/": "absent",
+    "crates/resource_groups/src/": "absent",
+    "rotocore/src/services/resourcegroups.rs": "absent",
+    "rotocore/src/services/resourcegroups/": "absent",
+    "crates/resourcegroups/src/": "absent"
+  }
 }

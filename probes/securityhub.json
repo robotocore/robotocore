@@ -545,5 +545,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/securityhub.rs": "c254faa8b0cf3c66e6195c1b6bd079efa586e9fb2552add0785238d87e7f3465",
+    "rotocore/src/services/securityhub/": "absent",
+    "crates/securityhub/src/": "absent"
+  }
 }

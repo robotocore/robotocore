@@ -105,5 +105,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mediapackage.rs": "3dfb7830db0a6a40c42e762ae4c02f8e469bec3ea25848212e8e3bd062f63085",
+    "rotocore/src/services/mediapackage/": "absent",
+    "crates/mediapackage/src/": "absent"
+  }
 }

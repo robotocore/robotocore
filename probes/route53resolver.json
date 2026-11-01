@@ -350,5 +350,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/route53resolver.rs": "41dc3e7ffec94544b1f7f33b48cae890646f87a3a323b57df1009bd3f63c0c80",
+    "rotocore/src/services/route53resolver/": "absent",
+    "crates/route53resolver/src/": "absent"
+  }
 }

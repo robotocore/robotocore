@@ -195,5 +195,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/stepfunctions.rs": "absent",
+    "rotocore/src/services/stepfunctions/": "absent",
+    "crates/stepfunctions/src/": "4574e7b15b2a342f041ccd4bb0cff9a6b39cda97acc30f806b15ce23d73214e3"
+  }
 }

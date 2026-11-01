@@ -275,5 +275,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/kms.rs": "absent",
+    "rotocore/src/services/kms/": "absent",
+    "crates/kms/src/": "097420a08e35c0fee395af14520393f61e0c26d655bc2c2c96c8138a268d9528"
+  }
 }

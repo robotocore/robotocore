@@ -385,5 +385,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/inspector2.rs": "47ad0004633f1d053feed7e552f78e95c870dea9421457f9cb685ea8772f7421",
+    "rotocore/src/services/inspector2/": "absent",
+    "crates/inspector2/src/": "absent"
+  }
 }

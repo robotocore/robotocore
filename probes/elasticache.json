@@ -380,5 +380,10 @@
       "status": "working",
       "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-replication-group-id-id not found.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/elasticache.rs": "dfece5e5bbf73e1317ba6266388f693349d517aab102627ad6e76c7505730914",
+    "rotocore/src/services/elasticache/": "absent",
+    "crates/elasticache/src/": "absent"
+  }
 }

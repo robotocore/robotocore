@@ -225,5 +225,10 @@
       "status": "working",
       "message": "likely implemented (BadRequestException: The requested vocabulary filter couldn't be found. Check the)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/transcribe.rs": "ff619110096c8c8b31e77af2f2ae18edd0766970ce8438c2831b0818f300b73e",
+    "rotocore/src/services/transcribe/": "absent",
+    "crates/transcribe/src/": "absent"
+  }
 }

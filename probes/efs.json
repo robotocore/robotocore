@@ -165,5 +165,10 @@
       "status": "working",
       "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/efs.rs": "ab858143ed5b0020f6f621d504b344627915463955def794107d99fe8438a79b",
+    "rotocore/src/services/efs/": "absent",
+    "crates/efs/src/": "absent"
+  }
 }

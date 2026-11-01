@@ -105,5 +105,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/signer.rs": "absent",
+    "rotocore/src/services/signer/": "ccd4d81d8ac383af2215fa697daf00ea6276dea44fb3316014223124b2d4a86e",
+    "crates/signer/src/": "absent"
+  }
 }

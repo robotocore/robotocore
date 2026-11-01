@@ -405,5 +405,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ssoadmin.rs": "6dff10336834d76eee36b5bfc1215e1d9d91ebb063176e7a34139b3d5c704850",
+    "rotocore/src/services/ssoadmin/": "absent",
+    "crates/ssoadmin/src/": "absent"
+  }
 }

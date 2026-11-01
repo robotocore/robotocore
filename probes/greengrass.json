@@ -470,5 +470,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/greengrass.rs": "5c5444adf2cc3dd14fe240bb87dd7bdc5e781b469cd305df816110c208180d09",
+    "rotocore/src/services/greengrass/": "absent",
+    "crates/greengrass/src/": "absent"
+  }
 }

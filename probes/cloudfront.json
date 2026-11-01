@@ -840,5 +840,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudfront.rs": "920f416efc3b33520a134003c467f7e161c79407390db1657f263040e5f4cd02",
+    "rotocore/src/services/cloudfront/": "absent",
+    "crates/cloudfront/src/": "absent"
+  }
 }

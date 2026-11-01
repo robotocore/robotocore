@@ -1330,5 +1330,10 @@
       "status": "working",
       "message": "likely implemented (EntityNotFoundException: Entity not found)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/glue.rs": "dac9c781fb624e2de9d90fc2ca3be0cd855bf1ea8d5aa82e13b7f320278aea8b",
+    "rotocore/src/services/glue/": "absent",
+    "crates/glue/src/": "absent"
+  }
 }

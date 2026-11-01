@@ -85,5 +85,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/timestreamquery.rs": "57ec91ea6345a956479004cb485465b427fc31d0ef2e184c6d2f39b4016aa19c",
+    "rotocore/src/services/timestreamquery/": "absent",
+    "crates/timestreamquery/src/": "absent"
+  }
 }

@@ -325,5 +325,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/resiliencehub.rs": "17241ffc3fe16450dcf6829dd28f24eb25cf30c83b0ca8a82424dd2489400ea9",
+    "rotocore/src/services/resiliencehub/": "absent",
+    "crates/resiliencehub/src/": "absent"
+  }
 }

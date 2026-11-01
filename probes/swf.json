@@ -205,5 +205,10 @@
       "status": "working",
       "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/swf.rs": "absent",
+    "rotocore/src/services/swf/": "89518f06a3c6d7837f5643c2cb975054098a087c0a04c1c1304cb95c335dbab0",
+    "crates/swf/src/": "absent"
+  }
 }

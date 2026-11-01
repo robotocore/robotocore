@@ -70,5 +70,10 @@
       "status": "working",
       "message": "implemented via required-only (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/firehose.rs": "absent",
+    "rotocore/src/services/firehose/": "absent",
+    "crates/firehose/src/": "e971f9d12da9935b9064d6595a8e76963aa1eb405638c1d38b80b3aafa0d073c"
+  }
 }

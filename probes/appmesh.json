@@ -200,5 +200,10 @@
       "status": "working",
       "message": "implemented via required-only (MeshNotFound)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/appmesh.rs": "9e78093c72825c97f80d61699a32ecdca3bd4dc37eb2b1b1298be381119efde2",
+    "rotocore/src/services/appmesh/": "absent",
+    "crates/appmesh/src/": "absent"
+  }
 }

@@ -560,5 +560,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sesv2.rs": "e28d5d57990ae5e46f7c6bfdb7f4abed9e74ce5e130c7a792d033204b449e405",
+    "rotocore/src/services/sesv2/": "absent",
+    "crates/sesv2/src/": "absent"
+  }
 }
