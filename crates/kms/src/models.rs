@@ -43,6 +43,14 @@ pub struct Key {
     /// True once `ImportKeyMaterial` succeeded on an EXTERNAL-origin key.
     #[serde(with = "crate::snapshot::rw")]
     pub has_imported_material: RwLock<bool>,
+    /// Persisted scheduled deletion (ms epoch) — moto stores `deletion_date`
+    /// at schedule time (models.py:580-587) and Describes it from the store;
+    /// a describe-time recompute drifted the date on every call.
+    #[serde(with = "crate::snapshot::rw")]
+    pub deletion_ms: RwLock<Option<u64>>,
+    /// The requested PendingWindowInDays from the schedule call.
+    #[serde(with = "crate::snapshot::rw")]
+    pub pending_window_days: RwLock<Option<u64>>,
     /// RSA private key for asymmetric RSA specs.
     #[serde(skip)]
     pub rsa_key: RwLock<Option<rsa::RsaPrivateKey>>,
@@ -89,6 +97,8 @@ impl Key {
             last_rotation_ms: RwLock::new(None),
             policies: RwLock::new(HashMap::new()),
             has_imported_material: RwLock::new(false),
+            deletion_ms: RwLock::new(None),
+            pending_window_days: RwLock::new(None),
             rsa_key: RwLock::new(None),
             ec_key: RwLock::new(None),
         }

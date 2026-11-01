@@ -16,6 +16,13 @@ pub struct DeliveryStream {
     pub version_id: u64,
     pub tags: BTreeMap<String, String>,
     pub s3_config: Map<String, Value>,
+    /// Which botocore configuration member created the S3 destination:
+    /// ExtendedS3DestinationConfiguration renders ExtendedS3Destination-
+    /// Description, plain S3DestinationConfiguration the minimal
+    /// S3DestinationDescription (distinct botocore members; moto keeps the
+    /// two flavors apart, models.py:146-164).
+    #[serde(default)]
+    pub s3_config_is_extended: bool,
     pub encryption: Option<Value>,
 }
 

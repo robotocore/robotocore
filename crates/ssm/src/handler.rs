@@ -384,10 +384,12 @@ impl SsmHandler {
 
         if let Some(existing) = state.get_parameter(&name) {
             if !overwrite {
+                // moto's exact text (ssm exceptions.py ParameterAlreadyExists).
                 return AwsResponse::error(
                     400,
                     "ParameterAlreadyExists",
-                    &format!("Parameter {name} already exists"),
+                    "The parameter already exists. To overwrite this value, set the overwrite \
+                     option in the request to true.",
                 );
             }
             let previous = existing.current().expect("parameter without versions");
@@ -519,12 +521,31 @@ impl SsmHandler {
                     .collect()
             })
             .unwrap_or_default();
+        // moto raises over the limit (models.py:1883-1893) — the message
+        // embeds the client's list verbatim at 'names' and allows 10.
+        if names.len() > 10 {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value '[{}]' at 'names' failed to satisfy \
+                     constraint: Member must have length less than or equal to 10.",
+                    names.join(", ")
+                ),
+            );
+        }
         let with_decryption = bool_of(req.params.get("WithDecryption"));
         let state = self.get_state(req.account, &req.region);
 
         let mut found = Vec::new();
         let mut invalid = Vec::new();
+        // moto dedupes the caller's names (`set(names)`), so a repeated
+        // name answers once, in both result lists.
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for name in &names {
+            if !seen.insert(name) {
+                continue;
+            }
             match state.resolve_parameter(&strip_arn_prefix(name, &req.region, req.account)) {
                 Ok(Some((p, v))) => {
                     found.push(v.response_object(

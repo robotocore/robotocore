@@ -90,6 +90,28 @@ impl User {
         Self::with_path(account, username, "/".to_string())
     }
 
+    /// Identity-preserving rename: moto mutates `user.name` in place across
+    /// UpdateUser, keeping `user_id` and the creation timestamp (models.py:
+    /// 2691-2706) — only name/path/arn move; every state map rides along.
+    pub fn renamed(&self, account: u64, username: String, path: String) -> Self {
+        Self {
+            user_id: self.user_id.clone(),
+            username: username.clone(),
+            arn: resource_arn(account, "user", &path, &username),
+            path,
+            created: self.created,
+            password: RwLock::new(self.password.read().clone()),
+            access_keys: RwLock::new(self.access_keys.read().clone()),
+            groups: RwLock::new(self.groups.read().clone()),
+            tags: RwLock::new(self.tags.read().clone()),
+            policies: RwLock::new(self.policies.read().clone()),
+            policy_documents: RwLock::new(self.policy_documents.read().clone()),
+            attached_policies: RwLock::new(self.attached_policies.read().clone()),
+            permissions_boundary: RwLock::new(self.permissions_boundary.read().clone()),
+            signing_certs: RwLock::new(self.signing_certs.read().clone()),
+        }
+    }
+
     pub fn with_path(account: u64, username: String, path: String) -> Self {
         Self {
             user_id: random_id("AIDA"),

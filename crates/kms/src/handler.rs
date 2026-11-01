@@ -257,11 +257,15 @@ impl KmsHandler {
             );
         }
         if key.key_state.read().as_str() == "PendingDeletion" {
+            let (deletion, window) = (*key.deletion_ms.read(), *key.pending_window_days.read());
+            // moto Describes from the stored schedule (models.py:294-295).
             meta.insert(
                 "DeletionDate".into(),
-                json!(now_epoch_f64() + 7.0 * 24.0 * 3600.0),
+                json!(deletion
+                    .map(|ms| ms as f64 / 1000.0)
+                    .unwrap_or_else(|| now_epoch_f64() + 7.0 * 24.0 * 3600.0)),
             );
-            meta.insert("PendingWindowInDays".into(), json!(7));
+            meta.insert("PendingWindowInDays".into(), json!(window.unwrap_or(30)));
         }
         if *key.origin.read() == "EXTERNAL" && *key.has_imported_material.read() {
             meta.insert(
@@ -285,10 +289,13 @@ impl KmsHandler {
 
     fn list_keys(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
+        // botocore's KeyListEntry members are KeyId + KeyArn (motorily
+        // responses.py:200-206) — an `Arn` member is a plain KeyError for
+        // every ARN read.
         let key_list: Vec<Value> = state
             .list_keys()
             .iter()
-            .map(|k| json!({"KeyId": k.key_id, "Arn": k.arn}))
+            .map(|k| json!({"KeyId": k.key_id, "KeyArn": k.arn}))
             .collect();
         AwsResponse::json(
             200,
@@ -314,9 +321,25 @@ impl KmsHandler {
         let window_days = req
             .params
             .get("PendingWindowInDays")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(30)
-            .clamp(1, 30) as u64;
+            .and_then(|v| v.as_i64());
+        // moto (models.py:580-587): only 7..=30 schedules a deletion — any
+        // other window is a no-op that answers DeletionDate: null with the
+        // key still Enabled. (Real AWS ValExes; moto 200s, so the 200 is
+        // the pinned shape.)
+        let window_days = match window_days {
+            None => 30u64,
+            Some(d) if (7..=30).contains(&d) => d as u64,
+            Some(_) => {
+                let state = self.get_state(req.account, &req.region);
+                return match state.get_key(&key_id) {
+                    Some(key) => AwsResponse::json(
+                        200,
+                        json!({"KeyId": key.key_id, "KeyState": "Enabled", "DeletionDate": Value::Null}),
+                    ),
+                    None => Self::not_found(),
+                };
+            }
+        };
         let state = self.get_state(req.account, &req.region);
         match state.get_key(&key_id) {
             Some(key) => {
@@ -324,6 +347,10 @@ impl KmsHandler {
                     chrono::Utc::now().timestamp_millis() as u64 + window_days * 24 * 3600 * 1000;
                 *key.key_state.write() = "PendingDeletion".to_string();
                 *key.enabled.write() = false;
+                // moto persists the schedule (models.py:580-587) and Describes
+                // it from the store — not a per-call recompute.
+                *key.deletion_ms.write() = Some(deletion_ms);
+                *key.pending_window_days.write() = Some(window_days);
                 AwsResponse::json(
                     200,
                     json!({
@@ -345,6 +372,9 @@ impl KmsHandler {
             Some(key) => {
                 *key.key_state.write() = "Disabled".to_string();
                 *key.enabled.write() = false;
+                // moto's cancel clears the recorded schedule.
+                *key.deletion_ms.write() = None;
+                *key.pending_window_days.write() = None;
                 AwsResponse::json(200, json!({"KeyId": key.key_id, "KeyState": "Disabled"}))
             }
             None => Self::not_found(),

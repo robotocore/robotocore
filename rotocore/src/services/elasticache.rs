@@ -356,14 +356,23 @@ pub struct ElastiCacheState {
 }
 
 // XML emitters ------------------------------------------------------------------
+//
+// moto 5.2.4 escapes user values through the shape serializers
+// (xmltodict.unparse); this surfaces raw user data into XML so an id like
+// `</CacheCluster><Injected/>` corrupts every subsequent response. The
+// compat suite pins no raw-injection behavior.
+
+fn esc(s: &str) -> String {
+    crate::proto::xml_escape(s)
+}
 
 fn cluster_xml(c: &CacheCluster) -> String {
     format!(
         "<CacheCluster><CacheClusterId>{id}</CacheClusterId><CacheNodeType>{ty}</CacheNodeType><Engine>{engine}</Engine><CacheClusterStatus>{status}</CacheClusterStatus><NumCacheNodes>{nodes}</NumCacheNodes><CacheClusterCreateTime>{created}</CacheClusterCreateTime><SnapshotRetentionLimit>{ret}</SnapshotRetentionLimit><AuthTokenEnabled>false</AuthTokenEnabled><AuthTokenLastModifiedDate>{created}</AuthTokenLastModifiedDate><LogDeliveryConfigurations/></CacheCluster>",
-        id = c.id,
-        ty = c.node_type,
-        engine = c.engine,
-        status = c.status,
+        id = esc(&c.id),
+        ty = esc(&c.node_type),
+        engine = esc(&c.engine),
+        status = esc(&c.status),
         nodes = c.num_nodes,
         created = c.create_time,
         ret = c.snapshot_retention,
@@ -387,14 +396,15 @@ fn subnet_group_xml(sg: &SubnetGroup, account: u64, region: &str) -> String {
         .iter()
         .map(|id| {
             format!(
-                "<Subnet><SubnetIdentifier>{id}</SubnetIdentifier><SubnetAvailabilityZone/><SupportedNetworkTypes><member>ipv4</member></SupportedNetworkTypes></Subnet>"
+                "<Subnet><SubnetIdentifier>{}</SubnetIdentifier><SubnetAvailabilityZone/><SupportedNetworkTypes><member>ipv4</member></SupportedNetworkTypes></Subnet>",
+                esc(id)
             )
         })
         .collect();
     format!(
         "<CacheSubnetGroup><CacheSubnetGroupName>{name}</CacheSubnetGroupName><CacheSubnetGroupDescription>{desc}</CacheSubnetGroupDescription><VpcId>{vpc}</VpcId><Subnets>{subnets}</Subnets><ARN>arn:aws:elasticache:{region}:{account}:subnetgroup:{name}</ARN><SupportedNetworkTypes><member>ipv4</member></SupportedNetworkTypes></CacheSubnetGroup>",
-        name = sg.name,
-        desc = sg.description,
+        name = esc(&sg.name),
+        desc = esc(&sg.description),
         vpc = "vpc-default",
         subnets = subnets,
     )
@@ -404,40 +414,41 @@ fn replication_group_xml(rg: &ReplicationGroup, account: u64, region: &str) -> S
     let members: String = rg
         .member_clusters
         .iter()
-        .map(|c| format!("<ClusterId>{c}</ClusterId>"))
+        .map(|c| format!("<ClusterId>{}</ClusterId>", esc(c)))
         .collect();
     let mut node_groups = String::new();
     for c in &rg.member_clusters {
         let part = "apv63r";
         node_groups.push_str(&format!(
             "<NodeGroup><NodeGroupId>0001</NodeGroupId><Status>{}</Status><PrimaryEndpoint><Address>master.{}.{}.use1.cache.amazonaws.com</Address><Port>6379</Port></PrimaryEndpoint><NodeGroupMembers><NodeGroupMember><CacheClusterId>{}</CacheClusterId><CacheNodeId>0001</CacheNodeId><ReadEndpoint><Address>{}.{}.{}.use1.cache.amazonaws.com</Address><Port>6379</Port></ReadEndpoint><PreferredAvailabilityZone>us-east-1a</PreferredAvailabilityZone><CurrentRole>primary</CurrentRole></NodeGroupMember></NodeGroupMembers></NodeGroup>",
-            rg.status, rg.id, part, c, c, rg.id, part,
+            esc(&rg.status), esc(&rg.id), part, esc(c), esc(c), esc(&rg.id), part,
         ));
     }
     format!(
         "<ReplicationGroup><ReplicationGroupId>{}</ReplicationGroupId><Description>{}</Description><Status>{}</Status><MemberClusters>{}</MemberClusters><NodeGroups>{}</NodeGroups><AutomaticFailover>disabled</AutomaticFailover><MultiAZ>disabled</MultiAZ><SnapshotRetentionLimit>0</SnapshotRetentionLimit><SnapshotWindow>05:00-6:00</SnapshotWindow><ClusterEnabled>false</ClusterEnabled><CacheNodeType>{}</CacheNodeType><AuthTokenEnabled>false</AuthTokenEnabled><TransitEncryptionEnabled>false</TransitEncryptionEnabled><AtRestEncryptionEnabled>false</AtRestEncryptionEnabled><MemberClustersOutpostArns/><ARN>arn:aws:elasticache:{}:{}:replicationgroup:{}</ARN><UserGroupIds/><LogDeliveryConfigurations/><ReplicationGroupCreateTime>{}</ReplicationGroupCreateTime><DataTiering>disabled</DataTiering><NetworkType>ipv4</NetworkType><IpDiscovery>ipv4</IpDiscovery><ClusterMode>disabled</ClusterMode><Engine>{}</Engine></ReplicationGroup>",
-        rg.id,
-        rg.description,
-        rg.status,
+        esc(&rg.id),
+        esc(&rg.description),
+        esc(&rg.status),
         members,
         node_groups,
-        rg.node_type,
+        esc(&rg.node_type),
         region,
         account,
-        rg.id,
+        esc(&rg.id),
         now_stamp(),
-        rg.engine,
+        esc(&rg.engine),
     )
 }
 
 fn user_xml(u: &UserEntity, account: u64, region: &str) -> String {
     format!(
-        "<UserId>{id}</UserId><UserName>{name}</UserName><Status>{status}</Status><Engine>{engine}</Engine><MinimumEngineVersion>6.0</MinimumEngineVersion><AccessString>{access}</AccessString><UserGroupIds/><Authentication><Type>no-password</Type></Authentication><ARN>arn:aws:elasticache:{region}:{account}:user:{id}</ARN>",
-        id = u.id,
-        name = u.user_name,
-        status = u.status,
-        engine = u.engine,
-        access = u.access_string,
+        "<UserId>{}</UserId><UserName>{}</UserName><Status>{}</Status><Engine>{}</Engine><MinimumEngineVersion>6.0</MinimumEngineVersion><AccessString>{}</AccessString><UserGroupIds/><Authentication><Type>no-password</Type></Authentication><ARN>arn:aws:elasticache:{region}:{account}:user:{}</ARN>",
+        esc(&u.id),
+        esc(&u.user_name),
+        esc(&u.status),
+        esc(&u.engine),
+        esc(&u.access_string),
+        esc(&u.id),
     )
 }
 
@@ -445,13 +456,13 @@ fn user_group_xml(ug: &UserGroup, account: u64, region: &str) -> String {
     let ids: String = ug
         .user_ids
         .iter()
-        .map(|u| format!("<member>{u}</member>"))
+        .map(|u| format!("<member>{}</member>", esc(u)))
         .collect();
     format!(
-        "<UserGroupId>{id}</UserGroupId><Status>{status}</Status><Engine>{engine}</Engine><UserIds>{ids}</UserIds><MinimumEngineVersion>6.0</MinimumEngineVersion><ReplicationGroups/><ServerlessCaches/><ARN>arn:aws:elasticache:{region}:{account}:usergroup:{id}</ARN>",
-        id = ug.id,
-        status = ug.status,
-        engine = ug.engine,
+        "<UserGroupId><UserGroupId>{id}</UserGroupId><Status>{status}</Status><Engine>{engine}</Engine><UserIds>{ids}</UserIds><MinimumEngineVersion>6.0</MinimumEngineVersion><ReplicationGroups/><ServerlessCaches/><ARN>arn:aws:elasticache:{region}:{account}:usergroup:{id}</ARN>",
+        id = esc(&ug.id),
+        status = esc(&ug.status),
+        engine = esc(&ug.engine),
         ids = ids,
     )
 }
@@ -459,21 +470,21 @@ fn user_group_xml(ug: &UserGroup, account: u64, region: &str) -> String {
 fn snapshot_xml(s: &Snapshot, account: u64, region: &str) -> String {
     format!(
         "<Snapshot><SnapshotName>{name}</SnapshotName><ReplicationGroupId>{rg}</ReplicationGroupId><ReplicationGroupDescription>{desc}</ReplicationGroupDescription><SnapshotStatus>{status}</SnapshotStatus><SnapshotSource>manual</SnapshotSource><CacheNodeType>{ty}</CacheNodeType><Engine>{engine}</Engine><Port>6379</Port><SnapshotRetentionLimit>0</SnapshotRetentionLimit><SnapshotWindow>05:00-6:00</SnapshotWindow><NumNodeGroups>1</NumNodeGroups><AutomaticFailover>disabled</AutomaticFailover><ARN>arn:aws:elasticache:{region}:{account}:snapshot:{name}</ARN></Snapshot>",
-        name = s.name,
-        rg = s.replication_group_id,
-        desc = s.description,
+        name = esc(&s.name),
+        rg = esc(&s.replication_group_id),
+        desc = esc(&s.description),
         status = "available",
-        ty = s.node_type,
-        engine = s.engine,
+        ty = esc(&s.node_type),
+        engine = esc(&s.engine),
     )
 }
 
 fn parameter_group_xml(pg: &ParameterGroup, account: u64, region: &str) -> String {
     format!(
         "<CacheParameterGroup><CacheParameterGroupName>{name}</CacheParameterGroupName><CacheParameterGroupFamily>{family}</CacheParameterGroupFamily><Description>{desc}</Description><IsGlobal>false</IsGlobal><ARN>arn:aws:elasticache:{region}:{account}:parametergroup:{name}</ARN></CacheParameterGroup>",
-        name = pg.name,
-        family = pg.family,
-        desc = pg.description,
+        name = esc(&pg.name),
+        family = esc(&pg.family),
+        desc = esc(&pg.description),
     )
 }
 
@@ -483,14 +494,16 @@ fn security_group_xml(csg: &CacheSecurityGroup, account: u64, region: &str) -> S
         .iter()
         .map(|(name, id)| {
             format!(
-                "<member><EC2SecurityGroupName>{name}</EC2SecurityGroupName><EC2SecurityGroupOwnerId>{id}</EC2SecurityGroupOwnerId><Status>authorized</Status></member>"
+                "<member><EC2SecurityGroupName>{}</EC2SecurityGroupName><EC2SecurityGroupOwnerId>{}</EC2SecurityGroupOwnerId><Status>authorized</Status></member>",
+                esc(name),
+                esc(id),
             )
         })
         .collect();
     format!(
         "<CacheSecurityGroup><OwnerId>{account}</OwnerId><CacheSecurityGroupName>{name}</CacheSecurityGroupName><Description>{desc}</Description><EC2SecurityGroups>{groups}</EC2SecurityGroups><ARN>arn:aws:elasticache:{region}:{account}:securitygroup:{name}</ARN></CacheSecurityGroup>",
-        name = csg.name,
-        desc = csg.description,
+        name = esc(&csg.name),
+        desc = esc(&csg.description),
         groups = ec2_sg,
     )
 }
@@ -506,22 +519,22 @@ fn global_rg_xml(g: &GlobalReplicationGroup, account: u64, region: &str) -> Stri
         })
         .collect();
     format!(
-        "<GlobalReplicationGroup><GlobalReplicationGroupId>{id}</GlobalReplicationGroupId><GlobalReplicationGroupDescription>{desc}</GlobalReplicationGroupDescription><Status>available</Status><CacheNodeType>cache.t4g.micro</CacheNodeType><Engine>redis</Engine><EngineVersion>7.1.0</EngineVersion><Members>{members}</Members><ClusterEnabled>false</ClusterEnabled><GlobalNodeGroups/><AuthTokenEnabled>false</AuthTokenEnabled><TransitEncryptionEnabled>false</TransitEncryptionEnabled><AtRestEncryptionEnabled>false</AtRestEncryptionEnabled><ARN>arn:aws:elasticache:{region}:{account}:globalreplicationgroup:{id}</ARN></GlobalReplicationGroup>",
-        id = g.id,
-        desc = g.description,
+        "<GlobalReplicationGroup><GlobalReplicationGroupId>{}</GlobalReplicationGroupId><GlobalReplicationGroupDescription>{}</GlobalReplicationGroupDescription><Status>available</Status><CacheNodeType>cache.t4g.micro</CacheNodeType><Engine>redis</Engine><EngineVersion>7.1.0</EngineVersion><Members>{members}</Members><ClusterEnabled>false</ClusterEnabled><GlobalNodeGroups/><AuthTokenEnabled>false</AuthTokenEnabled><TransitEncryptionEnabled>false</TransitEncryptionEnabled><AtRestEncryptionEnabled>false</AtRestEncryptionEnabled><ARN>arn:aws:elasticache:{region}:{account}:globalreplicationgroup:{}</ARN></GlobalReplicationGroup>",
+        id = esc(&g.id),
+        desc = esc(&g.description),
         members = members,
     )
 }
 
 fn serverless_cache_xml(sc: &ServerlessCache, account: u64, region: &str) -> String {
     format!(
-        "<ServerlessCache><ServerlessCacheName>{name}</ServerlessCacheName><Description>{desc}</Description><CreateTime>{created}</CreateTime><Status>{status}</Status><Engine>{engine}</Engine><MajorEngineVersion>7</MajorEngineVersion><FullEngineVersion>7.1.0</FullEngineVersion><CacheUsageLimits><DataStorage><Maximum>5</Maximum><Minimum>1</Minimum><Unit>GB</Unit></DataStorage><ECPUPerSecond><Maximum>15000</Maximum><Minimum>1000</Minimum></ECPUPerSecond></CacheUsageLimits><SecurityGroupIds/><Endpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></Endpoint><ReaderEndpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></ReaderEndpoint><ARN>arn:aws:elasticache:{region}:{account}:serverlesscache:{name}</ARN><SubnetIds/><SnapshotRetentionLimit>0</SnapshotRetentionLimit><DailySnapshotTime>03:00</DailySnapshotTime></ServerlessCache>",
-        name = sc.name,
-        part = sc.name,
-        desc = sc.description,
+        "<ServerlessCache><ServerlessCacheName>{}</ServerlessCacheName><Description>{}</Description><CreateTime>{}</CreateTime><Status>{}</Status><Engine>{}</Engine><MajorEngineVersion>7</MajorEngineVersion><FullEngineVersion>7.1.0</FullEngineVersion><CacheUsageLimits><DataStorage><Maximum>5</Maximum><Minimum>1</Minimum><Unit>GB</Unit></DataStorage><ECPUPerSecond><Maximum>15000</Maximum><Minimum>1000</Minimum></ECPUPerSecond></CacheUsageLimits><SecurityGroupIds/><Endpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></Endpoint><ReaderEndpoint><Address>{part}.serverless.{region}.cache.amazonaws.com</Address><Port>6379</Port></ReaderEndpoint><ARN>arn:aws:elasticache:{region}:{account}:serverlesscache:{}</ARN><SubnetIds/><SnapshotRetentionLimit>0</SnapshotRetentionLimit><DailySnapshotTime>03:00</DailySnapshotTime></ServerlessCache>",
+        name = esc(&sc.name),
+        part = esc(&sc.name),
+        desc = esc(&sc.description),
         created = sc.create_time,
-        status = sc.status,
-        engine = sc.engine,
+        status = esc(&sc.status),
+        engine = esc(&sc.engine),
     )
 }
 
@@ -533,8 +546,8 @@ fn serverless_snapshot_xml(
 ) -> String {
     format!(
         "<ServerlessCacheSnapshot><ServerlessCacheSnapshotName>{name}</ServerlessCacheSnapshotName><ARN>arn:aws:elasticache:{region}:{account}:serverlesscachesnapshot:{name}</ARN><Status>{status}</Status><CreateTime>{created}</CreateTime><ServerlessCacheConfiguration><ServerlessCacheName>{src}</ServerlessCacheName><Engine>redis</Engine><MajorEngineVersion>7</MajorEngineVersion></ServerlessCacheConfiguration></ServerlessCacheSnapshot>",
-        name = sc.name,
-        src = sc.source_cache,
+        name = esc(&sc.name),
+        src = esc(&sc.source_cache),
         created = sc.create_time,
     )
 }
@@ -542,7 +555,13 @@ fn serverless_snapshot_xml(
 fn tags_xml(name: &str, tags: &[(String, String)]) -> String {
     let inner: String = tags
         .iter()
-        .map(|(k, v)| format!("<member><Key>{k}</Key><Value>{v}</Value></member>"))
+        .map(|(k, v)| {
+            format!(
+                "<member><Key>{}</Key><Value>{}</Value></member>",
+                esc(k),
+                esc(v)
+            )
+        })
         .collect();
     format!("<{name}>{inner}</{name}>")
 }

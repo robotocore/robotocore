@@ -45,6 +45,24 @@ fn not_found(resource: String) -> Response {
     )
 }
 
+/// moto's unimplemented-op contract: an unmodeled URI answers `404 ""`
+/// (`core/responses.py::call_action` — no action resolves) and a modeled op
+/// outside the table answers the repo's 501 NotImplemented. The old
+/// `200 {}` fall-through masked gaps as successes, breaking the.
+/// 501-is-the-only-absence-signal contract the twin's audit/introspection
+/// layers read.
+fn unknown_uri() -> Response {
+    Response::json_status(404, &serde_json::json!({}))
+}
+
+fn not_implemented(op: &str) -> Response {
+    err_json(
+        501,
+        "NotImplemented",
+        &format!("The {} action has not been implemented", op),
+    )
+}
+
 /// Full ServiceSoftwareOptions shape (moto's Domain.software_options).
 fn software_options() -> Value {
     json!({
@@ -95,7 +113,7 @@ pub fn dispatch(req: &Request) -> Response {
     let body = parse_json_body(&req.body);
     let op = derive_op(&req.method, &req.path);
     if op.is_empty() {
-        return ok_json(json!({}));
+        return unknown_uri();
     }
     handle(req, &body, &op)
 }
@@ -1353,7 +1371,7 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         "PutDefaultApplicationSetting" => ok_json(
             json!({ "ApplicationSetting": { "Enabled": body.get("DefaultApplicationSetting").is_some() } }),
         ),
-        _ => ok_json(json!({})),
+        _ => not_implemented(op),
     }
 }
 

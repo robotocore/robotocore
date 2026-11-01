@@ -107,6 +107,10 @@ impl FirehoseHandler {
             created: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
             version_id: 1,
             tags,
+            s3_config_is_extended: req
+                .params
+                .get("ExtendedS3DestinationConfiguration")
+                .is_some(),
             s3_config,
             encryption: None,
         };
@@ -179,10 +183,21 @@ impl FirehoseHandler {
                     if let Some(eop) = cfg.get("ErrorOutputPrefix") {
                         s3_desc.insert("ErrorOutputPrefix".into(), eop.clone());
                     }
-                    destinations.push(json!({
-                        "DestinationId": "dest-1",
-                        "ExtendedS3DestinationDescription": s3_desc
-                    }));
+                    // botocore carries two separate destination members:
+                    // `ExtendedS3DestinationDescription` (created via
+                    // ExtendedS3DestinationConfiguration; adds the
+                    // processing/s3backup members) vs the minimal
+                    // `S3DestinationDescription` for the plain shape (moto
+                    // keeps S3/ExtendedS3 separate, models.py:146-164). The
+                    // stream remembers which flavor was configured.
+                    let mut destination = json!({ "DestinationId": "dest-1" });
+                    let key = if s.s3_config_is_extended {
+                        "ExtendedS3DestinationDescription"
+                    } else {
+                        "S3DestinationDescription"
+                    };
+                    destination[key] = Value::Object(s3_desc);
+                    destinations.push(destination);
                 }
 
                 let mut desc = json!({
@@ -256,16 +271,65 @@ impl FirehoseHandler {
             .and_then(|r| r.get("Data"))
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let _data = base64::engine::general_purpose::STANDARD
+        let data = base64::engine::general_purpose::STANDARD
             .decode(data_b64)
             .unwrap_or_default();
+        let record_id = uuid::Uuid::new_v4().simple().to_string();
+        // moto (firehose models.py:510-542): the record bytes land in the
+        // destinated S3 bucket — a plain drop here was the wave-3 finding
+        // (records vanished while PutRecord claimed success).
+        let state = self.get_state(req.account, &req.region);
+        if let Some(stream) = state.get(name) {
+            self.put_s3_records(req, name, stream.version_id, &[data]);
+        }
         AwsResponse::json(
             200,
             json!({
-                "RecordId": uuid::Uuid::new_v4().simple().to_string(),
+                "RecordId": record_id,
                 "Encrypted": false
             }),
         )
+    }
+
+    /// moto's `put_s3_records` (firehose models.py:474-501): the joined
+    /// record bytes land in the destination bucket under
+    /// `Prefix + YYYY/MM/DD/HH/{stream}-{version}-{ts}-{uuid}` (the LocalStack
+    /// object-naming contract), delivered through the process's live S3
+    /// state via the s3 crate's cross-service bridge — moto's s3 put_object
+    /// implicitly creates a missing bucket, mirrored by the bridge.
+    /// A bare firehose process without a registered S3 state (crate unit
+    /// tests) skips the delivery silently: moto's RuntimeError failure
+    /// path fires only when a partially-initialized backends map exists,
+    /// which the twin's registration model does not produce.
+    fn put_s3_records(&self, req: &AwsRequest, name: &str, version_id: u64, records: &[Vec<u8>]) {
+        let state = self.get_state(req.account, &req.region);
+        let Some(stream) = state.get(name) else {
+            return;
+        };
+        let Some(bucket) = stream
+            .s3_config
+            .get("BucketARN")
+            .and_then(|v| v.as_str())
+            .and_then(|arn| arn.rsplit(':').next())
+            .filter(|b| !b.is_empty())
+        else {
+            return;
+        };
+        let prefix = stream
+            .s3_config
+            .get("Prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let object_path = format_s3_object_path(name, version_id, prefix);
+        let joined: Vec<u8> = records.iter().flatten().cloned().collect();
+        s3::bridge::put_object(
+            req.account,
+            &req.region,
+            bucket,
+            &object_path,
+            joined,
+            "application/octet-stream",
+        );
     }
 
     fn put_record_batch(&self, req: &AwsRequest) -> AwsResponse {
@@ -289,13 +353,24 @@ impl FirehoseHandler {
             );
         }
         let mut responses = Vec::with_capacity(records.len());
+        let mut decoded: Vec<Vec<u8>> = Vec::with_capacity(records.len());
         for rec in records {
             let data_b64 = rec.get("Data").and_then(|v| v.as_str()).unwrap_or_default();
-            let _data = base64::engine::general_purpose::STANDARD
-                .decode(data_b64)
-                .unwrap_or_default();
+            decoded.push(
+                base64::engine::general_purpose::STANDARD
+                    .decode(data_b64)
+                    .unwrap_or_default(),
+            );
             responses.push(json!({ "RecordId": uuid::Uuid::new_v4().simple().to_string() }));
         }
+        // moto (firehose models.py:503-546): every record joins into one S3
+        // object per put; a no-store drop was the wave-3 finding.
+        self.put_s3_records(
+            req,
+            name,
+            state.get(name).map(|s| s.version_id).unwrap_or(1),
+            &decoded,
+        );
         AwsResponse::json(
             200,
             json!({
@@ -533,10 +608,39 @@ impl FirehoseHandler {
                 )
             }
         };
-        s.encryption = Some(json!({ "Status": "DISABLED" }));
+        // moto only flips Status on the existing config (firehose models.py:
+        // 595-602) — a whole-config replace erased KeyType/KeyARN from
+        // describe output after stop→describe.
+        let mut enc = s.encryption.clone().unwrap_or_else(|| json!({}));
+        if let Some(obj) = enc.as_object_mut() {
+            obj.insert("Status".into(), json!("DISABLED"));
+        }
+        s.encryption = Some(enc);
         state.put(s);
         AwsResponse::json(200, json!({}))
     }
+}
+
+/// moto's `_format_s3_object_path` (firehose models.py:510-541): the
+/// delivery-path contract — a slash-terminated prefix, then the
+/// `YYYY/MM/DD/HH` hour folder, then
+/// `{stream}-{version}-{YYYY-MM-DD-HH-MM-SS}-{uuid}`.
+fn format_s3_object_path(delivery_stream_name: &str, version_id: u64, prefix: &str) -> String {
+    let prefix = if prefix.is_empty() || prefix.ends_with('/') {
+        prefix.to_string()
+    } else {
+        format!("{prefix}/")
+    };
+    let now = chrono::Utc::now();
+    format!(
+        "{prefix}{hour}/{name}-{version}-{ts}-{uid}",
+        prefix = prefix,
+        hour = now.format("%Y/%m/%d/%H"),
+        name = delivery_stream_name,
+        version = version_id,
+        ts = now.format("%Y-%m-%d-%H-%M-%S"),
+        uid = uuid::Uuid::new_v4().simple(),
+    )
 }
 
 impl Default for FirehoseHandler {

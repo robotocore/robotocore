@@ -260,6 +260,19 @@ impl EcsHandler {
             })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // Real AWS: no clusters parameter (or empty) describes ALL clusters;
+        // moto models the default cluster only. "Return everything when
+        // nothing was named" — the empty-200 masked the whole cluster list.
+        let ids = if ids.is_empty() {
+            state
+                .clusters
+                .read()
+                .keys()
+                .cloned()
+                .collect::<Vec<String>>()
+        } else {
+            ids
+        };
         let mut found: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         let clusters = state.clusters.read();
@@ -963,6 +976,26 @@ impl EcsHandler {
         };
         if let Some(count) = req.params.get("desiredCount") {
             service["desiredCount"] = count.clone();
+            // moto's update syncs the counts into the rollout (models.py:
+            // 1721-1735) — running=desired, pending=0, deployments echo —
+            // so a scaled service no longer reports runningCount 0 IN_PROGRESS
+            // forever.
+            service["runningCount"] = count.clone();
+            service["pendingCount"] = json!(0);
+            service["stabilityStatus"] = json!("STEADY_STATE");
+            if let Some(deployments) = service
+                .get_mut("deployments")
+                .and_then(|d| d.as_array_mut())
+            {
+                for d in deployments.iter_mut() {
+                    if d["lastStatus"] == json!("PRIMARY") {
+                        d["desiredCount"] = count.clone();
+                        d["runningCount"] = count.clone();
+                        d["pendingCount"] = json!(0);
+                        d["rolloutState"] = json!("COMPLETED");
+                    }
+                }
+            }
         }
         if let Some(td) = req.params.get("taskDefinition") {
             service["taskDefinition"] = td.clone();
@@ -988,26 +1021,65 @@ impl EcsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default(),
         );
-        let exists = state
+        let svc = state
             .services
             .read()
             .get(cluster_name)
-            .map(|m| m.contains_key(svc_name))
-            .unwrap_or(false);
-        if !exists {
+            .and_then(|m| m.get(svc_name))
+            .cloned();
+        let Some(svc) = svc else {
             return service_not_found(svc_name);
-        }
-        AwsResponse::error(
-            400,
-            "InvalidParameterException",
-            &format!(
-                "Task set {} not found",
-                req.params
-                    .get("primaryTaskSet")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-            ),
+        };
+        let svc_arn = svc["serviceArn"].as_str().unwrap_or_default().to_string();
+        // moto 5.2.4 (models.py:2293-2313): resolve the task set against the
+        // service's set, promote it PRIMARY, demote every other one back to
+        // ACTIVE, and sync the service's task definition + load balancers
+        // onto the promoted set's values. Success is the mainline; the
+        // declared TaskSetNotFoundException family (ClientException:
+        // "The specified task set does not exist.") fires only when the
+        // row is missing — the old unconditional 400 made the op
+        // unreachable.
+        let ts_ref = resolve_name(
+            req.params
+                .get("primaryTaskSet")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
         )
+        .to_string();
+        let task_set_not_found = || {
+            AwsResponse::error(
+                400,
+                "ClientException",
+                "The specified task set does not exist.",
+            )
+        };
+        {
+            let mut ts_maps = state.task_sets.write();
+            let Some(ts_map) = ts_maps.get_mut(&svc_arn) else {
+                return task_set_not_found();
+            };
+            if !ts_map.contains_key(&ts_ref) {
+                return task_set_not_found();
+            }
+            for (id, ts) in ts_map.iter_mut() {
+                ts["status"] = if id == &ts_ref {
+                    json!("PRIMARY")
+                } else {
+                    json!("ACTIVE")
+                };
+            }
+            let promoted = ts_map.get(&ts_ref).cloned().unwrap_or_default();
+            if let Some(svc_obj) = state
+                .services
+                .write()
+                .get_mut(cluster_name)
+                .and_then(|m| m.get_mut(svc_name))
+            {
+                svc_obj["taskDefinition"] = promoted["taskDefinition"].clone();
+                svc_obj["loadBalancers"] = promoted["loadBalancers"].clone();
+            }
+            AwsResponse::json(200, json!({ "taskSet": promoted }))
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1909,6 +1981,19 @@ impl EcsHandler {
 
     fn list_account_settings(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("name").and_then(|v| v.as_str());
+        // moto raises UnknownAccountSettingException for an unknown name in
+        // the list path too (models.py:2315-2334) — put_account_setting_default
+        // already validated while list silently answered an empty 200, an
+        // inverted trust boundary.
+        if let Some(n) = name {
+            if !ACCOUNT_SETTING_NAMES.contains(&n) {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    "The account setting is unknown",
+                );
+            }
+        }
         let state = self.get_state(req.account, &req.region);
         let mut settings_list: Vec<Value> = state
             .account_settings
@@ -2690,6 +2775,101 @@ mod tests {
             }),
         ));
         assert!(deleted.body.contains("INACTIVE"));
+    }
+
+    /// moto 5.2.4 (models.py:2293-2313): a promote call succeeds, flips
+    /// statuses (PRIMARY vs ACTIVE), syncs the service placement, and its
+    /// missing-row error is the ClientException-shape 400.
+    #[test]
+    fn update_service_primary_task_set_promotes() {
+        let h = EcsHandler::new();
+        h.handle(make_req("CreateCluster", json!({"clusterName": "pc"})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "p-fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+        h.handle(make_req(
+            "CreateService",
+            json!({"cluster": "pc", "serviceName": "ps", "taskDefinition": "p-fam"}),
+        ));
+        let create1 = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "CreateTaskSet",
+                json!({"cluster": "pc", "service": "ps", "taskDefinition": "p-fam"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        let created = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "CreateTaskSet",
+                json!({"cluster": "pc", "service": "ps", "taskDefinition": "p-fam"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        let second_arn = created["taskSet"]["taskSetArn"]
+            .as_str()
+            .expect("second task set")
+            .to_string();
+        assert_ne!(
+            create1["taskSet"]["taskSetArn"], created["taskSet"]["taskSetArn"],
+            "two distinct task sets"
+        );
+
+        // Promote the second: 200 with the taskSet echo.
+        let promote = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "UpdateServicePrimaryTaskSet",
+                json!({"cluster": "pc", "service": "ps", "primaryTaskSet": second_arn}),
+            ))
+            .body,
+        )
+        .unwrap();
+        assert_eq!(promote["taskSet"]["status"], json!("PRIMARY"));
+
+        // DescribeTaskSets shows the promoted one as PRIMARY and the other
+        // demoted back to ACTIVE; the service placement follows the winner.
+        let sets = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "DescribeTaskSets",
+                json!({"cluster": "pc", "service": "ps"}),
+            ))
+            .body,
+        )
+        .unwrap();
+        let statuses: Vec<(&str, &str)> = sets["taskSets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                (
+                    t["taskSetArn"].as_str().unwrap(),
+                    t["status"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert!(
+            statuses.contains(&(second_arn.as_str(), "PRIMARY")),
+            "promoted is PRIMARY: {sets}"
+        );
+        assert_eq!(
+            statuses.iter().filter(|(_, s)| *s == "ACTIVE").count(),
+            1,
+            "the other set demotes to ACTIVE"
+        );
+
+        // Missing task set → ClientException 400 (TaskSetNotFound family).
+        let miss = h.handle(make_req(
+            "UpdateServicePrimaryTaskSet",
+            json!({"cluster": "pc", "service": "ps", "primaryTaskSet": "arn:aws:ecs:us-east-1:123456789012:task-set/pc/ps/nope"}),
+        ));
+        assert_eq!(miss.status, 400);
+        assert!(miss.body.contains("ClientException"));
+        assert!(miss.body.contains("The specified task set does not exist."));
     }
 
     // ------------------------------------------------------------------
