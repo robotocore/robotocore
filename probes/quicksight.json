@@ -1155,5 +1155,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/quicksight.rs": "absent",
+    "rotocore/src/services/quicksight/": "54ca930e55ea6fd442565f2c11ed286c31fb4bb6e0105075102811ec971ae304",
+    "crates/quicksight/src/": "absent"
+  }
 }

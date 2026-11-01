@@ -120,5 +120,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/connectcampaigns.rs": "8e1c8df6fed2825bff9c214a5893c6a580485f29e925cda7fc0910cb323822a6",
+    "rotocore/src/services/connectcampaigns/": "absent",
+    "crates/connectcampaigns/src/": "absent"
+  }
 }

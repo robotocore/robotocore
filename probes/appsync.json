@@ -370,5 +370,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/appsync.rs": "aa3e853885bde2e31f0dafe11e835f303d78e63781a6ef986dbd5955f62022bb",
+    "rotocore/src/services/appsync/": "absent",
+    "crates/appsync/src/": "absent"
+  }
 }

@@ -310,5 +310,10 @@
       "status": "working",
       "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudtrail.rs": "07aa32279388a81016dd58349844c0f32d693a227714e3d380fb7709cb11dcd2",
+    "rotocore/src/services/cloudtrail/": "absent",
+    "crates/cloudtrail/src/": "absent"
+  }
 }

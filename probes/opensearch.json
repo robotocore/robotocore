@@ -420,5 +420,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/opensearch.rs": "60680cd196d300d4ae7c0aa0faa27640f449a9f446075d4bec0a849f4b0ea955",
+    "rotocore/src/services/opensearch/": "absent",
+    "crates/opensearch/src/": "absent"
+  }
 }

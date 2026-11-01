@@ -110,5 +110,10 @@
       "status": "working",
       "message": "likely implemented (SubnetGroupNotFoundFault: SubnetGroup probe-test-value not found.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/dax.rs": "absent",
+    "rotocore/src/services/dax/": "934d2244bcb5ac116690d3ecbba204ad3da3082d5842aa68b967b4afbf95ae76",
+    "crates/dax/src/": "absent"
+  }
 }

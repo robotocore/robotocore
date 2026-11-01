@@ -105,5 +105,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/timestreaminfluxdb.rs": "8abb1448a80d75377f7428849affbb6b02e4c75e05eb1c73467feec5b09671ab",
+    "rotocore/src/services/timestreaminfluxdb/": "absent",
+    "crates/timestreaminfluxdb/src/": "absent"
+  }
 }

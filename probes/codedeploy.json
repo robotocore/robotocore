@@ -245,5 +245,10 @@
       "status": "working",
       "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/codedeploy.rs": "absent",
+    "rotocore/src/services/codedeploy/": "442fc97fdc6858f376cb18c706b6d79bd2e45a15ab89d1d86b879e44a0298877",
+    "crates/codedeploy/src/": "absent"
+  }
 }

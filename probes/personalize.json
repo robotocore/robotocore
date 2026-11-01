@@ -365,5 +365,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/personalize.rs": "d8c13ae47fc020e3c1838625d06aa3dbe689ffcd24c75267d4025261183b0013",
+    "rotocore/src/services/personalize/": "absent",
+    "crates/personalize/src/": "absent"
+  }
 }

@@ -305,5 +305,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/codebuild.rs": "absent",
+    "rotocore/src/services/codebuild/": "659e456f8f61cd3ab62a2f0ad9a02c639924e2d1177a0ab68790cc7ab2df94f4",
+    "crates/codebuild/src/": "absent"
+  }
 }

@@ -325,5 +325,10 @@
       "status": "working",
       "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/directconnect.rs": "absent",
+    "rotocore/src/services/directconnect/": "6aabd7c1fd03231cb7b0f5afad136f650bee54d93d8ebcf508202fbab123b47a",
+    "crates/directconnect/src/": "absent"
+  }
 }

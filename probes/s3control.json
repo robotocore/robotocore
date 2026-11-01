@@ -490,5 +490,10 @@
       "status": "working",
       "message": "likely implemented (NoSuchStorageLensGroup: The specified Storage Lens group does not exist: probe-test-)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/s3control.rs": "absent",
+    "rotocore/src/services/s3control/": "d6a0f07b5e222ce360833f77f8aa66d3d2124870ceda5207de06f4658474c030",
+    "crates/s3control/src/": "absent"
+  }
 }

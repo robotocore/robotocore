@@ -415,5 +415,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/macie2.rs": "6da7999516fe5a7636630b27dd882f814624927d6c4381c326931044fc4fd338",
+    "rotocore/src/services/macie2/": "absent",
+    "crates/macie2/src/": "absent"
+  }
 }

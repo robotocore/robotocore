@@ -550,5 +550,9 @@
       "status": "working",
       "message": "implemented (ValidationException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "crates/cloudwatch-logs/src/": "31049cd28fe899f6fcee97ea1af05c0624ea0f2c177326ee58cb6ee247599ef9",
+    "rotocore/src/services/cloudwatch_logs.rs": "absent"
+  }
 }

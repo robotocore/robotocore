@@ -65,5 +65,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/dsql.rs": "ff520b5774eaba35b254c30cc94b49fb91579113e2894ccbccbfcc9faae642e1",
+    "rotocore/src/services/dsql/": "absent",
+    "crates/dsql/src/": "absent"
+  }
 }

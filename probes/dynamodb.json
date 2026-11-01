@@ -290,5 +290,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/dynamodb.rs": "absent",
+    "rotocore/src/services/dynamodb/": "absent",
+    "crates/dynamodb/src/": "f47f0827ae80ec9febfd557f2fcf2c8eac6238db4e93fd9c9da3b31c1fbf55da"
+  }
 }

@@ -50,5 +50,8 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/iot_data.rs": "f1602d6ccf07ce45509abee7b358c6dd28686578e1035edd813bd2a93011ed73"
+  }
 }

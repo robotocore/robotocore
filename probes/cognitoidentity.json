@@ -125,5 +125,8 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cognito_identity.rs": "99cf525307ccb24c69791db0b2bda49bf4223b9216e1615cf18e451c02deed90"
+  }
 }

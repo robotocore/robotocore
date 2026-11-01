@@ -445,5 +445,10 @@
       "status": "working",
       "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/guardduty.rs": "868ec75f700ac8603a6f92d147dd3119b7f6e176593e226b5da1656afeec73f2",
+    "rotocore/src/services/guardduty/": "absent",
+    "crates/guardduty/src/": "absent"
+  }
 }

@@ -420,5 +420,10 @@
       "status": "working",
       "message": "implemented via required-only (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/mediaconnect.rs": "c160682cd6343451af56afd09d31aca91dcf5858eb900d8b71f7f0f48a057de2",
+    "rotocore/src/services/mediaconnect/": "absent",
+    "crates/mediaconnect/src/": "absent"
+  }
 }

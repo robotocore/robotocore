@@ -215,5 +215,10 @@
       "status": "working",
       "message": "likely implemented (ResourceNotFound: Could not find service sandbox phone number registered with )"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sns.rs": "absent",
+    "rotocore/src/services/sns/": "absent",
+    "crates/sns/src/": "aa438938f4f515f96a0a00726a745227ebfdb156475c21839734af9dd07fb7fb"
+  }
 }

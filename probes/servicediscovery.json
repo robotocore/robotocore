@@ -160,5 +160,10 @@
       "status": "working",
       "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/servicediscovery.rs": "absent",
+    "rotocore/src/services/servicediscovery/": "5b765700cdd8192c0c539f6b6c1c4319a97670047ba6ae9c112d687042099850",
+    "crates/servicediscovery/src/": "absent"
+  }
 }

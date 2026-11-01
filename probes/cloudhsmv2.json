@@ -95,5 +95,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudhsmv2.rs": "bac030a902281f8ef3aa313b3a3891bba768324668f46cd0cb15d247492ba975",
+    "rotocore/src/services/cloudhsmv2/": "absent",
+    "crates/cloudhsmv2/src/": "absent"
+  }
 }

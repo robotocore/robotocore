@@ -325,5 +325,10 @@
       "status": "working",
       "message": "implemented (ServiceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ecs.rs": "absent",
+    "rotocore/src/services/ecs/": "absent",
+    "crates/ecs/src/": "36d408291367e7fd9d6cf7bfbcaf75434be5dddbc2a1f6ba7b658251682dd618"
+  }
 }

@@ -545,5 +545,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/lexv2models.rs": "absent",
+    "rotocore/src/services/lexv2models/": "6584baf8c570a46ecc57d4cb4fbea8cd9611c8deb0e048dc3d89b3859db862bb",
+    "crates/lexv2models/src/": "absent"
+  }
 }

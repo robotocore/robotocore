@@ -25,5 +25,16 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/sagemaker-runtime.rs": "absent",
+    "rotocore/src/services/sagemaker-runtime/": "absent",
+    "crates/sagemaker-runtime/src/": "absent",
+    "rotocore/src/services/sagemaker_runtime.rs": "absent",
+    "rotocore/src/services/sagemaker_runtime/": "ab6cd1d7239eeb193259954da1a07daf1f628170f5be812d3d810f25852ce834",
+    "crates/sagemaker_runtime/src/": "absent",
+    "rotocore/src/services/sagemakerruntime.rs": "absent",
+    "rotocore/src/services/sagemakerruntime/": "absent",
+    "crates/sagemakerruntime/src/": "absent"
+  }
 }

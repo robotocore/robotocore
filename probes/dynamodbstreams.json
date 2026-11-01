@@ -30,5 +30,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/dynamodbstreams.rs": "d9ccc364d092be9f28c68e2e47c8e76440e70e480096ae166fa1e81c8869d7ec",
+    "rotocore/src/services/dynamodbstreams/": "absent",
+    "crates/dynamodbstreams/src/": "absent"
+  }
 }

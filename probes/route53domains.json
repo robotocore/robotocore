@@ -180,5 +180,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/route53domains.rs": "absent",
+    "rotocore/src/services/route53domains/": "77fe25a05f02a9a820032571285213d92ce5af0b075ad6e6f93742c3cdb94961",
+    "crates/route53domains/src/": "absent"
+  }
 }

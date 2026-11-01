@@ -710,5 +710,10 @@
       "status": "working",
       "message": "likely implemented (PartnerNotFound: Partner probe-test-value not found.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/redshift.rs": "c6321fc211d2595b71a01e87a0067c7651522790662b81ba077e1a2b3d1b0092",
+    "rotocore/src/services/redshift/": "c53d0e4e048bcd5772f8e8481ce371540590cfc6c721a8013680cd16ecf25d52",
+    "crates/redshift/src/": "absent"
+  }
 }

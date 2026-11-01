@@ -55,5 +55,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/resourcegroupstaggingapi.rs": "67393adf87088acabb09b5848712fdd81d4cf1f7d70e61975eeb8cbdbec5df33",
+    "rotocore/src/services/resourcegroupstaggingapi/": "absent",
+    "crates/resourcegroupstaggingapi/src/": "absent"
+  }
 }

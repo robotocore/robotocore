@@ -60,5 +60,10 @@
       "status": "working",
       "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/polly.rs": "528d891b484fad78d033419a1c0d3dd877c3d935da5a8609e5708730b753cc20",
+    "rotocore/src/services/polly/": "absent",
+    "crates/polly/src/": "absent"
+  }
 }

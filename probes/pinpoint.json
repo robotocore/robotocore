@@ -620,5 +620,10 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/pinpoint.rs": "absent",
+    "rotocore/src/services/pinpoint/": "e7e288185ec700635a7dfcd64042776633d54b0026d23a92ef79a0e8ca5cc291",
+    "crates/pinpoint/src/": "absent"
+  }
 }

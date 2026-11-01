@@ -740,5 +740,10 @@
       "status": "working",
       "message": "OK"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/ssm.rs": "absent",
+    "rotocore/src/services/ssm/": "absent",
+    "crates/ssm/src/": "9fd3c0efb213728d79d7be7087037ddda70816e01960a55a5f0c8b38eaf5d06a"
+  }
 }

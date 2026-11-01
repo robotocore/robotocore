@@ -465,5 +465,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/workspaces.rs": "absent",
+    "rotocore/src/services/workspaces/": "111e879fce55d8cef9f10df7b8df88b12d58de9b5e8d617d266fbb7da1f891cd",
+    "crates/workspaces/src/": "absent"
+  }
 }

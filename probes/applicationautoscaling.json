@@ -80,5 +80,10 @@
       "status": "not_implemented",
       "message": "not implemented (501)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/applicationautoscaling.rs": "e4a4c77e683a2a8a4c5953dacc268124cebfc3e5a3be79b90ba7bdabc245be45",
+    "rotocore/src/services/applicationautoscaling/": "absent",
+    "crates/applicationautoscaling/src/": "absent"
+  }
 }

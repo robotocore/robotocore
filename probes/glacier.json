@@ -175,5 +175,10 @@
       "status": "working",
       "message": "likely implemented (VaultNotFound: Vault not found)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/glacier.rs": "21a79dae4b98e7a4ae26cdc01d86f1c0bd974ab89362b236eba8c46503bae1f7",
+    "rotocore/src/services/glacier/": "absent",
+    "crates/glacier/src/": "absent"
+  }
 }

@@ -90,5 +90,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/acm.rs": "8a744e4a2065bd6c698551bc06bc14c9321c2b69ef424a29ae4b77f6b11afb4a",
+    "rotocore/src/services/acm/": "absent",
+    "crates/acm/src/": "absent"
+  }
 }

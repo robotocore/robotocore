@@ -550,5 +550,10 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/backup.rs": "6fab235222cb30efba2f4acf2a6839760b311efdaad1ae5cb1df5ec70f8756fd",
+    "rotocore/src/services/backup/": "absent",
+    "crates/backup/src/": "absent"
+  }
 }

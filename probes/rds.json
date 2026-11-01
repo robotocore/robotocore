@@ -815,5 +815,10 @@
       "status": "working",
       "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     }
-  ]
+  ],
+  "impl_fingerprint": {
+    "rotocore/src/services/rds.rs": "8475e6cc7cd082fd4c4db33ac76629c1354ff9e31f6092090869adf76933bd84",
+    "rotocore/src/services/rds/": "absent",
+    "crates/rds/src/": "absent"
+  }
 }
