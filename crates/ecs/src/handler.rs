@@ -627,13 +627,12 @@ impl EcsHandler {
             // (max revision) + 1 — len()+1 duplicates ids once a delete
             // removed a middle revision.
             let revisions = tds.entry(family.to_string()).or_default();
-            let revision =
-                revisions
-                    .iter()
-                    .map(|td| td["revision"].as_i64().unwrap_or(0))
-                    .max()
-                    .unwrap_or(0)
-                    + 1;
+            let revision = revisions
+                .iter()
+                .map(|td| td["revision"].as_i64().unwrap_or(0))
+                .max()
+                .unwrap_or(0)
+                + 1;
             td_arn = format!(
                 "arn:aws:ecs:{}:{}:task-definition/{}:{}",
                 req.region, req.account, family, revision
@@ -685,9 +684,7 @@ impl EcsHandler {
             if let Some(task_role) = req.params.get("taskRoleArn").and_then(|v| v.as_str()) {
                 td["taskRoleArn"] = json!(task_role);
             }
-            if let Some(exec_role) =
-                req.params.get("executionRoleArn").and_then(|v| v.as_str())
-            {
+            if let Some(exec_role) = req.params.get("executionRoleArn").and_then(|v| v.as_str()) {
                 td["executionRoleArn"] = json!(exec_role);
             }
             if let Some(rc) = req.params.get("requiresCompatibilities") {
@@ -726,7 +723,11 @@ impl EcsHandler {
             ),
             // moto's TaskDefinitionNotFoundException (ecs/exceptions.py:13-18)
             // — the message does NOT interpolate the reference.
-            None => AwsResponse::error(400, "ClientException", "Unable to describe task definition."),
+            None => AwsResponse::error(
+                400,
+                "ClientException",
+                "Unable to describe task definition.",
+            ),
         }
     }
 
@@ -842,7 +843,11 @@ impl EcsHandler {
                     .cloned()
             });
         let Some(mut td) = hit else {
-            return AwsResponse::error(400, "ClientException", "Unable to describe task definition.");
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Unable to describe task definition.",
+            );
         };
         {
             let mut tds = state.task_definitions.write();
@@ -1436,12 +1441,8 @@ impl EcsHandler {
                 .map(|m| {
                     let mut arns: Vec<String> = m
                         .values()
-                        .filter(|ci| {
-                            ci.get("status").and_then(|v| v.as_str()) == Some("ACTIVE")
-                        })
-                        .filter_map(|ci| {
-                            ci["containerInstanceArn"].as_str().map(String::from)
-                        })
+                        .filter(|ci| ci.get("status").and_then(|v| v.as_str()) == Some("ACTIVE"))
+                        .filter_map(|ci| ci["containerInstanceArn"].as_str().map(String::from))
                         .collect();
                     arns.sort();
                     arns
@@ -1555,9 +1556,8 @@ impl EcsHandler {
             // container_instance_arn; placed round-robin — moto's
             // resource-check placement is not modeled).
             if !active_instances.is_empty() {
-                task["containerInstanceArn"] = json!(
-                    &active_instances[(task_index % active_instances.len() as i64) as usize]
-                );
+                task["containerInstanceArn"] =
+                    json!(&active_instances[(task_index % active_instances.len() as i64) as usize]);
             }
             task_index += 1;
             tasks.push(task.clone());
@@ -1684,7 +1684,10 @@ impl EcsHandler {
                     .entry(cluster_name.to_string())
                     .or_default()
                     .insert(task_id, task.clone());
-                let running = ci.get("runningTasksCount").and_then(|v| v.as_i64()).unwrap_or(0);
+                let running = ci
+                    .get("runningTasksCount")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
                 ci["runningTasksCount"] = json!(running + 1);
                 tasks.push(task);
             }
@@ -1825,7 +1828,12 @@ impl EcsHandler {
                 };
                 for td in revisions {
                     if td["status"] == json!("ACTIVE") {
-                        arns.push(td["taskDefinitionArn"].as_str().unwrap_or_default().to_string());
+                        arns.push(
+                            td["taskDefinitionArn"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string(),
+                        );
                     }
                 }
                 arns
@@ -1839,7 +1847,9 @@ impl EcsHandler {
                 m.values()
                     .filter(|t| {
                         status_filter
-                            .map(|want| t.get("desiredStatus").and_then(|v| v.as_str()) == Some(want))
+                            .map(|want| {
+                                t.get("desiredStatus").and_then(|v| v.as_str()) == Some(want)
+                            })
                             .unwrap_or(true)
                     })
                     .filter(|t| {
@@ -1856,7 +1866,10 @@ impl EcsHandler {
                         family
                             .map(|_| {
                                 family_arns.contains(
-                                    &t["taskDefinitionArn"].as_str().unwrap_or_default().to_string(),
+                                    &t["taskDefinitionArn"]
+                                        .as_str()
+                                        .unwrap_or_default()
+                                        .to_string(),
                                 )
                             })
                             .unwrap_or(true)
@@ -2280,7 +2293,11 @@ impl EcsHandler {
             .unwrap_or_default();
         let resolved = resolve_task_definition(&state, td_ref);
         let Some(td) = resolved else {
-            return AwsResponse::error(400, "ClientException", "Unable to describe task definition.");
+            return AwsResponse::error(
+                400,
+                "ClientException",
+                "Unable to describe task definition.",
+            );
         };
         let task_def_arn = td["taskDefinitionArn"]
             .as_str()
@@ -2475,7 +2492,12 @@ impl EcsHandler {
     /// used raw; anything unresolved raises TargetNotFoundException
     /// ("Could not find {targetId}"). Attributes carry no task-definition
     /// targets — the target surface is container instances only.
-    fn validate_attribute_target(&self, state: &EcsState, cluster_name: &str, attr: &Value) -> Option<AwsResponse> {
+    fn validate_attribute_target(
+        &self,
+        state: &EcsState,
+        cluster_name: &str,
+        attr: &Value,
+    ) -> Option<AwsResponse> {
         let target_id = attr.get("targetId").and_then(|v| v.as_str());
         let target_type = attr.get("targetType").and_then(|v| v.as_str());
         let not_found = |id: &str| {
@@ -3201,11 +3223,19 @@ impl EcsHandler {
                     .read()
                     .get(cluster_name)
                     .and_then(|m| m.get(short).cloned().or_else(|| m.get(r).cloned()))
-                    .map(|t| (r.clone(), t["taskArn"].as_str().unwrap_or_default().to_string()))
+                    .map(|t| {
+                        (
+                            r.clone(),
+                            t["taskArn"].as_str().unwrap_or_default().to_string(),
+                        )
+                    })
             })
             .collect();
         for (_task_ref, arn) in stored {
-            state.task_protection.write().insert(arn.clone(), json!(enabled));
+            state
+                .task_protection
+                .write()
+                .insert(arn.clone(), json!(enabled));
             protected.push(json!({
                 "taskArn": arn,
                 "protectionEnabled": enabled,
@@ -3883,11 +3913,15 @@ mod tests {
         assert_eq!(run.status, 200);
         let run: Value = serde_json::from_str(&run.body).unwrap();
         assert!(
-            run["tasks"].as_array().map(|t| t.is_empty()).unwrap_or(true),
+            run["tasks"]
+                .as_array()
+                .map(|t| t.is_empty())
+                .unwrap_or(true),
             "no instances -> no placed tasks: {run}"
         );
         assert_eq!(
-            run["failures"][0]["reason"], json!("RESOURCE:TASK"),
+            run["failures"][0]["reason"],
+            json!("RESOURCE:TASK"),
             "moto's missing-instances raise becomes the failure row: {run}"
         );
         h.handle(make_req(
@@ -3968,7 +4002,10 @@ mod tests {
     #[test]
     fn delete_task_definitions_moto_branches() {
         let h = EcsHandler::new();
-        let empty = h.handle(make_req("DeleteTaskDefinitions", json!({"taskDefinitions": []})));
+        let empty = h.handle(make_req(
+            "DeleteTaskDefinitions",
+            json!({"taskDefinitions": []}),
+        ));
         assert_eq!(empty.status, 400);
         assert_eq!(
             serde_json::from_str::<Value>(&empty.body).unwrap()["message"],
@@ -4247,7 +4284,8 @@ mod tests {
         ));
         // moto: no desiredStatus filter → stopped tasks are listed.
         let all = serde_json::from_str::<Value>(
-            &h.handle(make_req("ListTasks", json!({"cluster": "fl"}))).body,
+            &h.handle(make_req("ListTasks", json!({"cluster": "fl"})))
+                .body,
         )
         .unwrap();
         assert_eq!(all["taskArns"].as_array().unwrap().len(), 1);
@@ -4386,10 +4424,7 @@ mod tests {
         assert_eq!(parsed["message"], json!("Could not find fake-ci"));
 
         // list_attributes requires the targetType.
-        let no_type = h.handle(make_req(
-            "ListAttributes",
-            json!({"cluster": "attr"}),
-        ));
+        let no_type = h.handle(make_req("ListAttributes", json!({"cluster": "attr"})));
         assert_eq!(no_type.status, 400);
         assert_eq!(
             serde_json::from_str::<Value>(&no_type.body).unwrap()["message"],
@@ -4427,7 +4462,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            listed["attributes"][0]["targetId"], json!(ci_arn),
+            listed["attributes"][0]["targetId"],
+            json!(ci_arn),
             "moto lists the ARN-typed target: {listed}"
         );
     }
@@ -4484,10 +4520,7 @@ mod tests {
     #[test]
     fn failure_rows_use_typed_arns() {
         let h = EcsHandler::new();
-        let dc = h.handle(make_req(
-            "DescribeClusters",
-            json!({"clusters": ["ghost"]}),
-        ));
+        let dc = h.handle(make_req("DescribeClusters", json!({"clusters": ["ghost"]})));
         let parsed: Value = serde_json::from_str(&dc.body).unwrap();
         assert_eq!(parsed["failures"][0]["reason"], json!("MISSING"));
         assert_eq!(

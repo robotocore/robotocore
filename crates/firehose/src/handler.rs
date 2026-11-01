@@ -280,12 +280,7 @@ impl FirehoseHandler {
             .filter(|t| !t.is_empty());
         let mut names = state.list_names();
         if let Some(want) = type_filter {
-            names.retain(|n| {
-                state
-                    .get(n)
-                    .map(|s| s.stream_type == want)
-                    .unwrap_or(false)
-            });
+            names.retain(|n| state.get(n).map(|s| s.stream_type == want).unwrap_or(false));
         }
         let limit = req
             .params
@@ -584,10 +579,7 @@ impl FirehoseHandler {
                 return AwsResponse::error(
                     400,
                     "ResourceNotFoundException",
-                    &format!(
-                        "Firehose {name} under accountId {} not found.",
-                        req.account
-                    ),
+                    &format!("Firehose {name} under accountId {} not found.", req.account),
                 )
             }
         };
@@ -646,9 +638,8 @@ impl FirehoseHandler {
                 s.http_endpoint_config = Some(updated);
             }
             "S3" | "ExtendedS3" => {
-                let same_flavor =
-                    (dest_name == "ExtendedS3") == s.s3_config_is_extended
-                        && !s.s3_config.is_empty();
+                let same_flavor = (dest_name == "ExtendedS3") == s.s3_config_is_extended
+                    && !s.s3_config.is_empty();
                 if same_flavor {
                     // Same flavor: moto's `destinations[idx][dest_name].update
                     // (dest_config)` (models.py:663-664) — this request's
@@ -709,9 +700,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return stream_not_found(name, req.account)
-            }
+            None => return stream_not_found(name, req.account),
         };
         if let Some(tags) = req.params.get("Tags").and_then(|v| v.as_array()).cloned() {
             for tag in tags {
@@ -739,9 +728,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return stream_not_found(name, req.account)
-            }
+            None => return stream_not_found(name, req.account),
         };
         let keys: Vec<String> = req
             .params
@@ -774,9 +761,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return stream_not_found(name, req.account)
-            }
+            None => return stream_not_found(name, req.account),
         };
         let mut all_tags: Vec<Value> = s
             .tags
@@ -806,9 +791,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return stream_not_found(name, req.account)
-            }
+            None => return stream_not_found(name, req.account),
         };
         let input = req
             .params
@@ -834,9 +817,7 @@ impl FirehoseHandler {
         let state = self.get_state(req.account, &req.region);
         let mut s = match state.get(name) {
             Some(s) => s,
-            None => {
-                return stream_not_found(name, req.account)
-            }
+            None => return stream_not_found(name, req.account),
         };
         // moto only flips Status on the existing config (firehose models.py:
         // 595-602) — a whole-config replace erased KeyType/KeyARN from
@@ -957,19 +938,19 @@ fn put_http_records(
 fn http_agent() -> ureq::Agent {
     use std::sync::OnceLock;
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| {
-        ureq::AgentBuilder::new()
-            .timeout_connect(std::time::Duration::from_secs(5))
-            .timeout_read(std::time::Duration::from_secs(20))
-            .build()
-    })
-    .clone()
+    AGENT
+        .get_or_init(|| {
+            ureq::AgentBuilder::new()
+                .timeout_connect(std::time::Duration::from_secs(5))
+                .timeout_read(std::time::Duration::from_secs(20))
+                .build()
+        })
+        .clone()
 }
 
 /// moto's literal RuntimeError text for a failed HTTP delivery
 /// (firehose models.py:445-448).
-const HTTP_DELIVERY_FAILED_MESSAGE: &str =
-    "Firehose PutRecord(Batch) to HTTP destination failed";
+const HTTP_DELIVERY_FAILED_MESSAGE: &str = "Firehose PutRecord(Batch) to HTTP destination failed";
 
 /// moto's MissingBucket wire text (s3 exceptions.py:54-59).
 const MISSING_BUCKET_MESSAGE: &str = "The specified bucket does not exist";
@@ -1461,7 +1442,10 @@ mod tests {
         assert_eq!(unknown.status, 400);
         let parsed: Value = serde_json::from_str(&unknown.body).unwrap();
         assert_eq!(parsed["__type"], json!("InvalidArgumentException"));
-        assert_eq!(parsed["message"], json!("Destination Id destinationId-999999999999 not found"));
+        assert_eq!(
+            parsed["message"],
+            json!("Destination Id destinationId-999999999999 not found")
+        );
         let desc = serde_json::from_str::<Value>(
             &handler
                 .handle(make_req(
@@ -1521,7 +1505,8 @@ mod tests {
         );
         assert_eq!(ext["BufferingHints"]["IntervalInSeconds"], json!(120));
         assert_eq!(
-            ext["BucketARN"], json!("arn:aws:s3:::bkt"),
+            ext["BucketARN"],
+            json!("arn:aws:s3:::bkt"),
             "keys not named in the update are kept"
         );
         assert_eq!(desc["DeliveryStreamDescription"]["VersionId"], json!("2"));
@@ -1632,7 +1617,10 @@ mod tests {
             let body = |raw: &[u8]| -> serde_json::Value {
                 let text = String::from_utf8_lossy(raw).to_string();
                 let idx = text.find("\r\n\r\n").unwrap();
-                match text.find("Content-Length:").or_else(|| text.find("content-length:")) {
+                match text
+                    .find("Content-Length:")
+                    .or_else(|| text.find("content-length:"))
+                {
                     Some(_) => {
                         let body = &raw[idx + 4..];
                         serde_json::from_slice(body).unwrap()
@@ -1754,8 +1742,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            desc["DeliveryStreamDescription"]["LastDeliveryFailureDescription"],
-            json!("Firehose PutRecord(Batch) to HTTP destination failed")
+            desc["DeliveryStreamDescription"]["FailureDescription"],
+            json!({
+                "Type": "UNKNOWN_ERROR",
+                "Details": "Firehose PutRecord(Batch) to HTTP destination failed"
+            })
         );
     }
 
