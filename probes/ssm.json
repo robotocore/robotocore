@@ -1,6 +1,6 @@
 {
   "service": "ssm",
-  "generated_at": "2026-11-01T04:53:16.054888+00:00",
+  "generated_at": "2026-11-01T05:25:10.034857+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 146,

@@ -1,6 +1,6 @@
 {
   "service": "firehose",
-  "generated_at": "2026-11-01T04:52:58.822685+00:00",
+  "generated_at": "2026-11-01T05:24:50.620709+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 12,
