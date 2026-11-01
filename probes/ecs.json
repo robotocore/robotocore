@@ -1,10 +1,10 @@
 {
   "service": "ecs",
-  "generated_at": "2026-11-01T17:59:48.118628+00:00",
+  "generated_at": "2026-11-01T18:43:31.713044+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/ecs.rs": "absent",
     "rotocore/src/services/ecs/": "absent",
-    "crates/ecs/src/": "d2ec56948ddcaa5f9d8666edebfbe87eb4367ae451e97b5509a560cdcccabeaf"
+    "crates/ecs/src/": "1060d354a57044fde0f2d6f5a603935d81bd750c82214767e1d7c0a5b1eb64c7"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

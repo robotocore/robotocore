@@ -111,11 +111,7 @@ impl Secret {
     }
 
     pub fn get_version(&self, stage: &str) -> Option<SecretVersion> {
-        self.versions
-            .read()
-            .values()
-            .find(|v| v.stages.iter().any(|s| s == stage))
-            .cloned()
+        deterministic_by_stage(&self.versions.read(), stage)
     }
 
     /// Version looked up by version id.
@@ -166,4 +162,28 @@ impl Default for SmState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Deterministic stage→version pick. moto resolves the first version
+/// carrying a stage in dict-INSERTION order (models.py:457-460 iterates the
+/// dict); a stacked stage is only reachable via an empty
+/// `RemoveFromVersionId` on `update_secret_version_stage`
+/// (models.py:1165-1172). To mirror the oracle's kind of determinism
+/// (stable, oldest-first) the twin orders candidates by creation date and
+/// version id — HashMap order is neither insertion-stable nor
+/// reproducible.
+pub(crate) fn deterministic_by_stage(
+    versions: &std::collections::HashMap<String, SecretVersion>,
+    stage: &str,
+) -> Option<SecretVersion> {
+    versions
+        .values()
+        .filter(|v| v.stages.iter().any(|s| s == stage))
+        .min_by(|a, b| {
+            a.created_date
+                .partial_cmp(&b.created_date)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.version_id.cmp(&b.version_id))
+        })
+        .cloned()
 }
