@@ -215,9 +215,14 @@ impl FirehoseHandler {
                     desc["DeliveryStreamEncryptionConfiguration"] = enc.clone();
                 }
                 // Real-AWS async-failure semantics: failed deliveries surface
-                // in the description (moto keeps DataRoutes on this field).
+                // under botocore's modeled FailureDescription member
+                // (firehose service model: DeliveryStreamDescription.
+                // FailureDescription {Type, Details}; the S3-destination
+                // miss class is none of the KMS/VPC/ENI failure types, so
+                // it maps to the enum's UNKNOWN_ERROR slot).
                 if let Some(reason) = &s.last_failure {
-                    desc["LastDeliveryFailureDescription"] = json!(reason);
+                    desc["FailureDescription"] =
+                        json!({"Type": "UNKNOWN_ERROR", "Details": reason});
                 }
                 AwsResponse::json(200, json!({ "DeliveryStreamDescription": desc }))
             }
@@ -285,7 +290,7 @@ impl FirehoseHandler {
         let mut failed = 0u32;
         if let Some(stream) = state.get(name) {
             match self.put_s3_records(req, name, stream.version_id, &[data]) {
-                DeliveredRecords::All => {}
+                DeliveredRecords::All => self.record_delivery_success(req, name),
                 DeliveredRecords::Failed(reason) => {
                     failed = 1;
                     self.record_delivery_failure(req, name, &reason);
@@ -310,12 +315,25 @@ impl FirehoseHandler {
 
     /// Record a failed delivery on the stream (real-AWS async-failure
     /// semantics: the PutRecord itself stays 200, the failure surfaces in
-    /// DescribeDeliveryStream).
+    /// DescribeDeliveryStream under the modeled FailureDescription member).
     fn record_delivery_failure(&self, req: &AwsRequest, name: &str, reason: &str) {
         let state = self.get_state(req.account, &req.region);
         if let Some(mut stream) = state.get(name) {
             stream.last_failure = Some(reason.to_string());
             state.put(stream);
+        }
+    }
+
+    /// Clear the failure signal once a delivery actually lands (w6-crate
+    /// F3: the stale failure text described a healthy stream forever after
+    /// recovery).
+    fn record_delivery_success(&self, req: &AwsRequest, name: &str) {
+        let state = self.get_state(req.account, &req.region);
+        if let Some(mut stream) = state.get(name) {
+            if stream.last_failure.is_some() {
+                stream.last_failure = None;
+                state.put(stream);
+            }
         }
     }
 
@@ -418,7 +436,7 @@ impl FirehoseHandler {
             state.get(name).map(|s| s.version_id).unwrap_or(1),
             &decoded,
         ) {
-            DeliveredRecords::All => {}
+            DeliveredRecords::All => self.record_delivery_success(req, name),
             DeliveredRecords::Failed(reason) => {
                 failed_put_count = decoded.len() as u32;
                 self.record_delivery_failure(req, name, &reason);
@@ -1019,8 +1037,9 @@ mod tests {
             "the honest failure member: FailedPutCount=1"
         );
 
-        // The failure is visible in the stream description with moto's
-        // MissingBucket text, and no phantom bucket exists in S3.
+        // The failure is visible in the stream description under botocore's
+        // modeled FailureDescription member (UNKNOWN_ERROR type + moto's
+        // MissingBucket text) — and no phantom bucket exists in S3.
         let desc = serde_json::from_str::<Value>(
             &handler
                 .handle(make_req(
@@ -1030,12 +1049,84 @@ mod tests {
                 .body,
         )
         .unwrap();
-        let failure = desc["DeliveryStreamDescription"]["LastDeliveryFailureDescription"]
-            .as_str()
-            .unwrap_or_default();
+        let failure = &desc["DeliveryStreamDescription"]["FailureDescription"];
+        assert_eq!(
+            failure["Type"], "UNKNOWN_ERROR",
+            "the S3 miss maps to the enum's catch-all slot: {desc}"
+        );
         assert!(
-            failure.contains("The specified bucket does not exist"),
-            "moto's MissingBucket literal surfaces: {failure}"
+            failure["Details"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("The specified bucket does not exist"),
+            "moto's MissingBucket literal surfaces in Details: {desc}"
+        );
+    }
+
+    /// The stale failure must clear: after recovery (the bucket exists) the
+    /// next delivery erases FailureDescription (w6-crate F3).
+    #[test]
+    fn test_delivery_failure_clears_on_success() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "recover-stream",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::recover-bucket-missing",
+                    "RoleARN": "arn:aws:iam::123456789012:role/fh-role"
+                }
+            }),
+        ));
+        handler.handle(make_req(
+            "PutRecord",
+            json!({"DeliveryStreamName": "recover-stream",
+                   "Record": {"Data": base64::engine::general_purpose::STANDARD.encode(b"x")}}),
+        ));
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "recover-stream"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert!(
+            desc["DeliveryStreamDescription"]["FailureDescription"]["Details"]
+                .as_str()
+                .is_some(),
+            "the failed landing signals: {desc}"
+        );
+
+        // Register a pre-made bucket through the bridge's registry axis and
+        // deliver again — the failure flag must clear.
+        let s3_state = s3::models::S3State::new();
+        let bucket = std::sync::Arc::new(s3::models::Bucket::new(
+            "recover-bucket-missing".to_string(),
+            "us-east-1".to_string(),
+        ));
+        s3_state.put_bucket(bucket);
+        s3::bridge::register_state(123456789012, "us-east-1", &s3_state);
+        handler.handle(make_req(
+            "PutRecord",
+            json!({"DeliveryStreamName": "recover-stream",
+                   "Record": {"Data": base64::engine::general_purpose::STANDARD.encode(b"y")}}),
+        ));
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "recover-stream"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert!(
+            desc["DeliveryStreamDescription"]
+                .get("FailureDescription")
+                .is_none(),
+            "the recovered stream must render no FailureDescription: {desc}"
         );
     }
 }
