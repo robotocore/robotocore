@@ -179,6 +179,61 @@ impl crate::handler::KmsHandler {
 mod tests {
     use super::*;
 
+    /// Forward-compat: a snapshot written by a binary predating the
+    /// deletion-schedule fields would fail `Key` deserialization and the
+    /// restore loop silently DROPS unparseable rows — every key wiped on
+    /// `state/load` after an upgrade. `serde(default)` on both fields
+    /// keeps such rows parseable; this test pins that.
+    #[test]
+    fn test_snapshot_restore_tolerates_missing_deletion_fields() {
+        let handler = crate::handler::KmsHandler::new();
+        let st = handler.get_state(424242424242, "old-snap-1");
+        let key = Key::new(
+            424242424242,
+            "old-snap-1".to_string(),
+            "ENCRYPT_DECRYPT",
+            "SYMMETRIC_DEFAULT",
+        );
+        st.put_key(Arc::new(key));
+        let key = st.list_keys().into_iter().next().unwrap();
+        let key_id = key.key_id.clone();
+
+        // Snapshot, then strip the two new fields like an old snapshot would.
+        let snap = handler.snapshot_json();
+        let mut snap = snap;
+        if let Some(keys) = snap.get_mut("keys").and_then(Value::as_object_mut) {
+            for entry in keys.values_mut() {
+                if let Some(obj) = entry.as_object_mut() {
+                    obj.remove("deletion_ms");
+                    obj.remove("pending_window_days");
+                }
+            }
+        }
+
+        // Empty the partition entirely, then restore the stripped snapshot
+        // (replace semantics, like `state/load` on a new partition).
+        st.keys.write().clear();
+        st.aliases.write().clear();
+        handler.restore_json(&snap);
+
+        let restored = st.list_keys();
+        assert_eq!(
+            restored.len(),
+            1,
+            "the key survives the upgrade — keys must not be wiped"
+        );
+        assert_eq!(restored[0].key_id, key_id);
+        assert_eq!(
+            *restored[0].deletion_ms.read(),
+            None,
+            "missing fields default to None"
+        );
+
+        // Cleanup: do not leak state into other tests in this process.
+        st.keys.write().clear();
+        st.aliases.write().clear();
+    }
+
     #[test]
     fn test_snapshot_round_trip_restores_keys_and_aliases() {
         let handler = crate::handler::KmsHandler::new();

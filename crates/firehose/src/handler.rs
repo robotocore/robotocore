@@ -111,6 +111,7 @@ impl FirehoseHandler {
                 .params
                 .get("ExtendedS3DestinationConfiguration")
                 .is_some(),
+            last_failure: None,
             s3_config,
             encryption: None,
         };
@@ -213,6 +214,11 @@ impl FirehoseHandler {
                 if let Some(enc) = &s.encryption {
                     desc["DeliveryStreamEncryptionConfiguration"] = enc.clone();
                 }
+                // Real-AWS async-failure semantics: failed deliveries surface
+                // in the description (moto keeps DataRoutes on this field).
+                if let Some(reason) = &s.last_failure {
+                    desc["LastDeliveryFailureDescription"] = json!(reason);
+                }
                 AwsResponse::json(200, json!({ "DeliveryStreamDescription": desc }))
             }
             None => AwsResponse::error(
@@ -274,37 +280,70 @@ impl FirehoseHandler {
         let data = base64::engine::general_purpose::STANDARD
             .decode(data_b64)
             .unwrap_or_default();
-        let record_id = uuid::Uuid::new_v4().simple().to_string();
-        // moto (firehose models.py:510-542): the record bytes land in the
-        // destinated S3 bucket — a plain drop here was the wave-3 finding
-        // (records vanished while PutRecord claimed success).
+        let record_id = uuid::Uuid::new_v4().to_string();
         let state = self.get_state(req.account, &req.region);
+        let mut failed = 0u32;
         if let Some(stream) = state.get(name) {
-            self.put_s3_records(req, name, stream.version_id, &[data]);
+            match self.put_s3_records(req, name, stream.version_id, &[data]) {
+                DeliveredRecords::All => {}
+                DeliveredRecords::Failed(reason) => {
+                    failed = 1;
+                    self.record_delivery_failure(req, name, &reason);
+                }
+            }
         }
-        AwsResponse::json(
-            200,
-            json!({
-                "RecordId": record_id,
-                "Encrypted": false
-            }),
-        )
+        // Happy path matches moto's PutRecord shape ({RecordId, Encrypted});
+        // a failed landing surfaces the honest FailedPutCount=1 member on
+        // top (real-AWS async-failure semantics — the failure also lands
+        // in DescribeDeliveryStream via last_failure). Encrypted is moto's
+        // static False (firehose models.py:423 — "always set Encrypted to
+        // False"), never a delivery indicator.
+        let mut out = json!({
+            "RecordId": record_id,
+            "Encrypted": false
+        });
+        if failed > 0 {
+            out["FailedPutCount"] = json!(failed);
+        }
+        AwsResponse::json(200, out)
+    }
+
+    /// Record a failed delivery on the stream (real-AWS async-failure
+    /// semantics: the PutRecord itself stays 200, the failure surfaces in
+    /// DescribeDeliveryStream).
+    fn record_delivery_failure(&self, req: &AwsRequest, name: &str, reason: &str) {
+        let state = self.get_state(req.account, &req.region);
+        if let Some(mut stream) = state.get(name) {
+            stream.last_failure = Some(reason.to_string());
+            state.put(stream);
+        }
     }
 
     /// moto's `put_s3_records` (firehose models.py:474-501): the joined
     /// record bytes land in the destination bucket under
     /// `Prefix + YYYY/MM/DD/HH/{stream}-{version}-{ts}-{uuid}` (the LocalStack
     /// object-naming contract), delivered through the process's live S3
-    /// state via the s3 crate's cross-service bridge — moto's s3 put_object
-    /// implicitly creates a missing bucket, mirrored by the bridge.
-    /// A bare firehose process without a registered S3 state (crate unit
-    /// tests) skips the delivery silently: moto's RuntimeError failure
-    /// path fires only when a partially-initialized backends map exists,
-    /// which the twin's registration model does not produce.
-    fn put_s3_records(&self, req: &AwsRequest, name: &str, version_id: u64, records: &[Vec<u8>]) {
+    /// state via the s3 crate's cross-service bridge.
+    ///
+    /// Failure contract: moto does NOT create missing buckets — its S3
+    /// `put_object` raises `MissingBucket` (models.py:2016-2031), which
+    /// firehose converts to its RuntimeError crash. The twin keeps the
+    /// PutRecord(Batch) 200 (real-AWS async-failure semantics) and records
+    /// the miss: the caller bumps `FailedPutCount` and the stream's
+    /// `last_failure` carries moto's literal `NoSuchBucket` message so the
+    /// failure surfaces in DescribeDeliveryStream. A bare firehose process
+    /// without a registered S3 state (crate unit tests) has the same
+    /// "missing bucket" signal — no phantom bucket is ever created.
+    fn put_s3_records(
+        &self,
+        req: &AwsRequest,
+        name: &str,
+        version_id: u64,
+        records: &[Vec<u8>],
+    ) -> DeliveredRecords {
         let state = self.get_state(req.account, &req.region);
         let Some(stream) = state.get(name) else {
-            return;
+            return DeliveredRecords::All;
         };
         let Some(bucket) = stream
             .s3_config
@@ -313,7 +352,7 @@ impl FirehoseHandler {
             .and_then(|arn| arn.rsplit(':').next())
             .filter(|b| !b.is_empty())
         else {
-            return;
+            return DeliveredRecords::All;
         };
         let prefix = stream
             .s3_config
@@ -322,14 +361,19 @@ impl FirehoseHandler {
             .unwrap_or_default();
         let object_path = format_s3_object_path(name, version_id, prefix);
         let joined: Vec<u8> = records.iter().flatten().cloned().collect();
-        s3::bridge::put_object(
+        match s3::bridge::put_object(
             req.account,
             &req.region,
             bucket,
             &object_path,
             joined,
             "application/octet-stream",
-        );
+        ) {
+            s3::bridge::PutObjectOutcome::Delivered(_) => DeliveredRecords::All,
+            s3::bridge::PutObjectOutcome::MissingBucket => DeliveredRecords::Failed(format!(
+                "Failed to deliver to bucket {bucket}: {MISSING_BUCKET_MESSAGE}"
+            )),
+        }
     }
 
     fn put_record_batch(&self, req: &AwsRequest) -> AwsResponse {
@@ -361,20 +405,31 @@ impl FirehoseHandler {
                     .decode(data_b64)
                     .unwrap_or_default(),
             );
-            responses.push(json!({ "RecordId": uuid::Uuid::new_v4().simple().to_string() }));
+            responses.push(json!({ "RecordId": uuid::Uuid::new_v4().to_string() }));
         }
         // moto (firehose models.py:503-546): every record joins into one S3
-        // object per put; a no-store drop was the wave-3 finding.
-        self.put_s3_records(
+        // object per put. A FAILED landing (missing bucket) bumps
+        // FailedPutCount by the whole put's records — the caller-visible
+        // honest failure signal.
+        let mut failed_put_count = 0u32;
+        match self.put_s3_records(
             req,
             name,
             state.get(name).map(|s| s.version_id).unwrap_or(1),
             &decoded,
-        );
+        ) {
+            DeliveredRecords::All => {}
+            DeliveredRecords::Failed(reason) => {
+                failed_put_count = decoded.len() as u32;
+                self.record_delivery_failure(req, name, &reason);
+            }
+        }
         AwsResponse::json(
             200,
             json!({
-                "FailedPutCount": 0,
+                "FailedPutCount": failed_put_count,
+                // moto's static False (firehose models.py:540), never a
+                // delivery indicator.
                 "Encrypted": false,
                 "RequestResponses": responses
             }),
@@ -621,6 +676,18 @@ impl FirehoseHandler {
     }
 }
 
+/// Delivery bookkeeping for one PutRecord(Batch) S3 landing.
+enum DeliveredRecords {
+    /// The whole batch landed.
+    All,
+    /// The landing itself failed; the message carries moto's literal
+    /// MissingBucket wording and the FAILED count covers the put's records.
+    Failed(String),
+}
+
+/// moto's `MissingBucket` wire text (s3 exceptions.py:54-59).
+const MISSING_BUCKET_MESSAGE: &str = "The specified bucket does not exist";
+
 /// moto's `_format_s3_object_path` (firehose models.py:510-541): the
 /// delivery-path contract — a slash-terminated prefix, then the
 /// `YYYY/MM/DD/HH` hour folder, then
@@ -639,7 +706,7 @@ fn format_s3_object_path(delivery_stream_name: &str, version_id: u64, prefix: &s
         name = delivery_stream_name,
         version = version_id,
         ts = now.format("%Y-%m-%d-%H-%M-%S"),
-        uid = uuid::Uuid::new_v4().simple(),
+        uid = uuid::Uuid::new_v4(),
     )
 }
 
@@ -907,6 +974,68 @@ mod tests {
         assert_eq!(
             desc["DeliveryStreamDescription"]["DeliveryStreamEncryptionConfiguration"]["Status"],
             json!("DISABLED")
+        );
+    }
+
+    /// Wave-5 S-5: a PutRecord to a bucket that was never created is an
+    /// honest failure — 200 with FailedPutCount=1 (real-AWS async-failure
+    /// semantics), the failure text surfaces in DescribeDeliveryStream
+    /// (moto's MissingBucket literal), and NO phantom bucket is created.
+    #[test]
+    fn test_put_record_missing_bucket_fails_honestly() {
+        let handler = FirehoseHandler::new();
+        handler.handle(make_req(
+            "CreateDeliveryStream",
+            json!({
+                "DeliveryStreamName": "ghost-bucket-stream",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::ghost-bucket-never-created",
+                    "RoleARN": "arn:aws:iam::123456789012:role/fh-role"
+                }
+            }),
+        ));
+        let put = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "PutRecord",
+                    json!({
+                        "DeliveryStreamName": "ghost-bucket-stream",
+                        "Record": {
+                            "Data": base64::engine::general_purpose::STANDARD.encode(b"hello")
+                        }
+                    }),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            put["RecordId"].as_str().map(str::len),
+            Some(36),
+            "RecordId is a hyphenated uuid (moto str(uuid4()))"
+        );
+        assert_eq!(
+            put.get("FailedPutCount"),
+            Some(&json!(1)),
+            "the honest failure member: FailedPutCount=1"
+        );
+
+        // The failure is visible in the stream description with moto's
+        // MissingBucket text, and no phantom bucket exists in S3.
+        let desc = serde_json::from_str::<Value>(
+            &handler
+                .handle(make_req(
+                    "DescribeDeliveryStream",
+                    json!({"DeliveryStreamName": "ghost-bucket-stream"}),
+                ))
+                .body,
+        )
+        .unwrap();
+        let failure = desc["DeliveryStreamDescription"]["LastDeliveryFailureDescription"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            failure.contains("The specified bucket does not exist"),
+            "moto's MissingBucket literal surfaces: {failure}"
         );
     }
 }

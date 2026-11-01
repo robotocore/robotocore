@@ -1176,7 +1176,11 @@ fn number_validity_error(
 /// the NULL-type check): numeric-claim failures and a non-true NULL are
 /// ValidationExceptions on every write path, with moto's per-failure text
 /// (unparseable/whitespace = "cannot be converted", overflow/underflow the
-/// Number {over,under}flow messages).
+/// Number {over,under}flow messages). Deliberate divergence: moto's checks
+/// do NOT descend into `M`/`L` members (models/table.py's validation only
+/// inspects top-level members, so moto stores a bad `N` inside a list),
+/// while this recursion rejects the same literal nested anywhere — real-AWS
+/// posture, so callers get the same 400 they'd see at the top level.
 fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     if let Some(n) = value.get("N").and_then(Value::as_str) {
         return number_validity_error(expr_engine::number_validity(n), n);
@@ -2255,6 +2259,10 @@ impl DynamoDbHandler {
 
         // Phase 2 — the collected rows execute: puts first, then deletes
         // (moto's loop order; a row doing both on a key ends DELETED).
+        // Same-ROW Put+Delete divergence: moto executes only the FIRST
+        // member of a row (`list(table_request.keys())[0]`, responses.py:
+        // 737); the twin processes BOTH members of a row (delete wins) —
+        // recorded divergence from moto.
         for row in puts {
             let old = row
                 .table

@@ -61,6 +61,7 @@ fn store_restore_json(st: &IamState, v: &Value) {
     swap!(instance_profiles);
     swap!(instance_profile_tags);
     swap!(instance_profile_ids);
+    swap!(instance_profile_created);
     swap!(virtual_mfas);
     swap!(saml_providers);
     swap!(oidc_providers);

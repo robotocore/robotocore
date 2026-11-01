@@ -434,6 +434,11 @@ pub struct IamState {
     pub instance_profile_tags: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub instance_profile_ids: Arc<RwLock<HashMap<String, String>>>,
+    /// Instance-profile CreateDate (RFC3339 seconds) stamped once at
+    /// creation and rendered from this store (wave: per-read now() dates
+    /// drifted on every Get/List).
+    #[serde(with = "crate::snapshot::arc_rw")]
+    pub instance_profile_created: Arc<RwLock<HashMap<String, String>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub virtual_mfas: Arc<RwLock<HashMap<String, Arc<VirtualMfa>>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
@@ -462,6 +467,7 @@ impl IamState {
             instance_profiles: Arc::new(RwLock::new(HashMap::new())),
             instance_profile_tags: Arc::new(RwLock::new(HashMap::new())),
             instance_profile_ids: Arc::new(RwLock::new(HashMap::new())),
+            instance_profile_created: Arc::new(RwLock::new(HashMap::new())),
             virtual_mfas: Arc::new(RwLock::new(HashMap::new())),
             saml_providers: Arc::new(RwLock::new(HashMap::new())),
             oidc_providers: Arc::new(RwLock::new(HashMap::new())),
@@ -516,12 +522,19 @@ impl IamState {
             .write()
             .entry(name.to_string())
             .or_insert_with(|| random_id("").chars().take(20).collect());
+        self.instance_profile_created
+            .write()
+            .entry(name.to_string())
+            .or_insert_with(|| {
+                chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            });
     }
 
     pub fn delete_instance_profile(&self, name: &str) -> bool {
         let removed = self.instance_profiles.write().remove(name).is_some();
         self.instance_profile_tags.write().remove(name);
         self.instance_profile_ids.write().remove(name);
+        self.instance_profile_created.write().remove(name);
         removed
     }
 

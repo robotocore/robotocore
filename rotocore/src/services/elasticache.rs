@@ -514,12 +514,13 @@ fn global_rg_xml(g: &GlobalReplicationGroup, account: u64, region: &str) -> Stri
         .iter()
         .map(|m| {
             format!(
-                "<GlobalReplicationGroupMember><ReplicationGroupId>{m}</ReplicationGroupId><ReplicationGroupRegion>us-east-1</ReplicationGroupRegion><Role>PRIMARY</Role><AutomaticFailover>enabled</AutomaticFailover><Status>associated</Status></GlobalReplicationGroupMember>"
+                "<GlobalReplicationGroupMember><ReplicationGroupId>{}</ReplicationGroupId><ReplicationGroupRegion>us-east-1</ReplicationGroupRegion><Role>PRIMARY</Role><AutomaticFailover>enabled</AutomaticFailover><Status>associated</Status></GlobalReplicationGroupMember>",
+                esc(m)
             )
         })
         .collect();
     format!(
-        "<GlobalReplicationGroup><GlobalReplicationGroupId>{}</GlobalReplicationGroupId><GlobalReplicationGroupDescription>{}</GlobalReplicationGroupDescription><Status>available</Status><CacheNodeType>cache.t4g.micro</CacheNodeType><Engine>redis</Engine><EngineVersion>7.1.0</EngineVersion><Members>{members}</Members><ClusterEnabled>false</ClusterEnabled><GlobalNodeGroups/><AuthTokenEnabled>false</AuthTokenEnabled><TransitEncryptionEnabled>false</TransitEncryptionEnabled><AtRestEncryptionEnabled>false</AtRestEncryptionEnabled><ARN>arn:aws:elasticache:{region}:{account}:globalreplicationgroup:{}</ARN></GlobalReplicationGroup>",
+        "<GlobalReplicationGroup><GlobalReplicationGroupId>{id}</GlobalReplicationGroupId><GlobalReplicationGroupDescription>{desc}</GlobalReplicationGroupDescription><Status>available</Status><CacheNodeType>cache.t4g.micro</CacheNodeType><Engine>redis</Engine><EngineVersion>7.1.0</EngineVersion><Members>{members}</Members><ClusterEnabled>false</ClusterEnabled><GlobalNodeGroups/><AuthTokenEnabled>false</AuthTokenEnabled><TransitEncryptionEnabled>false</TransitEncryptionEnabled><AtRestEncryptionEnabled>false</AtRestEncryptionEnabled><ARN>arn:aws:elasticache:{region}:{account}:globalreplicationgroup:{id}</ARN></GlobalReplicationGroup>",
         id = esc(&g.id),
         desc = esc(&g.description),
         members = members,
@@ -1903,6 +1904,41 @@ mod tests {
             ],
         ));
         assert_eq!(missing.status, 404);
+    }
+
+    /// S-1 regression: the global-RG ARN rides a NAMED format arg — the
+    /// wave-4 format-string skew left a trailing positional `{}` that
+    /// consumed the members blob, rendering an empty
+    /// `...:globalreplicationgroup:` tail with the members XML as stray
+    /// child elements (live-verified at `grg["ARN"]`).
+    #[test]
+    fn global_replication_group_arn_is_rendered() {
+        let ctx = fresh_ctx();
+        dispatch(&ctx.req(
+            "CreateReplicationGroup",
+            &[
+                ("ReplicationGroupId", "arn-rg"),
+                ("ReplicationGroupDescription", "d"),
+            ],
+        ));
+        let created = parse(&dispatch(&ctx.req(
+            "CreateGlobalReplicationGroup",
+            &[
+                ("GlobalReplicationGroupIdSuffix", "arn9"),
+                ("PrimaryReplicationGroupId", "arn-rg"),
+            ],
+        )));
+        assert!(
+            !created.contains("<ARN></ARN>"),
+            "the members blob must not eat the ARN slot: {created}"
+        );
+        assert!(
+            created.contains(&format!(
+                "<ARN>arn:aws:elasticache:us-east-1:{}:globalreplicationgroup:",
+                ctx.0
+            )),
+            "a full ARN with the global id tail follows: {created}"
+        );
     }
 
     #[test]

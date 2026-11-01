@@ -578,9 +578,15 @@ impl LambdaHandler {
     fn delete_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         // moto handles ARNs and `name:qualifier` in every path (models.py
         // `get_function_by_name_or_arn_with_qualifier`) — the raw path
-        // fragment normalizes before the map hit.
+        // fragment normalizes before the map hit, and the qualifier comes
+        // from the explicit query OR the `:qualifier` suffix of the
+        // expression ("qualifier may be explicitly passed or part of
+        // function name or ARN", models.py:1803-1832): a version-qualified
+        // DELETE removes only that version, never the whole function.
         let name = LambdaState::norm_name(&req.path_fn_name());
-        let qual = req.query_param("Qualifier");
+        let qual = req
+            .query_param("Qualifier")
+            .or_else(|| LambdaState::expr_qualifier(&req.path_fn_name()));
         if state.functions.read().get(&name).is_none() {
             return function_not_found(&name, &req.region, req.account);
         }
@@ -1035,9 +1041,20 @@ impl LambdaHandler {
     // ---------------------------------------------------------------
 
     fn publish_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        // moto resolves ARN/colon-qualified names here too (models.py
-        // get_function_by_name_or_arn_with_qualifier).
-        let name = LambdaState::norm_name(&req.path_fn_name());
+        // moto resolves this path through the FORBID-qualifier resolver
+        // (`get_function_by_name_or_arn_forbid_qualifier`, models.py:1704-
+        // 1722; LambdaStorage.publish_version uses it explicitly, :1777):
+        // a qualifier-bearing name/ARN is a 400 "Cannot provide qualifier",
+        // not a silent strip-and-publish.
+        let expr = req.path_fn_name();
+        if LambdaState::expr_qualifier(&expr).is_some() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValueException",
+                "Cannot provide qualifier",
+            );
+        }
+        let name = LambdaState::norm_name(&expr);
         let mut funcs = state.functions.write();
         let Some(entry) = funcs.get_mut(&name) else {
             drop(funcs);
@@ -1070,8 +1087,17 @@ impl LambdaHandler {
     }
 
     fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        // moto resolves ARN/colon-qualified names here too.
-        let name = LambdaState::norm_name(&req.path_fn_name());
+        // moto's forbid-qualifier resolver applies here too (models.py:
+        // 1704-1722) — the same "Cannot provide qualifier" 400.
+        let expr = req.path_fn_name();
+        if LambdaState::expr_qualifier(&expr).is_some() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValueException",
+                "Cannot provide qualifier",
+            );
+        }
+        let name = LambdaState::norm_name(&expr);
         let funcs = state.functions.read();
         let Some(entry) = funcs.get(&name) else {
             drop(funcs);
@@ -1411,13 +1437,12 @@ impl LambdaHandler {
             "EventSourceMappingArn".into(),
             json!(esm_mapping_arn(&e.function_arn, &e.uuid)),
         );
-        m.insert(
-            "StartingPosition".into(),
-            match &e.starting_position {
-                Some(pos) => json!(pos),
-                None => Value::Null,
-            },
-        );
+        // moto's None-filter omits the member entirely when unset — SQS/SQS-
+        // FIFO mappings never get a default, so they render without
+        // StartingPosition (an explicit null is a phantom member).
+        if let Some(pos) = &e.starting_position {
+            m.insert("StartingPosition".into(), json!(pos));
+        }
         if let Some(w) = e.maximum_batching_window_in_seconds {
             m.insert("MaximumBatchingWindowInSeconds".into(), json!(w));
         }
@@ -1675,9 +1700,20 @@ impl LambdaHandler {
         } else {
             em.state.clone()
         };
+        // moto's update loop re-points the mapping when FunctionName names a
+        // different function (models.py:2224-2229: `esm.function_arn =
+        // func.function_arn`) — a verbatim copy silently dropped the
+        // re-point.
+        let new_fn_arn = match req.params.get("FunctionName").and_then(Value::as_str) {
+            Some(fn_name) if !fn_name.is_empty() => match resolve_fn(state, req, fn_name) {
+                Ok(f) => f.function_arn.clone(),
+                Err(resp) => return resp,
+            },
+            _ => em.function_arn.clone(),
+        };
         let updated = Arc::new(crate::models::EventSourceMapping {
             uuid: em.uuid.clone(),
-            function_arn: em.function_arn.clone(),
+            function_arn: new_fn_arn,
             event_source_arn: em.event_source_arn.clone(),
             state: em_state,
             state_transition_reason: em.state_transition_reason.clone(),
@@ -1722,8 +1758,9 @@ impl LambdaHandler {
                 .get("MaximumRecordAgeInSeconds")
                 .and_then(Value::as_i64)
                 .or(em.maximum_record_age_in_seconds),
-            // The attach-time binding survives updates; it only re-freezes
-            // when a new mapping is created against the source.
+            // The attach-time binding survives updates; a FunctionName
+            // re-point swaps only the function side (the watermarks are
+            // keyed by source shard).
             kinesis_bound_watermarks: em.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: em.ddb_attached_watermark.clone(),
         });
@@ -2962,8 +2999,9 @@ enum EsmSource {
 }
 
 /// Parse an EventSourceArn into its [`EsmSource`] (never an error — the
-/// caller 400s an unclassifiable ARN with moto's "Unsupported event source
-/// type").
+/// caller 404s an unclassifiable ARN with `ResourceNotFoundException
+/// "Invalid EventSourceArn"`, moto's `create_event_source_mapping` family
+/// gate).
 fn esm_source(event_source_arn: &str) -> Option<EsmSource> {
     let parts: Vec<&str> = event_source_arn.split(':').collect();
     if parts.len() < 6 || parts[0] != "arn" {
@@ -3684,5 +3722,256 @@ mod tests {
             "/2015-03-31/functions/no-such-func/invocations",
         );
         assert_eq!(handler.request_timeout_hint_for_mode(&req, "docker"), None);
+    }
+
+    // ------------------------------------------------------------------
+    // Qualified deletes, forbid-qualifier publish/list, ESM re-point
+    // ------------------------------------------------------------------
+
+    /// A version-qualified DELETE (`:qualifier` in the expression or an
+    /// explicit `Qualifier` query param) removes only that published
+    /// version (moto "qualifier may be explicitly passed or part of
+    /// function name or ARN", models.py:1803-1832). The function, $LATEST,
+    /// the other published version and an alias pinned to the deleted
+    /// version all survive.
+    #[test]
+    fn delete_function_qualified_removes_only_that_version() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "delq-fn", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let pub1 = handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/delq-fn/versions",
+        ));
+        assert_eq!(pub1.status, 201, "body: {}", pub1.body);
+        let v1: Value = serde_json::from_str(&pub1.body).unwrap();
+        assert_eq!(v1["Version"], json!("1"));
+        // The second publish needs the config-dirty flag (update_function_configuration).
+        handler.handle(make_req(
+            "PUT",
+            json!({"Description": "bump"}),
+            "/2015-03-31/functions/delq-fn/configuration",
+        ));
+        let pub2 = handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/delq-fn/versions",
+        ));
+        assert_eq!(pub2.status, 201, "body: {}", pub2.body);
+        let v2: Value = serde_json::from_str(&pub2.body).unwrap();
+        assert_eq!(v2["Version"], json!("2"));
+
+        // An alias pinned to version 1 dangles, never disappears.
+        let alias = handler.handle(make_req(
+            "POST",
+            json!({"Name": "live", "FunctionVersion": "1"}),
+            "/2015-03-31/functions/delq-fn/aliases",
+        ));
+        assert_eq!(alias.status, 201, "body: {}", alias.body);
+
+        // Expression-suffix qualifier: only version 1 goes away.
+        let resp = handler.handle(make_req(
+            "DELETE",
+            json!({}),
+            "/2015-03-31/functions/delq-fn:1",
+        ));
+        assert_eq!(resp.status, 204, "body: {}", resp.body);
+        assert_eq!(
+            handler
+                .handle(make_req("GET", json!({}), "/2015-03-31/functions/delq-fn"))
+                .status,
+            200,
+            "the function itself must survive a qualified delete"
+        );
+        let resp = handler.handle(make_req(
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/delq-fn/versions",
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let vs: Value = serde_json::from_str(&resp.body).unwrap();
+        let version_set: Vec<&str> = vs["Versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["Version"].as_str().unwrap())
+            .collect();
+        assert!(
+            version_set.contains(&"$LATEST") && version_set.contains(&"2"),
+            "versions must survive: {version_set:?}"
+        );
+        assert!(
+            !version_set.contains(&"1"),
+            "version 1 was removed: {version_set:?}"
+        );
+        // The dangling alias survives the version delete (moto does not cascade).
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    "/2015-03-31/functions/delq-fn/aliases/live"
+                ))
+                .status,
+            200
+        );
+
+        // Explicit Qualifier query param: only version 2 goes away.
+        let mut req = make_req("DELETE", json!({}), "/2015-03-31/functions/delq-fn");
+        req.query_string = "Qualifier=2".to_string();
+        assert_eq!(handler.handle(req).status, 204);
+        let resp = handler.handle(make_req(
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/delq-fn/versions",
+        ));
+        let vs: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            vs["Versions"].as_array().unwrap().len(),
+            1,
+            "only $LATEST remains: {}",
+            resp.body
+        );
+
+        // The unqualified delete still removes the whole function.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "DELETE",
+                    json!({}),
+                    "/2015-03-31/functions/delq-fn"
+                ))
+                .status,
+            204
+        );
+        assert_eq!(
+            handler
+                .handle(make_req("GET", json!({}), "/2015-03-31/functions/delq-fn"))
+                .status,
+            404
+        );
+    }
+
+    /// PublishVersion / ListVersionsByFunction reject qualifier-bearing
+    /// names and ARNs with moto's 400 (the forbid-qualifier resolver,
+    /// models.py:1704-1722 + 1610-1622), instead of silently stripping.
+    #[test]
+    fn publish_and_list_versions_forbid_qualifiers() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "fq-fn", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        for (op, path) in [
+            ("POST", "/2015-03-31/functions/fq-fn:1/versions"),
+            ("GET", "/2015-03-31/functions/fq-fn:1/versions"),
+            (
+                "POST",
+                "/2015-03-31/functions/arn%3Aaws%3Alambda%3Aus-east-1%3A123456789012%3Afunction%3Afq-fn%3A1/versions",
+            ),
+        ] {
+            let resp = handler.handle(make_req(op, json!({}), path));
+            assert_eq!(resp.status, 400, "{op} {path}: {}", resp.body);
+            assert!(
+                resp.body.contains("Cannot provide qualifier"),
+                "{op} {path}: {}",
+                resp.body
+            );
+        }
+
+        // The unqualified surface keeps working.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    "/2015-03-31/functions/fq-fn/versions"
+                ))
+                .status,
+            200
+        );
+    }
+
+    /// UpdateEventSourceMapping re-points the mapping when FunctionName
+    /// names a different function (moto models.py:2224-2229) and rejects
+    /// an unknown function through the same resolve_fn gate the create
+    /// path uses.
+    #[test]
+    fn esm_update_repoints_function() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "esm-fn-a", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "esm-fn-b", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:repoint-q",
+                   "FunctionName": "esm-fn-a", "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let configured: Value = serde_json::from_str(&resp.body).unwrap();
+        let uuid = configured["UUID"].as_str().unwrap().to_string();
+        assert!(
+            configured["FunctionArn"]
+                .as_str()
+                .unwrap()
+                .ends_with(":function:esm-fn-a"),
+            "body: {}",
+            resp.body
+        );
+
+        // Re-point to fn-b: the FunctionArn follows the new function.
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"FunctionName": "esm-fn-b"}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let updated: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(
+            updated["FunctionArn"]
+                .as_str()
+                .unwrap()
+                .ends_with(":function:esm-fn-b"),
+            "mapping must re-point: {}",
+            resp.body
+        );
+        // And the stored mapping exposes the re-pointed function_arn.
+        let dict: Value = serde_json::from_str(
+            &handler
+                .handle(make_req(
+                    "GET",
+                    json!({}),
+                    &format!("/2015-03-31/event-source-mappings/{uuid}"),
+                ))
+                .body,
+        )
+        .unwrap();
+        assert!(
+            dict["FunctionArn"]
+                .as_str()
+                .unwrap()
+                .ends_with(":function:esm-fn-b"),
+            "stored mapping must re-point: {dict}"
+        );
+
+        // An unknown FunctionName still 404s through resolve_fn.
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"FunctionName": "esm-fn-missing"}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
     }
 }

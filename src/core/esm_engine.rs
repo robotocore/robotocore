@@ -302,6 +302,21 @@ fn parse_watermark(s: &str) -> u128 {
     seq_num(s)
 }
 
+/// Parked-mapping survival signal: the shard's last-ASSIGNED frontier is
+/// strictly past the failed batch's watermark. The next-to-assign form
+/// (`counter+1`) sat one past every delivered batch and made this
+/// permanently true — re-reading the frontier as `counter+1` anywhere
+/// re-deadens the RedeliveryGate's parked arm. No frontier entry never
+/// probes; a frontier read with an unparsable watermark errs toward one
+/// probe (it could only be a parsing failure on a live shard).
+fn has_new_content(frontier: Option<u128>, failed_watermark: Option<u128>) -> bool {
+    match (frontier, failed_watermark) {
+        (Some(f), Some(w)) => f > w,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
 fn vec_of_shards(arr: &[Value]) -> Vec<String> {
     arr.iter()
         .filter_map(|s| s["ShardId"].as_str().map(String::from))
@@ -567,23 +582,29 @@ impl Engine {
                 ))
                 .or_default();
             // New-content signal for the parked-cursor survival rule: any
-            // assigned sequence beyond the failed batch's watermark means a
+            // ASSIGNED sequence beyond the failed batch's watermark means a
             // record landed after the failure, so the stalled cursor gets
             // one retry (the retry loop below re-reads the pinned window
-            // and now includes the arrival).
+            // and now includes the arrival). shard_frontiers returns the
+            // last-ASSIGNED counter per shard — `counter+1` (the
+            // iterator-binding form) sat one past every delivered batch,
+            // which kept `latest > watermark` true forever and made the
+            // parking arm dead.
             let failed_watermark = delivered
                 .last()
                 .and_then(|r| r["kinesis"]["sequenceNumber"].as_str())
                 .and_then(|s| s.parse::<u128>().ok());
-            let new_content = native
+            let shard_frontier = native
                 .kinesis
                 .shard_frontiers(entry.account, &entry.region, &stream_name)
                 .iter()
                 .find(|(sid, _)| sid == &shard)
-                .and_then(|(_, seq)| seq.parse::<u128>().ok())
-                .map(|latest| failed_watermark.map(|w| latest > w).unwrap_or(true))
-                .unwrap_or(false);
-            if !gate.may_deliver(&fingerprint, &config_signature(mapping), new_content) {
+                .and_then(|(_, seq)| seq.parse::<u128>().ok());
+            if !gate.may_deliver(
+                &fingerprint,
+                &config_signature(mapping),
+                has_new_content(shard_frontier, failed_watermark),
+            ) {
                 continue;
             }
             let result = native.lambda.invoke_engine_event(
@@ -1534,6 +1555,31 @@ mod tests {
             gate.record_failure("batch-ab");
         }
         assert!(!gate.may_deliver("batch-ab", "cfg", false));
+    }
+
+    /// The parked-cursor survival signal: only a frontier strictly past
+    /// the failed batch's watermark counts as new content — this is where
+    /// the `counter+1` (next-to-assign) regression read permanently true
+    /// and kept the parked arm permanently open.
+    #[test]
+    fn park_signal_is_strictly_newer_than_the_failed_watermark() {
+        let wm = 2u128;
+        // Same-content poll ticks (frontier == watermark) never re-open:
+        // the parked budget persists across polls until a record lands.
+        assert!(!has_new_content(Some(wm), Some(wm)));
+        assert!(
+            !has_new_content(Some(wm - 1), Some(wm)),
+            "a frontier behind the watermark is no new content"
+        );
+        assert!(
+            has_new_content(Some(wm + 1), Some(wm)),
+            "one later assignment probes the parked mapping once"
+        );
+        // No frontier entry (missing/unresolvable shard) never probes.
+        assert!(!has_new_content(None, Some(wm)));
+        assert!(!has_new_content(None, None));
+        // A live frontier with an unparsable watermark errs toward probing.
+        assert!(has_new_content(Some(wm), None));
     }
 
     #[test]

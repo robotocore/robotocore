@@ -152,9 +152,24 @@ impl Shard {
     }
 
     /// Sequence that would be assigned to the next record on this shard.
+    /// (The `+1` variant feeds iterator bindings: `LATEST` iterators and
+    /// `AT_SEQUENCE_NUMBER` attach watermarks must NOT see the currently
+    /// last-assigned record — only records put after the binding.)
     pub fn get_latest_sequence(&self) -> String {
         let counter = self.sequence_counter.lock();
         format!("{:020}", *counter + 1)
+    }
+
+    /// Last ASSIGNED sequence number on this shard — the parked-cursor
+    /// "new content" frontier needs exactly this (`frontier > watermark '`
+    /// is false while nothing new landed; `get_latest_sequence`'s
+    /// next-to-assign is always one past the delivered batch's watermark,
+    /// which made the parked-cursor survival arm vacuously true). A closed
+    /// shard keeps its ending sequence as its last-assigned, so its
+    /// frontier never produces phantom new content.
+    pub fn get_last_assigned_sequence(&self) -> String {
+        let counter = self.sequence_counter.lock();
+        format!("{:020}", *counter)
     }
 }
 

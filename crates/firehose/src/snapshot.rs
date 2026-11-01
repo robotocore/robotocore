@@ -111,6 +111,7 @@ mod tests {
             version_id: 1,
             tags: Default::default(),
             s3_config_is_extended: false,
+            last_failure: None,
             s3_config: Default::default(),
             encryption: None,
         });

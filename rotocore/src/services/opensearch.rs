@@ -45,14 +45,15 @@ fn not_found(resource: String) -> Response {
     )
 }
 
-/// moto's unimplemented-op contract: an unmodeled URI answers `404 ""`
-/// (`core/responses.py::call_action` — no action resolves) and a modeled op
+/// moto's unimplemented-op contract: an unknown URI answers `404 ""`
+/// (`core/responses.py::call_action` — no action resolves, so flask echoes an
+/// empty body with werkzeug's default text/html mimetype) and a modeled op
 /// outside the table answers the repo's 501 NotImplemented. The old
-/// `200 {}` fall-through masked gaps as successes, breaking the.
+/// `200 {}` fall-through masked gaps as successes, breaking the
 /// 501-is-the-only-absence-signal contract the twin's audit/introspection
 /// layers read.
 fn unknown_uri() -> Response {
-    Response::json_status(404, &serde_json::json!({}))
+    Response::new(404, "text/html", "")
 }
 
 fn not_implemented(op: &str) -> Response {
