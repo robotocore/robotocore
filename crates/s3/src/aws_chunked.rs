@@ -160,12 +160,13 @@ pub fn decode_request_body(req: &mut AwsRequest) -> Result<(), AwsResponse> {
 /// True when a declared `x-amz-checksum-<algorithm>` trailer value matches
 /// the decoded data; None for algorithms the twin cannot compute locally
 /// (crc32c, crc64nvme — no local CRC multiplier), which then pass
-/// unverified. Base64 values are padded exactly as SDKs send them.
+/// unverified. Base64 values are padded exactly as SDKs send them, and CRC
+/// values are encoded from their big-endian bytes, as S3 defines them.
 fn declared_checksum_matches(algorithm: &str, value: &str, data: &[u8]) -> Option<bool> {
     let matches = match algorithm {
         "crc32" => {
-            let crc = crc32fast::hash(data) as u32;
-            base64::engine::general_purpose::STANDARD.encode(crc.to_le_bytes()) == value
+            let crc = crc32fast::hash(data);
+            base64::engine::general_purpose::STANDARD.encode(crc.to_be_bytes()) == value
         }
         "sha1" => {
             use sha1::Digest;
@@ -279,13 +280,12 @@ mod tests {
 
     #[test]
     fn captures_trailers_after_the_final_chunk() {
-        // crc32("hello world") = hRFKDQ== padded base64 (little-endian u32).
         let (_, trailers) =
-            decode_with_trailers(b"b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:hRFKDQ==\r\n\r\n")
+            decode_with_trailers(b"b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:DUoRhQ==\r\n\r\n")
                 .unwrap();
         assert_eq!(
             trailers,
-            vec![("x-amz-checksum-crc32".to_string(), "hRFKDQ==".to_string())]
+            vec![("x-amz-checksum-crc32".to_string(), "DUoRhQ==".to_string())]
         );
         // The 13-byte trailer-only tail without a final blank line still parses.
         let (_, trailers) =
@@ -365,13 +365,14 @@ mod tests {
 
     #[test]
     fn decode_request_body_accepts_a_matching_declared_checksum() {
-        // crc32("hello world") == hRFKDQ== (little-endian base64).
+        // crc32("hello world") is 0x0d4a1185; S3 checksums are the base64 of
+        // its big-endian bytes (0d 4a 11 85), as every SDK sends them.
         let mut req = request(
             &[
                 ("x-amz-content-sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER"),
                 ("x-amz-trailer", "x-amz-checksum-crc32"),
             ],
-            b"b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:hRFKDQ==\r\n\r\n",
+            b"b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:DUoRhQ==\r\n\r\n",
         );
         decode_request_body(&mut req).unwrap();
         assert_eq!(&req.body[..], b"hello world");
@@ -403,6 +404,37 @@ mod tests {
             body.contains("Value for x-amz-checksum-crc32 header is invalid."),
             "{body}"
         );
+    }
+
+    #[test]
+    fn decode_request_body_rejects_a_byte_reversed_crc32() {
+        // hRFKDQ== is crc32("hello world") in little-endian byte order.
+        let mut req = request(
+            &[
+                ("x-amz-content-sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER"),
+                ("x-amz-trailer", "x-amz-checksum-crc32"),
+            ],
+            b"b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:hRFKDQ==\r\n\r\n",
+        );
+        let err = decode_request_body(&mut req).unwrap_err();
+        assert_eq!(err.status, 400);
+    }
+
+    #[test]
+    fn decode_request_body_accepts_signed_chunks_with_a_crc32_trailer() {
+        // The AWS SDK for .NET's UploadPart/PutObject shape: signed chunks,
+        // then the checksum trailer and its trailer signature.
+        let mut req = request(
+            &[
+                ("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER"),
+                ("content-encoding", "aws-chunked"),
+                ("x-amz-trailer", "x-amz-checksum-crc32"),
+                ("x-amz-decoded-content-length", "11"),
+            ],
+            b"5;chunk-signature=aaaa\r\nhello\r\n6;chunk-signature=bbbb\r\n world\r\n0;chunk-signature=cccc\r\nx-amz-checksum-crc32:DUoRhQ==\r\nx-amz-trailer-signature:dddd\r\n\r\n",
+        );
+        decode_request_body(&mut req).unwrap();
+        assert_eq!(&req.body[..], b"hello world");
     }
 
     #[test]

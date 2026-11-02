@@ -1,5 +1,7 @@
 """S3 compatibility tests — verify robotocore matches AWS behavior."""
 
+import base64
+import io
 import json
 import os
 import time
@@ -14,6 +16,7 @@ from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 from botocore.exceptions import ClientError
+from botocore.httpchecksum import AwsChunkedWrapper, Crc32Checksum
 
 from tests.compatibility.conftest import make_client
 
@@ -3087,6 +3090,13 @@ def _aws_chunked(chunks: list[bytes], signed: bool, trailer: bytes = b"") -> byt
     return body + b"\r\n"
 
 
+def _crc32_trailer(data: bytes) -> bytes:
+    """The x-amz-checksum-crc32 trailer line botocore computes for `data`."""
+    checksum = Crc32Checksum()
+    checksum.update(data)
+    return b"x-amz-checksum-crc32:" + checksum.b64digest().encode()
+
+
 def _put_aws_chunked(
     path: str,
     body: bytes,
@@ -3130,13 +3140,10 @@ class TestS3AwsChunkedUploads:
         assert obj["Body"].read() == b"".join(chunks)
 
     def test_put_object_with_unsigned_chunks_and_checksum_trailer(self, s3, bucket):
-        # crc32("hello world") in padded little-endian base64, declared the
-        # way SDKs do (X-Amz-Trailer alongside the trailer line) and now
-        # validated by the twin against the decoded data (real S3 validates
-        # this; moto skips the trailer region).
-        body = _aws_chunked(
-            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32:hRFKDQ=="
-        )
+        # The checksum is declared the way SDKs do (X-Amz-Trailer alongside
+        # the trailer line) and validated by the twin against the decoded
+        # data (real S3 validates this; moto skips the trailer region).
+        body = _aws_chunked([b"hello world"], signed=False, trailer=_crc32_trailer(b"hello world"))
         resp = _put_aws_chunked(
             f"{bucket}/trailer.txt",
             body,
@@ -3166,6 +3173,46 @@ class TestS3AwsChunkedUploads:
             )
         assert excinfo.value.code == 400
         assert b"InvalidRequest" in excinfo.value.read()
+
+    def test_put_object_with_botocore_framed_crc32_trailer(self, s3, bucket):
+        # boto3 only streams with a trailer over https, so build the body with
+        # botocore's own aws-chunked writer: several chunks, then its CRC32.
+        data = os.urandom(70_000)
+        body = AwsChunkedWrapper(
+            io.BytesIO(data),
+            checksum_cls=Crc32Checksum,
+            checksum_name="x-amz-checksum-crc32",
+            chunk_size=16_384,
+        ).read()
+        resp = _put_aws_chunked(
+            f"{bucket}/botocore-framed.bin",
+            body,
+            "STREAMING-UNSIGNED-PAYLOAD-TRAILER",
+            len(data),
+            trailer="x-amz-checksum-crc32",
+        )
+        assert resp.status == 200
+
+        obj = s3.get_object(Bucket=bucket, Key="botocore-framed.bin")
+        assert obj["Body"].read() == data
+
+    def test_put_object_with_byte_reversed_crc32_trailer_is_rejected(self, bucket):
+        checksum = Crc32Checksum()
+        checksum.update(b"hello world")
+        reversed_b64 = base64.b64encode(checksum.digest()[::-1])
+        body = _aws_chunked(
+            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32:" + reversed_b64
+        )
+        with pytest.raises(HTTPError) as excinfo:
+            _put_aws_chunked(
+                f"{bucket}/reversed-trailer.txt",
+                body,
+                "STREAMING-UNSIGNED-PAYLOAD-TRAILER",
+                11,
+                trailer="x-amz-checksum-crc32",
+            )
+        assert excinfo.value.code == 400
+        assert b"x-amz-checksum-crc32 header is invalid" in excinfo.value.read()
 
     def test_put_object_with_unverified_checksum_algorithm_stores(self, s3, bucket):
         # crc32c has no local implementation on the twin yet: the declared
@@ -3206,6 +3253,32 @@ class TestS3AwsChunkedUploads:
             MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
         )
         obj = s3.get_object(Bucket=bucket, Key="multipart.bin")
+        assert obj["Body"].read() == part
+
+    def test_upload_part_with_signed_chunks_and_crc32_trailer(self, s3, bucket):
+        # The AWS SDK for .NET's UploadPart: signed chunks, then the CRC32
+        # trailer and a trailer signature, over plain HTTP.
+        upload = s3.create_multipart_upload(Bucket=bucket, Key="trailer-part.bin")
+        upload_id = upload["UploadId"]
+        part = os.urandom(5 * 1024 * 1024)
+        trailer = _crc32_trailer(part) + b"\r\nx-amz-trailer-signature:" + b"0" * 64
+        body = _aws_chunked([part[:65536], part[65536:]], signed=True, trailer=trailer)
+        resp = _put_aws_chunked(
+            f"{bucket}/trailer-part.bin?partNumber=1&uploadId={upload_id}",
+            body,
+            "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER",
+            len(part),
+            trailer="x-amz-checksum-crc32",
+        )
+        assert resp.status == 200
+
+        s3.complete_multipart_upload(
+            Bucket=bucket,
+            Key="trailer-part.bin",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": resp.headers["ETag"]}]},
+        )
+        obj = s3.get_object(Bucket=bucket, Key="trailer-part.bin")
         assert obj["Body"].read() == part
 
     def test_put_object_with_wrong_decoded_length_is_rejected(self, bucket):
