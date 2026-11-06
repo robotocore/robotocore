@@ -1,6 +1,11 @@
 {
   "service": "elasticache",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T03:17:48.871359+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/elasticache.rs": "219371d296a4522fe58ff205c34bb0632c551457f2694905237cbb1baeec1bf9",
+    "rotocore/src/services/elasticache/": "absent",
+    "crates/elasticache/src/": "absent"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 74,
@@ -380,10 +385,5 @@
       "status": "working",
       "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-replication-group-id-id not found.)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/elasticache.rs": "dfece5e5bbf73e1317ba6266388f693349d517aab102627ad6e76c7505730914",
-    "rotocore/src/services/elasticache/": "absent",
-    "crates/elasticache/src/": "absent"
-  }
+  ]
 }

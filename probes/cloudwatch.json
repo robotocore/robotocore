@@ -1,7 +1,12 @@
 {
   "service": "cloudwatch",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
-  "endpoint": "http://127.0.0.1:4596",
+  "generated_at": "2026-11-06T03:17:43.809450+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudwatch.rs": "absent",
+    "rotocore/src/services/cloudwatch/": "absent",
+    "crates/cloudwatch/src/": "7cf61d7994121de133bd71474c848f365282be48c37c4f26a459b729ff52dbf3"
+  },
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 43,
     "needs_params": 0,
@@ -225,10 +230,5 @@
       "status": "working",
       "message": "OK"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/cloudwatch.rs": "absent",
-    "rotocore/src/services/cloudwatch/": "absent",
-    "crates/cloudwatch/src/": "f2606547f4d053fbf9f905388dbd6493aeafb9472cb652c6f7f3b56e44668e6b"
-  }
+  ]
 }

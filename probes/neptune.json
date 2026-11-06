@@ -1,6 +1,9 @@
 {
   "service": "neptune",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T03:17:58.926200+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/rds.rs": "56ead7f92e5b38d1f44d47d4e7c797828d5b547db95bc6cd52837c861ab60b37"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 68,
@@ -350,8 +353,5 @@
       "status": "working",
       "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/rds.rs": "8475e6cc7cd082fd4c4db33ac76629c1354ff9e31f6092090869adf76933bd84"
-  }
+  ]
 }

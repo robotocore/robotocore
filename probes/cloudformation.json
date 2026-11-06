@@ -1,6 +1,11 @@
 {
   "service": "cloudformation",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T03:17:42.806964+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/cloudformation.rs": "absent",
+    "rotocore/src/services/cloudformation/": "ed6855e66c4e6d37b96c0e43b84db466b132404877b45aade5be76e22e728e08",
+    "crates/cloudformation/src/": "absent"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 86,
@@ -455,10 +460,5 @@
       "status": "working",
       "message": "implemented (ValidationError)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/cloudformation.rs": "absent",
-    "rotocore/src/services/cloudformation/": "c6e04a239b0426fd43aef508f96c55163cb833576874c671352cf43778a12e68",
-    "crates/cloudformation/src/": "absent"
-  }
+  ]
 }
