@@ -402,6 +402,38 @@ impl DefaultSqsHandler {
     ) -> Result<Option<PreparedMessage>, SqsError> {
         let now_ms = Utc::now().timestamp_millis() as u64;
 
+        // moto models.py:835-837 — the body is validated against the
+        // queue's MaximumMessageSize ("Message must be shorter than {size}
+        // bytes."). The twin accepted any size silently.
+        if body.len() > queue.attributes.maximum_message_size as usize {
+            return Err(SqsError::InvalidParameterValue(format!(
+                "One or more parameters are invalid. Reason: Message must be shorter than {} bytes.",
+                queue.attributes.maximum_message_size
+            )));
+        }
+
+        // moto models.py:894-899 — a per-message DelaySeconds above 900 is
+        // InvalidParameterValue ("DelaySeconds must be >= 0 and <= 900");
+        // the twin clamped it silently. The FIFO rejection
+        // (models.py:829-833) is moto's "not valid for this queue type".
+        if let Some(d) = params.get("DelaySeconds") {
+            let over_cap = d.as_u64().map(|v| v > 900);
+            let junk = matches!(Self::moto_int(Some(d)), MotoInt::Junk);
+            if junk || over_cap == Some(true) {
+                return Err(SqsError::InvalidParameterValue(
+                    "DelaySeconds must be >= 0 and <= 900".to_string(),
+                ));
+            }
+            // moto models.py:829-833 — FIFO queues reject a per-message
+            // delay (real AWS: any nonzero per-message delay).
+            if queue.attributes.fifo_queue && d.as_u64().is_some_and(|v| v > 0) {
+                return Err(SqsError::InvalidParameterValue(
+                    "The request include parameter that is not valid for this queue type."
+                        .to_string(),
+                ));
+            }
+        }
+
         let delay: u32 = if queue.attributes.fifo_queue {
             0 // FIFO queues reject per-message delay; queue delay still applies
         } else {
@@ -1182,9 +1214,7 @@ impl DefaultSqsHandler {
                     let selected: serde_json::Map<String, Value> = msg
                         .attributes
                         .iter()
-                        .filter(|(k, _)| {
-                            include_all_attrs || names.iter().any(|n| *n == **k)
-                        })
+                        .filter(|(k, _)| include_all_attrs || names.iter().any(|n| *n == **k))
                         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
                         .collect();
                     if !selected.is_empty() {
@@ -1195,20 +1225,41 @@ impl DefaultSqsHandler {
                 }
                 let map = obj.as_object_mut().unwrap();
                 if !msg.message_attributes.is_empty() {
+                    // moto models.py:669-691 (_filter_message_attributes):
+                    // requested names filter the attribute map (exact,
+                    // "All", `<prefix>.*` patterns) and the response MD5 is
+                    // computed over the FILTERED set — the twin returned
+                    // the full map and hashed all of it.
                     let msg_attr_names = Self::requested_names(params, "MessageAttributeNames");
-                    let want_msg_attrs = msg_attr_names.is_some_and(|n| {
-                        n.iter().any(|x| x == "All") || n.iter().any(|x| msg.message_attributes.keys().any(|k| Self::name_pattern_matches(x, k)))
-                    });
-                    if want_msg_attrs {
+                    let selected: serde_json::Map<String, Value> = msg_attr_names
+                        .as_ref()
+                        .map(|names| {
+                            msg.message_attributes
+                                .iter()
+                                .filter(|(k, _)| {
+                                    names.iter().any(|x| {
+                                        x == "All"
+                                            || (x.ends_with(".*")
+                                                && k.starts_with(x.strip_suffix(".*").unwrap()))
+                                            || Self::name_pattern_matches(x, k)
+                                    })
+                                })
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if !selected.is_empty() {
                         map.insert(
                             "MD5OfMessageAttributes".into(),
-                            json!(Self::md5_of_message_attributes(&msg.message_attributes)
-                                .unwrap_or_default()),
+                            json!(Self::md5_of_message_attributes(
+                                &selected
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect()
+                            )
+                            .unwrap_or_default()),
                         );
-                        map.insert(
-                            "MessageAttributes".into(),
-                            Value::Object(msg.message_attributes.clone().into_iter().collect()),
-                        );
+                        map.insert("MessageAttributes".into(), Value::Object(selected));
                     }
                 }
                 obj
@@ -1447,7 +1498,10 @@ impl DefaultSqsHandler {
         );
         // Real AWS reports the queue's SSE posture on every All read
         // (new queues default to SSE on); moto mirrors it.
-        attrs.insert("SqsManagedSseEnabled".to_string(), Value::String("true".into()));
+        attrs.insert(
+            "SqsManagedSseEnabled".to_string(),
+            Value::String("true".into()),
+        );
         attrs.insert(
             "CreatedTimestamp".to_string(),
             Value::String((q.created / 1000).to_string()),
@@ -1493,10 +1547,61 @@ impl DefaultSqsHandler {
             );
         }
 
-        let body = json!({
-            "Attributes": attrs
-        })
-        .to_string();
+        // Real AWS (and moto models.py:763-792 + responses.py:122-137)
+        // project the attribute map through the requested AttributeNames:
+        // "All" keeps everything, specific names project their own subset,
+        // nothing requested answers no Attributes member at all, and an
+        // unknown name is InvalidAttributeName ("Unknown Attribute {name}.").
+        let requested = Self::requested_names(params, "AttributeNames");
+        if let Some(names) = &requested {
+            for n in names {
+                if n != "All"
+                    && !attrs.contains_key(n.as_str())
+                    && !matches!(
+                        n.as_str(),
+                        "ApproximateNumberOfMessages"
+                            | "ApproximateNumberOfMessagesDelayed"
+                            | "ApproximateNumberOfMessagesNotVisible"
+                            | "CreatedTimestamp"
+                            | "DelaySeconds"
+                            | "LastModifiedTimestamp"
+                            | "MaximumMessageSize"
+                            | "MessageRetentionPeriod"
+                            | "QueueArn"
+                            | "ReceiveMessageWaitTimeSeconds"
+                            | "VisibilityTimeout"
+                            | "SqsManagedSseEnabled"
+                            | "RedrivePolicy"
+                            | "RedriveAllowPolicy"
+                            | "ContentBasedDeduplication"
+                            | "DeduplicationScope"
+                            | "FifoThroughputLimit"
+                            | "FifoQueue"
+                            | "KmsMasterKeyId"
+                            | "KmsDataKeyReusePeriodSeconds"
+                            | "Policy"
+                    )
+                {
+                    return Err(SqsError::InvalidAttributeName(format!(
+                        "Unknown Attribute {n}."
+                    )));
+                }
+            }
+        }
+        let filtered_attrs = requested.as_ref().map(|names| {
+            let all = names.iter().any(|n| n == "All");
+            let selected: serde_json::Map<String, Value> = attrs
+                .iter()
+                .filter(|(k, _)| all || names.iter().any(|n| *n == **k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            selected
+        });
+        let body = match filtered_attrs {
+            Some(selected) if selected.is_empty() => json!({}).to_string(),
+            Some(selected) => json!({ "Attributes": Value::Object(selected) }).to_string(),
+            None => json!({ "Attributes": Value::Object(attrs) }).to_string(),
+        };
 
         Ok(AwsResponse {
             status: 200,
@@ -1546,7 +1651,8 @@ impl DefaultSqsHandler {
         pattern == name
     }
 
-    fn extract_queue_name_from_url(&self, url: &str) -> Result<String, SqsError> {        // URL format: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
+    fn extract_queue_name_from_url(&self, url: &str) -> Result<String, SqsError> {
+        // URL format: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
         // Or: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}.fifo
 
         if let Some(last_slash) = url.rfind('/') {

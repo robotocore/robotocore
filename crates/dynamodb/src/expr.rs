@@ -1038,9 +1038,7 @@ pub fn key_condition_type_mismatch(
     let cond = p.parse_or().ok()?;
 
     fn value_type(v: &Value) -> Option<String> {
-        v.as_object()
-            .and_then(|o| o.keys().next())
-            .cloned()
+        v.as_object().and_then(|o| o.keys().next()).cloned()
     }
 
     let mut found: Option<String> = None;
@@ -1111,7 +1109,6 @@ pub fn key_condition_type_mismatch(
 // ---------------------------------------------------------------------------
 // Update expressions
 // ---------------------------------------------------------------------------
-
 
 #[derive(Debug, Clone)]
 enum SetAction {

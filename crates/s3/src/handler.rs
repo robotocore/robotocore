@@ -287,6 +287,13 @@ fn list_key_render(req: &AwsRequest, key: &str) -> String {
 
 fn parse_range(spec: &str, size: usize) -> Option<std::ops::Range<usize>> {
     let body = spec.strip_prefix("bytes=")?;
+    // Multi-range specs ("bytes=0-1,3-4") and anything with a comma are
+    // not a single range: real AWS ignores the Range member and answers
+    // 200 with the full body — the old parse read "0-1,3-4" as end
+    // "1,3-4", failed to parse it, and served a WRONG 206 partial body.
+    if body.contains(',') {
+        return None;
+    }
     let (start_s, end_s) = body.split_once('-')?;
     if start_s.is_empty() {
         let n: usize = end_s.parse().ok()?;
@@ -2625,8 +2632,10 @@ impl S3Handler {
             resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
         }
         if !obj.tags.is_empty() {
-            resp.headers
-                .push(("x-amz-tag-count".to_string(), obj.tags.len().to_string()));
+            resp.headers.push((
+                "x-amz-tagging-count".to_string(),
+                obj.tags.len().to_string(),
+            ));
         }
         if obj.version_id != NULL_VERSION_ID {
             resp.headers
@@ -2704,7 +2713,10 @@ impl S3Handler {
             headers.push((format!("x-amz-meta-{}", k), v.clone()));
         }
         if !obj.tags.is_empty() {
-            headers.push(("x-amz-tag-count".to_string(), obj.tags.len().to_string()));
+            headers.push((
+                "x-amz-tagging-count".to_string(),
+                obj.tags.len().to_string(),
+            ));
         }
         if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
             headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));

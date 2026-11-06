@@ -250,6 +250,42 @@ impl SnsHandler {
         for (k, v) in &stored {
             entries.push((k.clone(), v.clone()));
         }
+        // Real AWS ALWAYS returns a Policy attribute on a topic (moto
+        // mirrors its default topic policy, models.py:200-241) — the
+        // terraform AWS provider unmarshals attrs["policy"]
+        // unconditionally, so an absent member reads as "" and dies with
+        // "parsing policy: unexpected end of JSON input".
+        if !stored.contains_key("Policy") {
+            entries.push((
+                "Policy".into(),
+                json!({
+                    "Version": "2008-10-17",
+                    "Id": "__default_policy_ID",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Sid": "__default_statement_ID",
+                            "Principal": {"AWS": "*"},
+                            "Action": [
+                                "SNS:GetTopicAttributes",
+                                "SNS:SetTopicAttributes",
+                                "SNS:AddPermission",
+                                "SNS:RemovePermission",
+                                "SNS:DeleteTopic",
+                                "SNS:Subscribe",
+                                "SNS:ListSubscriptionsByTopic",
+                                "SNS:Publish"
+                            ],
+                            "Resource": topic.arn.clone(),
+                            "Condition": {
+                                "StringEquals": {"AWS:SourceOwner": topic.owner.to_string()}
+                            }
+                        }
+                    ]
+                })
+                .to_string(),
+            ));
+        }
         // Computed fields overlay stored attributes (they cannot be overwritten).
         entries.push(("TopicArn".into(), topic.arn.clone()));
         entries.push(("Owner".into(), topic.owner.to_string()));

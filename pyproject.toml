@@ -53,6 +53,7 @@ dev = [
     # app-integration workflow passes --reruns/--reruns-delay to pytest.
     "pytest-rerunfailures>=14",
     "moto[dynamodb,iam,kms,s3,secretsmanager,server,sns,sqs,ssm,sts]>=5.2.5",
+    "hypothesis>=6.170.15",
 ]
 
 [tool.uv]
