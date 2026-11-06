@@ -1,6 +1,11 @@
 {
   "service": "sns",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T19:42:47.493339+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/sns.rs": "absent",
+    "rotocore/src/services/sns/": "absent",
+    "crates/sns/src/": "11b508df1cb9f06b778d116792876327c3e191389969d6b42aa52f381df07e26"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 41,
@@ -215,10 +220,5 @@
       "status": "working",
       "message": "likely implemented (ResourceNotFound: Could not find service sandbox phone number registered with )"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/sns.rs": "absent",
-    "rotocore/src/services/sns/": "absent",
-    "crates/sns/src/": "aa438938f4f515f96a0a00726a745227ebfdb156475c21839734af9dd07fb7fb"
-  }
+  ]
 }

@@ -1,6 +1,11 @@
 {
   "service": "sqs",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T19:42:48.035006+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/sqs.rs": "absent",
+    "rotocore/src/services/sqs/": "absent",
+    "crates/sqs/src/": "964a126260b6ca372c5331b349e7e1e60ac9e6d164d5a0881261169788461c20"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 21,
@@ -115,10 +120,5 @@
       "status": "working",
       "message": "OK"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/sqs.rs": "absent",
-    "rotocore/src/services/sqs/": "absent",
-    "crates/sqs/src/": "62097e8e9036acf66ef6ae61163ddf5d323e9c0a16a6656266426f7ce6a61286"
-  }
+  ]
 }
