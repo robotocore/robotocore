@@ -415,13 +415,19 @@ impl DynamoDbHandler {
             }
         }
         match state.delete_table(&table_name) {
-            Some(table) => AwsResponse::json(
-                200,
-                json!({ "TableDescription": {
-                    "TableName": table.name,
-                    "TableStatus": "DELETING",
-                }}),
-            ),
+            Some(table) => {
+                // Real AWS (and moto's table.delete()) returns the FULL table
+                // description with status DELETING — the twin used to trim
+                // it to a bare {TableName, TableStatus} stub.
+                let mut resp = Self::describe_table_response(req, &table, 200, "TableDescription");
+                let mut body: Value =
+                    serde_json::from_str(&resp.body).unwrap_or_else(|_| json!({}));
+                if let Some(desc) = body.get_mut("TableDescription") {
+                    desc["TableStatus"] = json!("DELETING");
+                }
+                resp.body = body.to_string();
+                resp
+            }
             None => AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
@@ -616,6 +622,9 @@ impl DynamoDbHandler {
         let gsis = table.global_secondary_indexes.read().clone();
         let lsis = table.local_secondary_indexes.read().clone();
         let provisioned = json!({
+            // Real AWS always reports the decrease counter (0 unless a
+            // decrease settled today); moto mirrors it — the twin omitted it.
+            "NumberOfDecreasesToday": 0,
             "ReadCapacityUnits": *table.provisioned_rcu.read(),
             "WriteCapacityUnits": *table.provisioned_wcu.read(),
         });
@@ -1709,6 +1718,45 @@ impl DynamoDbHandler {
                 expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
             {
                 return AwsResponse::error(400, "ValidationException", &format!("{member}: {e}"));
+            }
+        }
+        // Real AWS types the key condition against the schema up front: an N
+        // sort key queried with S bounds is 400 ValidationException ("Condition
+        // parameter type does not match schema type") — the twin used to
+        // evaluate per item and silently answer an empty page (moto crashes
+        // with a 500 on the same input; real AWS's wording is the record).
+        {
+            // Key attribute names: base-table schema + the queried index's.
+            let mut key_attrs: Vec<String> = Vec::new();
+            if let Some(k) = table.hash_key() {
+                key_attrs.push(k.attribute_name.clone());
+            }
+            if let Some(k) = table.range_key() {
+                key_attrs.push(k.attribute_name.clone());
+            }
+            if let Some(idx) = index_of(table, param_str(&req.params, "IndexName").unwrap_or("")) {
+                key_attrs.extend(idx.key_schema.iter().map(|k| k.attribute_name.clone()));
+            }
+            // Types live on the schema's attribute definitions.
+            let key_types: std::collections::HashMap<String, String> = table
+                .attribute_definitions
+                .read()
+                .iter()
+                .filter(|a| key_attrs.contains(&a.attribute_name))
+                .map(|a| (a.attribute_name.clone(), a.attribute_type.clone()))
+                .collect();
+            if !key_cond.trim().is_empty() {
+                if let Some(attr) = expr_engine::key_condition_type_mismatch(
+                    &key_cond, &names, &values, &key_types,
+                ) {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "One or more parameter values were invalid: Condition parameter type does not match schema type for attribute {attr}"
+                        ),
+                    );
+                }
             }
         }
         let projection = expr_str(req.params.get("ProjectionExpression")).unwrap_or("");

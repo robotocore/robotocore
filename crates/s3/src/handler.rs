@@ -267,6 +267,24 @@ fn httpdate(unix: u64) -> String {
 }
 
 /// Parse `bytes=X-Y`, `bytes=X-`, `bytes=-N` range expressions.
+/// S3 list-key rendering: when the request carries `encoding-type=url`
+/// (boto3 sends it by default), the Key/Prefix/Marker members are
+/// percent-encoded and the response echoes `<EncodingType>url</EncodingType>`
+/// — a raw echo mangles keys containing `%`, `+` or spaces, because the
+/// SDK url-decodes what it receives.
+fn wants_url_encoding(req: &AwsRequest) -> bool {
+    req.query_params.get("encoding-type").map(String::as_str) == Some("url")
+}
+
+fn list_key_render(req: &AwsRequest, key: &str) -> String {
+    let s = if wants_url_encoding(req) {
+        urlencoding::encode(key).into_owned()
+    } else {
+        key.to_string()
+    };
+    xml_escape(&s)
+}
+
 fn parse_range(spec: &str, size: usize) -> Option<std::ops::Range<usize>> {
     let body = spec.strip_prefix("bytes=")?;
     let (start_s, end_s) = body.split_once('-')?;
@@ -2913,26 +2931,31 @@ impl S3Handler {
         let truncated = last_emitted.is_some();
 
         let mut xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListBucketResult xmlns=\"{ns}\">\n  <Name>{name}</Name>\n  <Prefix>{prefix}</Prefix>\n  <Marker>{marker}</Marker>\n  <MaxKeys>{max_keys}</MaxKeys>\n  <IsTruncated>{trunc}</IsTruncated>\n",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListBucketResult xmlns=\"{ns}\">\n  <Name>{name}</Name>\n  <Prefix>{prefix}</Prefix>\n  <Marker>{marker}</Marker>\n  <MaxKeys>{max_keys}</MaxKeys>\n  <IsTruncated>{trunc}</IsTruncated>\n{encoding_type}",
             ns = S3_NS,
             name = xml_escape(&bucket_name),
-            prefix = xml_escape(&prefix),
-            marker = xml_escape(&marker),
+            prefix = list_key_render(req, &prefix),
+            marker = list_key_render(req, &marker),
             max_keys = max_keys,
-            trunc = truncated
+            trunc = truncated,
+            encoding_type = if wants_url_encoding(req) {
+                "  <EncodingType>url</EncodingType>\n"
+            } else {
+                ""
+            }
         );
         if !delimiter.is_empty() {
             if let Some(last) = &last_emitted {
                 xml.push_str(&format!(
                     "  <NextMarker>{}</NextMarker>\n",
-                    xml_escape(last)
+                    list_key_render(req, last)
                 ));
             }
         }
         for (key, etag, size, last_modified, storage_class) in &contents {
             xml.push_str(&format!(
                 "  <Contents>\n    <Key>{k}</Key>\n    <LastModified>{dt}</LastModified>\n    <ETag>&quot;{et}&quot;</ETag>\n    <Size>{sz}</Size>\n    <StorageClass>{cls}</StorageClass>\n    <Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner>\n  </Contents>\n",
-                k = xml_escape(key),
+                k = list_key_render(req, key),
                 dt = iso8601(*last_modified),
                 et = etag,
                 sz = size,
@@ -2980,10 +3003,15 @@ impl S3Handler {
         let key_count = contents.len() + prefixes.len();
 
         let mut xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListBucketResult xmlns=\"{ns}\">\n  <Name>{name}</Name>\n  <Prefix>{prefix}</Prefix>\n",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListBucketResult xmlns=\"{ns}\">\n  <Name>{name}</Name>\n  <Prefix>{prefix}</Prefix>\n{encoding_type}",
             ns = S3_NS,
             name = xml_escape(&bucket_name),
-            prefix = xml_escape(&prefix)
+            prefix = list_key_render(req, &prefix),
+            encoding_type = if wants_url_encoding(req) {
+                "  <EncodingType>url</EncodingType>\n"
+            } else {
+                ""
+            }
         );
         if !token.is_empty() {
             xml.push_str(&format!(
@@ -3014,7 +3042,7 @@ impl S3Handler {
         for (key, etag, size, last_modified, storage_class) in &contents {
             xml.push_str(&format!(
                 "  <Contents>\n    <Key>{k}</Key>\n    <LastModified>{dt}</LastModified>\n    <ETag>&quot;{et}&quot;</ETag>\n    <Size>{sz}</Size>\n    <StorageClass>{cls}</StorageClass>\n  </Contents>\n",
-                k = xml_escape(key),
+                k = list_key_render(req, key),
                 dt = iso8601(*last_modified),
                 et = etag,
                 sz = size,
@@ -3024,7 +3052,7 @@ impl S3Handler {
         for cp in &prefixes {
             xml.push_str(&format!(
                 "  <CommonPrefixes>\n    <Prefix>{}</Prefix>\n  </CommonPrefixes>\n",
-                xml_escape(cp)
+                list_key_render(req, cp)
             ));
         }
         xml.push_str("</ListBucketResult>");
