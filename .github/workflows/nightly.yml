@@ -38,6 +38,11 @@ jobs:
       # gates must test the code under review, not a release artifact.
       - name: Start robotocore from source
         uses: ./.github/actions/start-twin-from-source
+        with:
+          # The IAM-enforcement compat suite toggles enforcement through
+          # POST /_robotocore/config — without this the whole file
+          # silently skips and enforcement semantics ship unvalidated.
+          env-vars: "ENABLE_CONFIG_UPDATES=1"
       - name: Run all IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -72,6 +77,11 @@ jobs:
       # gates must test the code under review, not a release artifact.
       - name: Start robotocore from source
         uses: ./.github/actions/start-twin-from-source
+        with:
+          # The IAM-enforcement compat suite toggles enforcement through
+          # POST /_robotocore/config — without this the whole file
+          # silently skips and enforcement semantics ship unvalidated.
+          env-vars: "ENABLE_CONFIG_UPDATES=1"
       - name: Run parity tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -145,6 +155,11 @@ jobs:
       # gates must test the code under review, not a release artifact.
       - name: Start robotocore from source
         uses: ./.github/actions/start-twin-from-source
+        with:
+          # The IAM-enforcement compat suite toggles enforcement through
+          # POST /_robotocore/config — without this the whole file
+          # silently skips and enforcement semantics ship unvalidated.
+          env-vars: "ENABLE_CONFIG_UPDATES=1"
       - name: Full response shape validation (all services)
         run: >
           PYTHONPATH=.
