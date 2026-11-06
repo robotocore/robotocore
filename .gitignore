@@ -50,3 +50,4 @@ ctarget*/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
+differential_report.json
