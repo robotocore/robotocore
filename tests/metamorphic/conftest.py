@@ -101,7 +101,7 @@ def assert_same(a, b, what: str):
             if x != y:
                 pytest.fail(
                     f"{what} diverges at byte {i} of the canonical dump:\n"
-                    f"  A: ...{da[max(0, i - 60):i + 60]}\n  B: ...{db[max(0, i - 60):i + 60]}"
+                    f"  A: ...{da[max(0, i - 60) : i + 60]}\n  B: ...{db[max(0, i - 60) : i + 60]}"
                 )
         pytest.fail(
             f"{what} diverges (length {len(da)} vs {len(db)}):\n  A: {da[:200]}\n  B: {db[:200]}"
@@ -109,6 +109,7 @@ def assert_same(a, b, what: str):
 
 
 # --- S3 body corpus ---------------------------------------------------------
+
 
 def s3_bodies() -> list[bytes]:
     rng = random.Random(1234)

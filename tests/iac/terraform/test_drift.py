@@ -76,9 +76,7 @@ provider "aws" {
 
 
 def _run(cmd: list[str], cwd: str, env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=600
-    )
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=600)
 
 
 def _stack_env() -> dict:
@@ -103,9 +101,11 @@ def _workspace(stack: Path, unique_suffix: str, tmp_path_factory) -> tuple[str, 
     # each other's resources.
     account = str(700000000000 + (int(unique_suffix, 16) % 99999999999))
     # Token replace, not str.format — the HCL block is full of braces.
-    override = OVERRIDE_TF.replace("{region}", REGION).replace(
-        "{endpoint}", ENDPOINT_URL
-    ).replace("{account}", account)
+    override = (
+        OVERRIDE_TF.replace("{region}", REGION)
+        .replace("{endpoint}", ENDPOINT_URL)
+        .replace("{account}", account)
+    )
     (work / "zz_override.tf").write_text(override)
     # Resource names: rewrite every string default in variables.tf to a
     # per-run suffixed value via auto.tfvars — static defaults collide

@@ -27,10 +27,18 @@ COMPAT = ROOT / "tests" / "compatibility"
 def collect_tests(match: str) -> list[tuple[Path, str]]:
     out = subprocess.run(
         [
-            "uv", "run", "pytest", "tests/compatibility/",
-            "--collect-only", "-q", "-p", "no:cacheprovider",
+            "uv",
+            "run",
+            "pytest",
+            "tests/compatibility/",
+            "--collect-only",
+            "-q",
+            "-p",
+            "no:cacheprovider",
         ],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     )
     tests = []
     for line in out.stdout.splitlines():
@@ -116,10 +124,20 @@ def run_single(temp_file: Path, test_name: str) -> bool:
     rel = temp_file.relative_to(ROOT)
     out = subprocess.run(
         [
-            "uv", "run", "pytest", f"{rel}::{test_name}",
-            "-q", "-p", "no:cacheprovider", "--no-header", "--tb=no",
+            "uv",
+            "run",
+            "pytest",
+            f"{rel}::{test_name}",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--no-header",
+            "--tb=no",
         ],
-        cwd=ROOT, capture_output=True, text=True, timeout=300,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     return out.returncode == 0
 

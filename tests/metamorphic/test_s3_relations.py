@@ -46,19 +46,13 @@ def test_range_get_is_the_slice_of_the_full_get():
             a = rng.randrange(0, size - 1)
             b = rng.randrange(a, size)
             ranges += [(a, b), (0, 0), (size - 1, size - 1), (size // 2, size // 2)]
-        for (start, end) in ranges:
-            got = s3.get_object(
-                Bucket=bucket, Key=key, Range=f"bytes={start}-{end}"
-            )["Body"].read()
-            assert got == body[start : end + 1], (
-                f"bytes={start}-{end} of a {size}-byte body"
-            )
+        for start, end in ranges:
+            got = s3.get_object(Bucket=bucket, Key=key, Range=f"bytes={start}-{end}")["Body"].read()
+            assert got == body[start : end + 1], f"bytes={start}-{end} of a {size}-byte body"
         # Suffix form: last N bytes.
         if size:
             n = min(7, size)
-            got = s3.get_object(Bucket=bucket, Key=key, Range=f"bytes=-{n}")[
-                "Body"
-            ].read()
+            got = s3.get_object(Bucket=bucket, Key=key, Range=f"bytes=-{n}")["Body"].read()
             assert got == body[-n:]
 
 
@@ -73,9 +67,7 @@ def test_v1_v2_and_versions_listings_agree():
 
     v1 = {o["Key"] for o in s3.list_objects(Bucket=bucket).get("Contents", [])}
     v2 = {o["Key"] for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])}
-    versions = {
-        o["Key"] for o in s3.list_object_versions(Bucket=bucket).get("Versions", [])
-    }
+    versions = {o["Key"] for o in s3.list_object_versions(Bucket=bucket).get("Versions", [])}
     # Versions adds nothing for non-versioned buckets and hides nothing.
     assert v1 == keys, "ListObjects must show exactly the stored keys"
     assert v2 == keys, "ListObjectsV2 must agree with ListObjects"
@@ -117,10 +109,7 @@ def test_delete_removes_the_key_from_every_listing():
     for listing in (
         lambda: {o["Key"] for o in s3.list_objects(Bucket=bucket).get("Contents", [])},
         lambda: {o["Key"] for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])},
-        lambda: {
-            o["Key"]
-            for o in s3.list_object_versions(Bucket=bucket).get("Versions", [])
-        },
+        lambda: {o["Key"] for o in s3.list_object_versions(Bucket=bucket).get("Versions", [])},
     ):
         keys = listing()
         assert keep in keys
@@ -143,6 +132,7 @@ def test_script_replay_across_accounts_is_canonically_identical():
     """The same script against two fresh accounts yields identical
     (canonicalized) responses — no cross-account state bleed, no
     account-shaped formatting drift."""
+
     def script(account: str) -> tuple[list[str], list[dict]]:
         s3 = client("s3", account)
         sqs = client("sqs", account)
@@ -180,7 +170,4 @@ def test_script_replay_across_accounts_is_canonically_identical():
             ca = _sub(ca, name, "{NAME}")
         for name in names_b:
             cb = _sub(cb, name, "{NAME}")
-        assert ca == cb, (
-            f"replay step {i} diverges after canonicalization:\n"
-            f"  A: {ca}\n  B: {cb}"
-        )
+        assert ca == cb, f"replay step {i} diverges after canonicalization:\n  A: {ca}\n  B: {cb}"

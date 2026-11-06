@@ -15,7 +15,6 @@ import uuid
 
 import boto3
 import pytest
-from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, precondition, rule
 
@@ -96,9 +95,7 @@ class SQSMachine(RuleBasedStateMachine):
         # may appear.
         resp = self.sqs.receive_message(QueueUrl=self.queue_url, MaxNumberOfMessages=10)
         self._absorb(resp.get("Messages", []))
-        self.sqs.delete_message(
-            QueueUrl=self.queue_url, ReceiptHandle=self.in_flight.pop(body)
-        )
+        self.sqs.delete_message(QueueUrl=self.queue_url, ReceiptHandle=self.in_flight.pop(body))
         self.deleted.add(body)
 
     @invariant()
@@ -147,10 +144,7 @@ class S3Machine(RuleBasedStateMachine):
 
     @invariant()
     def listing_equals_history(self):
-        listed = {
-            o["Key"]
-            for o in self.s3.list_objects_v2(Bucket=self.bucket).get("Contents", [])
-        }
+        listed = {o["Key"] for o in self.s3.list_objects_v2(Bucket=self.bucket).get("Contents", [])}
         assert listed == set(self.objects), (
             f"listing drifted from history: extra={listed - set(self.objects)} "
             f"missing={set(self.objects) - listed}"
