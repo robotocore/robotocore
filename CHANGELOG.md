@@ -11,6 +11,40 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **The nightly parity run collects the parked `legacy-py-provider` suites
+  again (71 failures per night since 2026-10-30).** The Oct 27 quarantine
+  (`ddc41e54`) moved the 18 python-provider-era suites out of compat
+  discovery, but `d8d183e3` made the directory collectible for collection
+  hygiene and the nightly's `pytest tests/compatibility/` swept it back in:
+  every feature those suites check (EC2 capacity-profile admin endpoints,
+  `/_robotocore/ec2/fabricate`, the ECR docker registry, CBOR alarms, …)
+  was never ported to the Rust twin, so the nightly went red and stayed red.
+  `tests/compatibility/conftest.py` now ignores the parked directory in
+  parent-dir discovery (nightly, `make compat-test`, bare pytest); run it
+  directly (`pytest tests/compatibility/legacy-py-provider/...`) while porting.
+- **.NET Lambda handler validation no longer needs the .NET SDK.**
+  `execute_dotnet` checked `find_dotnet()` before the pure-string
+  handler-format and assembly-name guards, so on machines without the SDK
+  a malformed handler answered `Runtime.InvalidRuntime` (".NET SDK not
+  installed") where real Lambda says `Runtime.HandlerNotFound`. The
+  validation now runs first; the two dotnet unit tests that exercise the
+  post-SDK paths also gained the file's standard
+  `if !has_bin("dotnet") { return; }` guard.
+- **An IAM unit test never ran.** `#[test]` was glued to the end of the
+  doc comment on `instance_profile_createdate_is_stable_across_reads`,
+  so the attribute was part of the doc text: the function compiled as dead
+  code and the CreateDate-stability assertion was silently unchecked.
+  It runs now (and passes).
+- **`cargo clippy --workspace --all-targets -- -D warnings` (`make
+  rust-lint`, the documented CI gate) failed with 39 errors** across the
+  `cloudwatch`, `dynamodb`, `ecs`, `iam`, `kms`, `lambda`,
+  `secretsmanager`, `rotocore` and `robotocore-rust` crates — needless
+  borrows, `or_else(|_| Err(..))` constructs, doc-comment formatting (one
+  `>10` rendered as a markdown blockquote, one `#[test]` swallowed by a
+  doc comment), a dead duplicate `form_encode` and an over-precise
+  DynamoDB magnitude literal (now the identical f64 value `1e126`).
+  Behavior is unchanged; the gate is green.
+
 - **CloudWatch answers Smithy RPC v2 CBOR requests.** Calls sent as
   `POST /service/GraniteServiceVersion20100801/operation/<Operation>` with
   `smithy-protocol: rpc-v2-cbor` and a CBOR body reached the CloudWatch

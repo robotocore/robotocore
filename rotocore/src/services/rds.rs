@@ -4947,7 +4947,7 @@ fn describe_db_parameter_groups_xml(
     // on an empty page forever.
     let out = format!(
         "<DBParameterGroups>{list}</DBParameterGroups><Marker>{}</Marker>",
-        esc(&param(p, "Marker").string().unwrap_or_default())
+        esc(param(p, "Marker").string().unwrap_or_default())
     );
     Ok(Some(out))
 }

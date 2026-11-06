@@ -636,7 +636,7 @@ impl Engine {
                 .map(|last| last + 1);
             let shard_frontier = native
                 .kinesis
-                .shard_frontiers(entry.account, &entry.region, &stream_name)
+                .shard_frontiers(entry.account, &entry.region, stream_name)
                 .iter()
                 .find(|(sid, _)| sid == &shard)
                 .and_then(|(_, seq)| seq.parse::<u128>().ok());
@@ -697,7 +697,7 @@ impl Engine {
     ) {
         let mapping = &entry.mapping;
         let key = (entry.account, entry.region.clone(), mapping.uuid.clone());
-        if self.ddb_last_seq.get(&key).is_none() {
+        if !self.ddb_last_seq.contains_key(&key) {
             // First sight: a LATEST-attach mapping's seed freezes at attach
             // (see `ddb_attached_watermark`) — the fresh mapping delivers
             // nothing from the pre-attach history, mirroring the kinesis

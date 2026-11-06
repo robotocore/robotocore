@@ -865,7 +865,7 @@ impl EcsHandler {
     }
 
     /// moto's `delete_task_definitions` (ecs/models.py:2350-2409): empty and
-    /// >10 lists are client errors; every reference must be `family:rev`;
+    /// over-10 lists are client errors; every reference must be `family:rev`;
     /// an ACTIVE definition is refused with the still-in-ACTIVE failure row;
     /// a hit is REMOVED from the store (not just marked) and returned with
     /// status DELETE_IN_PROGRESS; failures echo the raw reference with
@@ -1517,8 +1517,7 @@ impl EcsHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let mut task_index: i64 = 0;
-        for _ in 0..count {
+        for task_index in 0..count {
             let task_id = uuid::Uuid::new_v4().to_string();
             let task_arn = format!(
                 "arn:aws:ecs:{}:{}:task/{}/{}",
@@ -1560,7 +1559,6 @@ impl EcsHandler {
                 task["containerInstanceArn"] =
                     json!(&active_instances[(task_index % active_instances.len() as i64) as usize]);
             }
-            task_index += 1;
             tasks.push(task.clone());
             inserted.push((task_id, task));
         }

@@ -2054,9 +2054,8 @@ mod runtime_families_tests {
         let saved = std::env::var("LAMBDA_EXECUTOR").ok();
         std::env::remove_var("LAMBDA_EXECUTOR");
         let available = available_runtime_families();
-        match saved {
-            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
-            None => {}
+        if let Some(v) = saved {
+            std::env::set_var("LAMBDA_EXECUTOR", v);
         }
         // Whenever the twin has ruby/java/dotnet binaries, the executor can
         // run them, so the endpoint must say so; the contract is equality
@@ -3295,7 +3294,7 @@ fn canonical_account_string(
             }
         }
     }
-    for source in [
+    for key in [
         query_string.split('&').find_map(|kv| {
             let (k, v) = kv.split_once('=')?;
             (k == "AWSAccessKeyId" && !v.is_empty()).then(|| {
@@ -3314,11 +3313,12 @@ fn canonical_account_string(
                     .unwrap_or_default()
             })
         }),
-    ] {
-        if let Some(key) = source {
-            if let Some(id) = twelve_digit(&key) {
-                return Some(id);
-            }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(id) = twelve_digit(&key) {
+            return Some(id);
         }
     }
     None

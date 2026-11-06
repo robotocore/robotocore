@@ -5679,7 +5679,8 @@ mod tests {
 
     /// The instance-profile CreateDate is stamped once at creation
     /// (instance_profile_created) and never drifts across reads — the
-    /// per-read `now()` rendering made every Get/List differ.    #[test]
+    /// per-read `now()` rendering made every Get/List differ.
+    #[test]
     fn instance_profile_createdate_is_stable_across_reads() {
         let handler = IamHandler::new();
         handler.handle(make_req(

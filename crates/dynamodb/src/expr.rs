@@ -390,7 +390,7 @@ pub fn number_validity(raw: &str) -> NumberValidity {
         return NumberValidity::NonNumeric;
     }
     if v != 0.0 {
-        if v.abs() > 9.9999999999999999999999999999999999999e125 {
+        if v.abs() > 1e126 {
             return NumberValidity::Overflow;
         }
         if v.abs() < 1e-130 {

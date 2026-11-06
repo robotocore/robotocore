@@ -445,7 +445,7 @@ fn user_xml(u: &UserEntity, account: u64, region: &str) -> String {
         "<UserId>{}</UserId><UserName>{}</UserName><Status>{}</Status><Engine>{}</Engine><MinimumEngineVersion>6.0</MinimumEngineVersion><AccessString>{}</AccessString><UserGroupIds/><Authentication><Type>no-password</Type></Authentication><ARN>arn:aws:elasticache:{region}:{account}:user:{}</ARN>",
         esc(&u.id),
         esc(&u.user_name),
-        esc(&u.status),
+        esc(u.status),
         esc(&u.engine),
         esc(&u.access_string),
         esc(&u.id),
@@ -461,7 +461,7 @@ fn user_group_xml(ug: &UserGroup, account: u64, region: &str) -> String {
     format!(
         "<UserGroupId>{id}</UserGroupId><Status>{status}</Status><Engine>{engine}</Engine><UserIds>{ids}</UserIds><MinimumEngineVersion>6.0</MinimumEngineVersion><ReplicationGroups/><ServerlessCaches/><ARN>arn:aws:elasticache:{region}:{account}:usergroup:{id}</ARN>",
         id = esc(&ug.id),
-        status = esc(&ug.status),
+        status = esc(ug.status),
         engine = esc(&ug.engine),
         ids = ids,
     )
@@ -534,7 +534,7 @@ fn serverless_cache_xml(sc: &ServerlessCache, account: u64, region: &str) -> Str
         part = esc(&sc.name),
         desc = esc(&sc.description),
         created = sc.create_time,
-        status = esc(&sc.status),
+        status = esc(sc.status),
         engine = esc(&sc.engine),
     )
 }
