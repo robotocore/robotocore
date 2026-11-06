@@ -441,6 +441,7 @@ def main() -> int:
         known = json.loads(known_path.read_text()) if known_path.exists() else {}
         failures = 0
         unexpected = {}
+        observed = set()
         for name in names:
             # A run-unique salt (kept identical across the two engines)
             # so deterministic names never collide with a previous run's
@@ -452,6 +453,7 @@ def main() -> int:
                 rows[engine_name] = dict(CORPORA[name](engine))  # corpus raises = engine-level bug
             print(f"\n== {name} ==")
             for label, a in rows["robotocore"].items():
+                observed.add(f"{name}.{label}")
                 b = rows["moto"].get(label, "<missing step>")
                 ca, cb = canonical(a), canonical(b)
                 if ca == cb:
@@ -468,7 +470,16 @@ def main() -> int:
         report_path = "differential_report.json"
         with open(report_path, "w") as f:
             json.dump(unexpected, f, indent=1, sort_keys=True, default=str)
-        print(f"\n{failures} divergences across {len(names)} corpora → {report_path}")
+        # Rot guard: a known-diffs key that matched NO observed step this
+        # run is either a stale label (the corpus moved on) or a masked
+        # rename — surface it loudly instead of silently masking forever.
+
+        dead = sorted(k for k in known if k not in observed)
+        for k in dead:
+            print(f"  WARNING known-diffs key {k} matched no step this run — update it")
+        print(f"\n{failures} unexpected divergences across {len(names)} corpora → {report_path}")
+        if dead:
+            print(f"{len(dead)} stale known-diffs keys need attention")
         return 0 if failures == 0 else 1
     finally:
         moto_proc.terminate()

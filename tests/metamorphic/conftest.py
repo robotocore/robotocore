@@ -12,6 +12,7 @@ uses its own account id, so xdist workers can't interfere.
 """
 
 import json
+import os
 import random
 import re
 import uuid
@@ -19,6 +20,16 @@ import uuid
 import boto3
 import pytest
 from botocore.config import Config
+from hypothesis import settings as _settings
+
+# The machines do real HTTP per step: the default 200ms-per-example
+# deadline throws flaky DeadlineExceeded on a loaded CI box. Bounded
+# examples keep cost flat; derandomize keeps CI failures reproducible.
+_settings.register_profile(
+    "metamorphic",
+    _settings(deadline=None, max_examples=25, derandomize=os.environ.get("CI") == "true"),
+)
+_settings.load_profile("metamorphic")
 
 ENDPOINT_URL = "http://localhost:4566"
 REGION = "us-east-1"

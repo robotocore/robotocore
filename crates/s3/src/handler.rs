@@ -278,7 +278,9 @@ fn wants_url_encoding(req: &AwsRequest) -> bool {
 
 fn list_key_render(req: &AwsRequest, key: &str) -> String {
     let s = if wants_url_encoding(req) {
-        urlencoding::encode(key).into_owned()
+        // Real AWS keeps '/' raw in encoded keys (moto: "d/e%20f.txt");
+        // urlencoding::encode escapes it — undo that one escape.
+        urlencoding::encode(key).replace("%2F", "/")
     } else {
         key.to_string()
     };

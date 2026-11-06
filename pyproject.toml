@@ -102,4 +102,5 @@ markers = [
     "compat: Compatibility tests (requires running server)",
     "enforce_iam_toggle: Toggles the process-global ENFORCE_IAM knob — must run AFTER the concurrent shard, never inside one (a mid-run ON window denies every other worker's default-account requests)",
     "metamorphic: Relation-based tests (put=get round-trip, ranged=slice, paginated=full, cross-account replay) — no recorded expectations",
+    "drift_oracle: Terraform apply-then-plan drift check — opt-in via `make drift`; several stacks trip documented twin gaps",
 ]

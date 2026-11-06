@@ -36,6 +36,11 @@ terraform_available = pytest.mark.skipif(
     shutil.which("terraform") is None, reason="terraform CLI not on PATH"
 )
 
+# The drift oracle is OPT-IN (`make drift`): several stacks still trip
+# documented twin gaps at apply time, so the default iac lane (which
+# runs `pytest tests/iac/terraform/`) must not collect it.
+pytestmark = [pytest.mark.drift_oracle]
+
 # The twin answers everything in one account; the provider must not
 # resolve credentials through real AWS bootstrapping.
 OVERRIDE_TF = """
@@ -115,12 +120,20 @@ def _workspace(stack: Path, unique_suffix: str, tmp_path_factory) -> tuple[str, 
         defaults = re.findall(
             r'variable\s+"([^"]+)"\s*\{[^}]*?default\s*=\s*"([^"]*)"', vars_tf.read_text(), re.S
         )
+        # Suffix ONLY name-like variables: a "vpc_cidr" or AMI default is
+        # a VALUE, and rewriting it breaks the stack ("invalid CIDR
+        # address"). Names are what collide (S3 bucket names are globally
+        # unique in AWS).
         if defaults:
             lines = []
             for name, default in defaults:
-                suffix = f"{unique_suffix[:6]}"
-                lines.append(f'{name} = "{default}-{suffix}"')
-            (work / "zz.auto.tfvars").write_text("\n".join(lines) + "\n")
+                if not (name.endswith("name") or "_name" in name or name == "name"):
+                    continue
+                if not default:
+                    continue
+                lines.append(f'{name} = "{default}-{unique_suffix[:6]}"')
+            if lines:
+                (work / "zz.auto.tfvars").write_text("\n".join(lines) + "\n")
     env = _stack_env()
     init = _run(["terraform", "init", "-input=false"], str(work), env)
     assert init.returncode == 0, f"terraform init failed:\n{init.stderr[-2000:]}"

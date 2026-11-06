@@ -69,7 +69,10 @@ class SQSMachine(RuleBasedStateMachine):
         msgs = resp.get("Messages", [])
         assert msgs, "a visible message existed but the receive came back empty"
         delivered = [m["Body"] for m in msgs]
-        assert wanted in delivered, f"{wanted!r} was visible but never delivered"
+        if len(self.visible) <= 10:
+            # A receive returns at most 10 messages: with more than 10
+            # visible, `wanted` may legitimately miss the page.
+            assert wanted in delivered, f"{wanted!r} was visible but never delivered"
         self._absorb(msgs)
 
     def _absorb(self, msgs: list[dict]):

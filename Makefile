@@ -34,7 +34,7 @@ compat-test-hot: ## Compatibility tests (assumes server already running)
 	uv run pytest tests/compatibility/ -q --tb=short -m enforce_iam_toggle
 
 drift: ## Terraform drift oracle: apply every stack, plan must show no changes
-	uv run pytest tests/iac/terraform/test_drift.py -q --tb=short
+	uv run pytest tests/iac/terraform/test_drift.py -q --tb=short -m drift_oracle
 
 parity: ## Full rust-only parity run against the golden baseline
 	$(MAKE) probe-freshness

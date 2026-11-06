@@ -14,9 +14,9 @@ Exit 1 when any perturbed test survives (a vacuous assertion).
 import argparse
 import ast
 import random
-import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -24,7 +24,7 @@ ROOT = Path(__file__).parent.parent
 COMPAT = ROOT / "tests" / "compatibility"
 
 
-def collect_tests(match: str) -> list[tuple[Path, str]]:
+def collect_tests(match: str) -> list[tuple[Path, str, str]]:
     out = subprocess.run(
         [
             "uv",
@@ -48,18 +48,27 @@ def collect_tests(match: str) -> list[tuple[Path, str]]:
         node_id = line.split()[-1]
         if "[" in node_id:  # skip parametrized copies
             continue
-        path_part, _, name = node_id.partition("::")
+        path_part, _, qualified = node_id.partition("::")
         if match and match not in node_id:
             continue
-        tests.append((COMPAT / Path(path_part).relative_to("tests/compatibility"), name))
+        # Class-qualified ids ("TestClass::test_x") carry the bare method
+        # name last — the function name the AST can match on.
+        bare = qualified.rpartition("::")[2]
+        tests.append((COMPAT / Path(path_part).relative_to("tests/compatibility"), bare, qualified))
     return tests
 
 
-def perturb(module_path: Path, test_name: str) -> Path | None:
+def perturb(module_path: Path, qualified: str) -> Path | None:
     """Write a copy of the module whose target test's FIRST comparable
-    literal is flipped. None when the test has no perturbable literal."""
+    literal is flipped. `qualified` is the full pytest tail
+    ("Class::method" or "method") — duplicate method names across classes
+    are common here, and editing the wrong same-named function once
+    flagged honest tests as vacuous. None when the test has no
+    perturbable literal."""
     source = module_path.read_text()
     tree = ast.parse(source)
+    parts = qualified.split("::")
+    target_class, target_method = parts[0], parts[-1]
 
     class Flip(ast.NodeTransformer):
         def __init__(self):
@@ -69,9 +78,16 @@ def perturb(module_path: Path, test_name: str) -> Path | None:
             target = node.test if isinstance(node, ast.Assert) else node
             if not isinstance(target, ast.Compare):
                 return None
+            # Only flip EQUALITY comparisons: weakening a `<=` bound (1 → 2)
+            # makes the assert looser but not vacuous — flagged hits there
+            # are artifacts. An `==` flip genuinely inverts the expectation.
+            if not any(isinstance(op, ast.Eq) for op in target.ops):
+                return None
             self.generic_visit(target)
             if not self.done:
-                for i, comparator in enumerate(target.comparators):
+                for i, (op, comparator) in enumerate(zip(target.ops, target.comparators)):
+                    if not isinstance(op, ast.Eq):
+                        continue
                     new = self.flip_constant(comparator)
                     if new is not None:
                         target.comparators[i] = new
@@ -104,13 +120,17 @@ def perturb(module_path: Path, test_name: str) -> Path | None:
 
     flipped_any = False
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == test_name:
-            f = Flip()
-            for child in ast.walk(node):
-                if isinstance(child, ast.Assert):
-                    f.flip_compare(child)
-            flipped_any = f.done
-            break
+        if not isinstance(node, ast.ClassDef) or node.name != target_class:
+            continue
+        for item in node.body:
+            if isinstance(item, ast.FunctionDef) and item.name == target_method:
+                f = Flip()
+                for child in ast.walk(item):
+                    if isinstance(child, ast.Assert):
+                        f.flip_compare(child)
+                flipped_any = f.done
+                break
+        break
     if not flipped_any:
         return None
 
@@ -119,27 +139,45 @@ def perturb(module_path: Path, test_name: str) -> Path | None:
     return out
 
 
-def run_single(temp_file: Path, test_name: str) -> bool:
-    """True when the perturbed test PASSES (the vacuous case)."""
+def run_single(temp_file: Path, qualified: str, out_dir: Path) -> tuple[str, str]:
+    """Classify the perturbed run: "vacuous" (PASSED with a flipped
+    expectation), "skipped", or "caught" (failed as it should)."""
     rel = temp_file.relative_to(ROOT)
+    junit = out_dir / "audit_result.xml"
     out = subprocess.run(
         [
             "uv",
             "run",
             "pytest",
-            f"{rel}::{test_name}",
+            f"{rel}::{qualified}",
             "-q",
             "-p",
             "no:cacheprovider",
             "--no-header",
             "--tb=no",
+            f"--junitxml={junit}",
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=300,
     )
-    return out.returncode == 0
+    verdict = "caught"
+    try:
+        import xml.etree.ElementTree as ET
+
+        tree = ET.parse(junit)
+        for case in tree.iter("testcase"):
+            if case.find("failure") is not None or case.find("error") is not None:
+                verdict = "caught"
+            elif case.find("skipped") is not None:
+                verdict = "skipped"
+            else:
+                verdict = "vacuous"
+    except Exception:
+        verdict = "caught" if out.returncode != 0 else "vacuous"
+    junit.unlink(missing_ok=True)
+    return verdict, (out.stdout + out.stderr)[-400:]
 
 
 def main() -> int:
@@ -154,24 +192,35 @@ def main() -> int:
     sample = rng.sample(tests, min(args.sample, len(tests)))
     print(f"auditing {len(sample)} of {len(tests)} tests (seed {args.seed})")
 
+    work_dir = Path(tempfile.mkdtemp(prefix="assert-audit-"))
     vacuous = []
-    for i, (path, name) in enumerate(sample):
+    skipped = 0
+    for i, (path, bare, qualified) in enumerate(sample):
         try:
-            temp_file = perturb(path, name)
+            temp_file = perturb(path, bare)
         except SyntaxError:
             continue
         if temp_file is None:
             continue
         try:
-            if run_single(temp_file, name):
-                vacuous.append((path.name, name))
-                print(f"  VACUOUS {path.name}::{name} — passes with a flipped expectation")
+            verdict, _tail = run_single(temp_file, qualified, work_dir)
+            if verdict == "vacuous":
+                vacuous.append((path.name, qualified))
+                print(f"  VACUOUS {path.name}::{qualified} — passes with a flipped expectation")
+            elif verdict == "skipped":
+                skipped += 1
         finally:
-            shutil.rmtree(temp_file, ignore_errors=True)
+            temp_file.unlink(missing_ok=True)
         if (i + 1) % 25 == 0:
             print(f"  … {i + 1}/{len(sample)} audited")
 
-    print(f"\n{len(vacuous)} vacuous assertions found in {len(sample)} audited tests")
+    import shutil as _shutil
+
+    _shutil.rmtree(work_dir, ignore_errors=True)
+    print(
+        f"\n{len(vacuous)} vacuous assertions found in {len(sample)} audited tests"
+        f" ({skipped} skipped for unavailable runtimes)"
+    )
     return 1 if vacuous else 0
 
 
