@@ -1450,16 +1450,19 @@ pub async fn catch_all_handler(
 
     // ENFORCE_IAM request enforcement (python gateway iam_middleware port):
     // a deny short-circuits dispatch with the service's 403 AccessDenied.
-    if let Some(denied) = crate::core::iam_enforcement::intercept(
-        &state.registry.native.iam,
-        &service,
-        &operation,
-        uri.path(),
-        uri.query().unwrap_or(""),
-        &parsed_req.headers,
+    let iam_ctx = crate::core::iam_enforcement::RequestContext {
+        service: &service,
+        operation: &operation,
+        method: method.as_str(),
+        path: uri.path(),
+        query: uri.query().unwrap_or(""),
+        headers: &parsed_req.headers,
         account,
-        &region,
-    ) {
+        region: &region,
+    };
+    if let Some(denied) =
+        crate::core::iam_enforcement::intercept(&state.registry.native.iam, &iam_ctx)
+    {
         audit_out(
             Some(&service),
             opt_op(&operation),

@@ -88,7 +88,18 @@ jobs:
           AWS_ENDPOINT_URL=http://localhost:4566
           uv run pytest tests/parity/ tests/compatibility/
           -n8 --dist=loadfile -v --tb=short
+          -m 'not enforce_iam_toggle'
           --junitxml=results-nightly-parity.xml
+      # The enforce_iam_toggle suite flips a process-global knob: run it
+      # sequentially, never inside a shared-server shard.
+      - name: Run enforcement compat (sequential)
+        if: always()
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          AWS_ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/compatibility/
+          -m enforce_iam_toggle -v --tb=short
+          --junitxml=results-nightly-enforce-iam.xml
       - uses: actions/upload-artifact@v7
         if: always()
         with:

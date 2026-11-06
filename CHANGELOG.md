@@ -23,10 +23,18 @@ under *Changelog discipline*.
   group's inline + attached); anything but an explicit Allow answers 403
   `AccessDenied` in the service's wire protocol (`AccessDeniedException`
   for JSON services, the XML `ErrorResponse` shape otherwise). IAM and STS
-  stay exempt (bootstrap deadlock), and REST services (S3) resolve to
-  `service:*` actions, python parity. The twin's parity/nightly lanes now
-  boot with `ENABLE_CONFIG_UPDATES=1` so the suite runs in CI instead of
-  silently skipping, and PR CI runs the enforcement file as a gate.
+  stay exempt (bootstrap deadlock). S3 requests resolve to named actions
+  through the python `_detect_rest_operation` table (sub-resource queries
+  included) — so `Deny s3:DeleteBucket` beside `Allow s3:*` bites and an
+  `Allow s3:PutObject` grants nothing else; other REST services degrade to
+  `service:*`, python parity. Assumed-role session credentials are denied
+  (STS issues a canned session key and keeps no per-session registry — the
+  python middleware's STS session store is not ported). The twin's
+  parity/nightly lanes now boot with `ENABLE_CONFIG_UPDATES=1` so the suite
+  runs in CI instead of silently skipping, and PR CI runs the enforcement
+  file as a gate; it runs SEQUENTIALLY, never inside a shared-server
+  shard — a mid-run ON window would implicitly deny every other worker's
+  default-account requests (`enforce_iam_toggle` marker).
 
 ### Fixed
 
