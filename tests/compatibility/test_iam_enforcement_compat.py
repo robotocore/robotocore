@@ -671,7 +671,7 @@ class TestS3OperationLevelActions:
             try:
                 _make_s3_client("testing", "testing").delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             _cleanup_user(iam, user_name)
 
     def test_allow_put_object_only(self, iam):
@@ -707,5 +707,5 @@ class TestS3OperationLevelActions:
             try:
                 _make_s3_client("testing", "testing").delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             _cleanup_user(iam, user_name)
