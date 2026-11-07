@@ -1600,11 +1600,18 @@ class TestS3MultipartAndDeleteFidelity:
         assert [v["VersionId"] for v in versions["Versions"]] == [v2["VersionId"]]
 
     def test_delete_objects_unknown_key_is_tolerant(self, s3, versioned_bucket):
+        # moto books no marker here (its _set_delete_marker KeyErrors on the
+        # missing key) but real AWS books one — the twin follows real AWS;
+        # the differential ledger records the divergence.
         resp = s3.delete_objects(
             Bucket=versioned_bucket,
             Delete={"Objects": [{"Key": "ghost"}]},
         )
-        assert resp["Deleted"][0]["Key"] == "ghost"
+        row = resp["Deleted"][0]
+        assert row["Key"] == "ghost"
+        assert row["DeleteMarker"] is True
+        marker_id = row["DeleteMarkerVersionId"]
+        assert marker_id and marker_id != "null"
 
     def test_delete_objects_empty_list_is_malformed_xml(self, s3, ephemeral_bucket):
         with pytest.raises(ClientError) as exc:
@@ -1811,6 +1818,28 @@ class TestS3MultipartAndDeleteFidelity:
         got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=5-3")
         assert got["Body"].read() == b"1234567890"
         assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_head_object_range_semantics(self, s3, ephemeral_bucket):
+        import urllib.error
+        import urllib.request
+
+        s3.put_object(Bucket=ephemeral_bucket, Key="h", Body=b"1234567890")
+        url = f"{ENDPOINT_URL}/{ephemeral_bucket}/h"
+        # unsatisfiable: bare 416, HEAD carries no body (moto's HEAD branch)
+        req = urllib.request.Request(url, method="HEAD", headers={"Range": "bytes=100-"})
+        try:
+            resp = urllib.request.urlopen(req)
+        except urllib.error.HTTPError as err:
+            assert err.code == 416
+            assert not err.read()
+        else:  # pragma: no cover
+            raise AssertionError(f"expected 416, got {resp.status}")
+        # satisfiable suffix range: 206 with sliced Content-Length
+        req = urllib.request.Request(url, method="HEAD", headers={"Range": "bytes=-4"})
+        resp = urllib.request.urlopen(req)
+        assert resp.status == 206
+        assert resp.headers["Content-Range"] == "bytes 6-9/10"
+        assert resp.headers["Content-Length"] == "4"
 
     def test_get_object_range_happy_paths(self, s3, ephemeral_bucket):
         body = b"1234567890"

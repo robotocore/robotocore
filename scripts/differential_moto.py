@@ -288,13 +288,55 @@ def corpus_s3(engine):
             ),
         ),
         (
-            "complete_multipart_entity_too_small",
+            "complete_multipart_empty_list",
             err_wrap(
                 lambda: s3.complete_multipart_upload(
                     Bucket=mp,
                     Key="mp3.txt",
                     UploadId=s3.create_multipart_upload(Bucket=mp, Key="mp3.txt")["UploadId"],
                     MultipartUpload={"Parts": []},
+                )
+            ),
+        ),
+    ]
+    # moto models.py:493-495 — a non-final listed part under
+    # S3_UPLOAD_PART_MIN_SIZE raises EntityTooSmall
+    up4 = s3.create_multipart_upload(Bucket=mp, Key="mp4.txt")["UploadId"]
+    small_etag = s3.upload_part(
+        Bucket=mp, Key="mp4.txt", PartNumber=1, UploadId=up4, Body=b"small"
+    )["ETag"]
+    out += [
+        (
+            "complete_multipart_entity_too_small",
+            err_wrap(
+                lambda: s3.complete_multipart_upload(
+                    Bucket=mp,
+                    Key="mp4.txt",
+                    UploadId=up4,
+                    MultipartUpload={
+                        "Parts": [
+                            {"PartNumber": 1, "ETag": small_etag},
+                            {"PartNumber": 2, "ETag": '"deadbeefdeadbeefdeadbeefdeadbeef"'},
+                        ]
+                    },
+                )
+            ),
+        ),
+        (
+            # moto responses.py:3109-3116 — a listed part number <= the
+            # previous one raises InvalidPartOrder before any lookup
+            "complete_multipart_invalid_part_order",
+            err_wrap(
+                lambda: s3.complete_multipart_upload(
+                    Bucket=mp,
+                    Key="mp2.txt",
+                    UploadId=s3.create_multipart_upload(Bucket=mp, Key="mp2.txt")["UploadId"],
+                    MultipartUpload={
+                        "Parts": [
+                            {"PartNumber": 3, "ETag": '"00000000000000000000000000000000"'},
+                            {"PartNumber": 2, "ETag": '"00000000000000000000000000000000"'},
+                        ]
+                    },
                 )
             ),
         ),

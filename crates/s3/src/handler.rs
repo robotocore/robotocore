@@ -2774,6 +2774,56 @@ impl S3Handler {
             }
         };
 
+        // moto _handle_range_header (responses.py:1785-1836) honors Range
+        // on HEAD too: unsatisfiable → bare 416 with an XML content-type
+        // and no body (a HEAD carries none); satisfiable → 206 with the
+        // sliced Content-Length and a Content-Range header.
+        match req.headers.get("range").map(|r| parse_range(r, obj.size)) {
+            Some(RangeOutcome::Unsatisfiable) => {
+                return AwsResponse {
+                    status: 416,
+                    headers: vec![("Content-Type".to_string(), "application/xml".to_string())],
+                    body: vec![],
+                };
+            }
+            Some(RangeOutcome::Satisfiable(range)) => {
+                let mut headers = vec![
+                    (
+                        "Content-Length".to_string(),
+                        (range.end - range.start).to_string(),
+                    ),
+                    ("ETag".to_string(), format!("\"{}\"", obj.etag)),
+                    ("Content-Type".to_string(), obj.content_type.clone()),
+                    ("Last-Modified".to_string(), httpdate(obj.last_modified)),
+                    ("Accept-Ranges".to_string(), "bytes".to_string()),
+                    (
+                        "Content-Range".to_string(),
+                        format!("bytes {}-{}/{}", range.start, range.end - 1, obj.size),
+                    ),
+                ];
+                for (k, v) in obj.metadata.iter() {
+                    headers.push((format!("x-amz-meta-{}", k), v.clone()));
+                }
+                if !obj.tags.is_empty() {
+                    headers.push((
+                        "x-amz-tagging-count".to_string(),
+                        obj.tags.len().to_string(),
+                    ));
+                }
+                if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
+                    headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));
+                }
+                let mut resp = AwsResponse {
+                    status: 206,
+                    headers,
+                    body: vec![],
+                };
+                Self::apply_response_header_overrides(req, &mut resp.headers);
+                return resp;
+            }
+            None | Some(RangeOutcome::Ignore) => {}
+        }
+
         let mut headers = vec![
             ("Content-Length".to_string(), obj.size.to_string()),
             ("ETag".to_string(), format!("\"{}\"", obj.etag)),
