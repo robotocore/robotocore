@@ -722,6 +722,14 @@ def corpus_dynamodb(engine):
         ),
         ("scan", err_wrap(lambda: d.scan(TableName=t))),
         (
+            # ListTables order+pagination: the twin sorts (real-AWS order)
+            # and its stateful table list includes neighbor corpora, so the
+            # full TableNames arrays diverge from fresh moto — the ledger
+            # entry documents both halves; the step pins the walk shape.
+            "list_tables_walk",
+            err_wrap(lambda: d.list_tables(Limit=50)),
+        ),
+        (
             # -- tranche-5b: BatchGetItem limits (moto responses.py:835-861,
             #    893-895) ----------------------------------------------
             "batch_get_consumed",

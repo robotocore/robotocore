@@ -142,11 +142,15 @@ impl DynamoDbHandler {
         let state = self.get_state(req.account, &req.region);
         let mut names: Vec<String> = state.list_tables();
         names.sort();
-        let limit = req
-            .params
-            .get("Limit")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
+        // moto responses.py:329 — Limit ABSENT defaults to 100; Limit=0 is
+        // falsy in moto and means "no limit".
+        let limit: Option<usize> = match req.params.get("Limit") {
+            None => Some(100),
+            Some(v) => match v.as_u64() {
+                Some(0) | None => None,
+                Some(n) => Some(n as usize),
+            },
+        };
         let start = match req
             .params
             .get("ExclusiveStartTableName")
@@ -1298,6 +1302,34 @@ fn validate_empty_sets(val: &Value) -> Option<String> {
         }
     }
     None
+}
+
+/// Canonical storage key for an item given its key attributes.
+/// Member-order-independent JSON canonicalization (sorted keys,
+/// recursively) — the shape moto's Python dict equality compares over
+/// when its duplicate-key checks run.
+fn canonical_json(v: &Value) -> String {
+    match v {
+        Value::Object(map) => {
+            let mut members: Vec<String> = map
+                .iter()
+                .map(|(k, val)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap_or_default(),
+                        canonical_json(val)
+                    )
+                })
+                .collect();
+            members.sort();
+            format!("{{{}}}", members.join(","))
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(canonical_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        other => other.to_string(),
+    }
 }
 
 /// Canonical storage key for an item given its key attributes.
@@ -2464,23 +2496,6 @@ impl DynamoDbHandler {
                     "Too many items requested for the BatchGetItem call",
                 );
             }
-            for (_table_name, spec) in obj {
-                let keys: Vec<Value> = spec
-                    .get("Keys")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
-                let mut seen: HashSet<String> = HashSet::new();
-                for key in &keys {
-                    if !seen.insert(key.to_string()) {
-                        return AwsResponse::error(
-                            400,
-                            "ValidationException",
-                            "Provided list of item keys contains duplicates",
-                        );
-                    }
-                }
-            }
             let mut consumed: Vec<Value> = Vec::new();
             for (table_name, spec) in obj {
                 let keys = spec
@@ -2489,7 +2504,6 @@ impl DynamoDbHandler {
                     .cloned()
                     .unwrap_or_default();
                 let key_count = keys.len();
-                let _ = table_name;
                 let Some(table) = state.get_table(table_name) else {
                     return AwsResponse::error(
                         400,
@@ -2497,6 +2511,20 @@ impl DynamoDbHandler {
                         &format!("Requested resource not found: Table: {table_name} not found"),
                     );
                 };
+                // moto's duplicate check runs per table AFTER the table
+                // resolves (responses.py:845-849) — a missing table wins the
+                // error race — and the dump is member-order independent
+                // (Python dict equality), so members sort recursively.
+                let mut seen: HashSet<String> = HashSet::new();
+                for key in &keys {
+                    if !seen.insert(canonical_json(key)) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Provided list of item keys contains duplicates",
+                        );
+                    }
+                }
                 let names: Names = spec
                     .get("ExpressionAttributeNames")
                     .and_then(|v| v.as_object())
@@ -2548,7 +2576,7 @@ impl DynamoDbHandler {
                 // moto responses.py:893-895 — BatchGetItem always renders the
                 // per-table ConsumedCapacity over the REQUESTED key count.
                 consumed.push(json!({
-                    "CapacityUnits": key_count,
+                    "CapacityUnits": key_count as f64,
                     "TableName": table_name,
                 }));
             }
@@ -2636,10 +2664,9 @@ impl DynamoDbHandler {
                         // (dynamo_json_dump over the item): identical items
                         // twice raise; same key with differing payloads
                         // passes (both stored; later put wins).
-                        let fingerprint = format!(
-                            "{table_name}:{}",
-                            serde_json::to_string(&item_json).unwrap_or_default()
-                        );
+                        // moto's whole-item dump compare is member-order
+                        // independent (dict equality).
+                        let fingerprint = format!("{table_name}:{}", canonical_json(&item_json));
                         if !seen_puts.insert(fingerprint) {
                             return AwsResponse::error(
                                 400,

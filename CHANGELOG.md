@@ -72,8 +72,11 @@ under *Changelog discipline*.
   always-on per-table `ConsumedCapacity` over requested keys.
   `ListTables` paginates (Limit default 100, `ExclusiveStartTableName`
   skip semantics with moto's unknown-name start-at-end, and
-  `LastEvaluatedTableName` when more tables follow). 6 new compat tests,
-  3 differential steps.
+  `LastEvaluatedTableName` when more tables follow — Limit ABSENT caps
+  at moto's default 100 and an unknown start name starts at the end
+  (review round 2). Duplicate-key compares (batch get AND write) are
+  member-order independent, moto's dict-equality shape (review round 2).
+  8 new compat tests, 4 differential steps.
 
 - **S3 tagging versioning and the storage-class contract.** The moto audit's
   seventh tranche (`docs/semantic-audit-2026-11-06/sqs-s3.md` findings
