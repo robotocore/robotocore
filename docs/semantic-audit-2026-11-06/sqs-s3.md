@@ -135,6 +135,22 @@ S3
     **FIXED (2026-11-07, verified in source):** `parse_range` returns a three-way outcome mirroring moto's `_handle_range_header`: multi-range/unparsable specs answer 200 with the full body; `bytes=-0` and begin >= size answer 416 InvalidRange ("The requested range is not satisfiable"); and begin > end with begin in bounds answers 200 full-body (moto's `begin > min(end, last)` branch). GET and HEAD both drive the parser now (HEAD answers the bare 416 + sliced Content-Length shape moto's HEAD branch produces). Verified against moto via the differential corpus (`s3.range_*`) and HEAD-range compat tests.
 
 13. Object tagging: versionId ignored, no validation, wrong tag-count header name, no 404 on GET of a missing key
+
+   **FIXED in part (2026-11-07, verified in source; wording corrected
+   2026-11-08 by adversarial wire review):** Get/Put/DeleteObjectTagging are
+   versionId-aware. Wire-verified per op: a marker versionId is 405
+   MethodNotAllowed on PUT/DELETE-tagging but 404 NoSuchVersion on GET-tagging
+   (moto's GET resolves without return_delete_marker); a marked key without a
+   versionId is 405 on PUT-tagging (moto resolves the marker) and 404
+   NoSuchKey on GET-tagging; moto's DELETE-tagging dereferences a None key and
+   500s on every missing-target shape — the twin's typed 404/405 answers are
+   the recorded twin-preferred divergence. PUT validates the moto limits (>10
+   tags → BadRequest "Object tags cannot be greater than 10"; an
+   "aws"-prefixed key → InvalidTag "Your TagKey cannot be prefixed with
+   aws:", matching moto's startswith("aws") check). Still open: moto's shared
+   tagger.validate_tags also rejects 129-char keys, `k(x)`-shaped keys,
+   257-char values and `v(x)` values (InvalidTag) — the twin accepts those
+   (probes recorded in review 438).
     (a) PutObjectTagging / GetObjectTagging / DeleteObjectTagging (+ GetObject tag-count header).
     (b) moto M/s3/responses.py:2496-2515 — honors `versionId`, raises MethodNotAllowed (405) on a delete marker, MissingKey/MissingVersion otherwise; M/s3/models.py:2517-2545 — rejects > 10 tags ("Object tags cannot be greater than 10") and `aws:`-prefixed keys; models.py:357 — GET/HEAD emits header `x-amz-tagging-count`.
     (c) R/s3/src/handler.rs:3377-3404 — always tags the LATEST version, ignores versionId, no tag-count/system-tag validation; 3406-3427 — GetObjectTagging on a nonexistent key returns 200 with an empty TagSet (no existence check); the GET/HEAD tag header is emitted as `x-amz-tag-count` (handler.rs:2627-2629, 2706-2708) — a name no SDK recognizes.
@@ -144,6 +160,21 @@ S3
     **FIXED in part (2026-11-06, verified in source):** the tag-count header is fixed — GET/HEAD now emits `x-amz-tagging-count` (crates/s3/src/handler.rs:2636, 2714). The rest of this finding remains open: versionId is still ignored, tag-count/`aws:`-prefix validation is still absent, and GetObjectTagging on a missing key still returns 200 with an empty TagSet.
 
 14. Storage class: accepted unvalidated, and Glacier objects are served without InvalidObjectState
+
+   **FIXED (2026-11-07, verified in source; wording corrected 2026-11-08 by
+   adversarial wire review):** x-amz-storage-class is validated against moto's
+   nine-class whitelist at PUT, COPY and CreateMultipartUpload
+   (InvalidStorageClass, 400 — moto validates at create too); GET of a
+   GLACIER/DEEP_ARCHIVE object without a completed restore answers 403
+   InvalidObjectState exactly like moto; **HEAD does not gate in moto (its
+   head_object has no storage-class check → 200) — the twin's HEAD answers
+   real AWS's 403 there**, ledgered twin-preferred behind `s3.head_glacier`
+   in the differential. CopyObject of an unrestored archived source answers
+   403 ObjectNotInActiveTierError; a copy of a RESTORED archived source keeps
+   the GLACIER class per real AWS (moto drops it to STANDARD — ledgered
+   twin-preferred); RestoreObject books the per-version marker that unblocks
+   reads (re-restore answers 200 like moto's had_expiry_date path) and GET
+   now carries the x-amz-restore + x-amz-storage-class headers.
     (a) PutObject (x-amz-storage-class) and GetObject/HeadObject/CopyObject on archive-class objects.
     (b) moto M/s3/models.py:2310-2311 — an unknown storage class raises InvalidStorageClass "The storage class you specified is not valid"; M/s3/utils.py:38-50 + responses.py:2201-2205 — GET/HEAD of a GLACIER/DEEP_ARCHIVE object not restored raises InvalidObjectState (403); copy of one raises ObjectNotInActiveTierError (responses.py:2398-2404).
     (c) R/s3/src/handler.rs:1567-1571 — any storage-class string is stored verbatim; GetObject (2515+) and CopyObject (2344+) serve archive-class data with no state check; RestoreObject (3983-4008) implements 202/403 but nothing gates regular GETs behind a restore.

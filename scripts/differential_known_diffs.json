@@ -9,12 +9,17 @@
  "iam_sts.list_access_keys": "twin-preferred: real AWS always reports IsTruncated on ListAccessKeys; moto omits it",
  "kms_secrets_ssm.encrypt": "twin-preferred: the twin reports EncryptionAlgorithm SYMMETRIC_DEFAULT (a real-AWS response member) that moto omits",
  "s3.complete_multipart": "moto-only member: moto renders <VersionId>null</VersionId> for unversioned buckets; real AWS omits VersionId and the twin follows real AWS",
+ "s3.copy_archived_source": "follow-up: same checksum slot gap \u2014 moto's CopyObjectResult carries ChecksumCRC32; the twin does not compute flex-checksums yet",
  "s3.copy_in_place_replace": "follow-up: same checksum slot gap \u2014 moto reports CopyObjectResult.ChecksumCRC32 (see s3.copy_object)",
  "s3.copy_object": "follow-up: same checksum slot gap \u2014 moto reports CopyObjectResult.ChecksumCRC32",
  "s3.delete_objects_unknown_key": "twin-preferred: real AWS creates a delete marker for a versioned delete of a never-written key; moto's _set_delete_marker raises on the missing key and books no marker",
+ "s3.delete_tagging_missing_version": "twin-preferred: moto's delete_object_tagging dereferences a None key and 500s for a missing target; the twin answers the typed NoSuchVersion. twin-preferred: moto's delete_object_tagging dereferences a None key for every missing target (500); the twin answers typed 404/405 per the op",
+ "s3.get_archived_copy": "twin-preferred destination-class gap: the twin keeps the GLACIER class on an archived copy per real-AWS inheritance (its dest GET answers 403 InvalidObjectState); moto drops the copy's class to STANDARD and the dest reads 200. twin-preferred: the twin preserves the GLACIER storage class on the copy per real AWS inheritance; moto drops the copy's class to STANDARD",
  "s3.get_if_match_wrong": "same code as moto (412 PreconditionFailed) but moto's error XML carries <Condition>If-Match</Condition> (moto s3/exceptions.py:360-367) which the twin omits \u2014 the extra element is the ledgered shape delta",
  "s3.get_if_none_match_current": "follow-up: same checksum slot gap \u2014 moto's stored checksum rides GET responses (x-amz-checksum-crc32); the twin does not yet compute flex-checksums on PUT or serve them on GET (own future tranche)",
+ "s3.head_glacier_unrestored": "twin-preferred: real AWS gates HEAD on archive state (403 InvalidObjectState); moto's head_object has no storage-class check and answers 200 with the body length",
  "s3.list_v1": "twin-preferred: the twin echoes real AWS's Marker member on v1 listings; moto omits it",
  "s3.list_v2_prefix": "follow-up: real AWS (and moto) report ChecksumAlgorithm [CRC32] on objects stored without an explicit checksum \u2014 needs the ObjectVersion checksum slot recorded in crates/s3/src/aws_chunked.rs",
+ "s3.put_glacier_storage_class": "follow-up: same checksum slot gap \u2014 moto's PUT response carries ChecksumCRC32; the twin does not compute flex-checksums yet",
  "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys"
 }

@@ -31,6 +31,11 @@ pub struct ObjectVersion {
     pub legal_hold: Option<String>,
     #[serde(default)]
     pub retention: Option<(String, String)>,
+    /// Restore state from RestoreObject — moto's `x-amz-restore` response
+    /// dict entry; a GLACIER/DEEP_ARCHIVE object only serves normal reads
+    /// while a completed restore marker is present.
+    #[serde(default)]
+    pub restore: Option<String>,
 }
 
 impl ObjectVersion {
@@ -50,6 +55,7 @@ impl ObjectVersion {
             tags: HashMap::new(),
             legal_hold: None,
             retention: None,
+            restore: None,
         }
     }
 }
@@ -124,6 +130,10 @@ pub struct MultipartUpload {
     pub parts: parking_lot::RwLock<std::collections::BTreeMap<u32, MultipartPart>>,
     pub content_type: String,
     pub metadata: HashMap<String, String>,
+    /// Storage class captured at CreateMultipartUpload (moto validates it
+    /// there and the completed object inherits it).
+    #[serde(default)]
+    pub storage_class: String,
 }
 
 impl MultipartUpload {
@@ -134,6 +144,7 @@ impl MultipartUpload {
             initiated: Utc::now().timestamp() as u64,
             parts: parking_lot::RwLock::new(std::collections::BTreeMap::new()),
             content_type,
+            storage_class: "STANDARD".to_string(),
             metadata: HashMap::new(),
         }
     }

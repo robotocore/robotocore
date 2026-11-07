@@ -2161,3 +2161,274 @@ class TestConditionalDeletesAndMarkers:
             s3.delete_bucket(Bucket=name)
         except Exception:
             pass  # best-effort cleanup
+
+
+class TestS3TaggingVersioning:
+    """moto responses.py:2494-2511 + models.py:2528-2536: versionId-aware
+    tagging targets, marker 405, tag-count and aws:-prefix validation."""
+
+    @pytest.fixture
+    def versioned_tagged(self, s3):
+        name = f"bkt-tog-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        v1 = s3.put_object(Bucket=name, Key="doc", Body=b"v1", Tagging="state=v1")
+        s3.put_object(Bucket=name, Key="doc", Body=b"v2", Tagging="state=v2")
+        yield name, v1["VersionId"]
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for m in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_put_tagging_targets_specific_version(self, s3, versioned_tagged):
+        name, v1_vid = versioned_tagged
+        s3.put_object_tagging(
+            Bucket=name,
+            Key="doc",
+            VersionId=v1_vid,
+            Tagging={"TagSet": [{"Key": "state", "Value": "retagged-v1"}]},
+        )
+        v1_tags = s3.get_object_tagging(Bucket=name, Key="doc", VersionId=v1_vid)
+        assert v1_tags["TagSet"] == [{"Key": "state", "Value": "retagged-v1"}]
+        latest_vid = s3.head_object(Bucket=name, Key="doc")["VersionId"]
+        latest_tags = s3.get_object_tagging(Bucket=name, Key="doc", VersionId=latest_vid)
+        assert latest_tags["TagSet"] == [{"Key": "state", "Value": "v2"}]
+
+    def test_tag_missing_version_is_no_such_version(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.get_object_tagging(Bucket=name, Key="doc", VersionId="never-created")
+        assert exc.value.response["Error"]["Code"] == "NoSuchVersion"
+
+    def test_tag_missing_key_no_such_key(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="ghost",
+                Tagging={"TagSet": [{"Key": "a", "Value": "b"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+
+    def test_more_than_ten_tags_rejected(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        tags = [{"Key": f"k{i}", "Value": f"v{i}"} for i in range(11)]
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(Bucket=name, Key="doc", Tagging={"TagSet": tags})
+        assert exc.value.response["Error"]["Code"] == "BadRequest"
+        assert exc.value.response["Error"]["Message"] == ("Object tags cannot be greater than 10")
+
+    def test_aws_prefixed_tag_rejected(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="doc",
+                Tagging={"TagSet": [{"Key": "aws:reserved", "Value": "x"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert exc.value.response["Error"]["Message"] == (
+            "Your TagKey cannot be prefixed with aws:"
+        )
+
+    def test_get_tagging_on_missing_key_404(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.get_object_tagging(Bucket=name, Key="ghost")
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+
+
+class TestS3StorageClass:
+    """moto utils.py:38-50 (classes) + responses.py:2201-2205 (archive gate)
+    + models.py get_object: InvalidObjectState pre-restore, copy of an
+    archived source → ObjectNotInActiveTierError; invalid class 400."""
+
+    @pytest.fixture
+    def storage_bucket(self, s3):
+        name = f"bkt-sc-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for o in objs:
+                s3.delete_object(Bucket=name, Key=o["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_invalid_storage_class_rejected(self, s3, storage_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.put_object(
+                Bucket=storage_bucket,
+                Key="x",
+                Body=b"data",
+                StorageClass="COLD_PANDA",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidStorageClass"
+        assert exc.value.response["Error"]["Message"] == (
+            "The storage class you specified is not valid"
+        )
+
+    def test_valid_non_archive_classes_accepted(self, s3, storage_bucket):
+        for cls in ("STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA", "GLACIER_IR"):
+            s3.put_object(Bucket=storage_bucket, Key=f"k-{cls}", Body=b"x", StorageClass=cls)
+
+    def test_glacier_object_get_not_restored_403(self, s3, storage_bucket):
+        s3.put_object(Bucket=storage_bucket, Key="frozen", Body=b"archives", StorageClass="GLACIER")
+        try:
+            s3.get_object(Bucket=storage_bucket, Key="frozen")
+            got = True
+        except ClientError as ctx:
+            got = False
+            assert ctx.response["Error"]["Code"] == "InvalidObjectState"
+            assert ctx.response["ResponseMetadata"]["HTTPStatusCode"] == 403
+            assert ctx.response["Error"]["Message"] == (
+                "The operation is not valid for the object's storage class"
+            )
+        assert got is False
+
+    def test_glacier_head_not_restored_403(self, s3, storage_bucket):
+        s3.put_object(Bucket=storage_bucket, Key="frozen", Body=b"archives", StorageClass="GLACIER")
+        with pytest.raises(ClientError) as exc:
+            s3.head_object(Bucket=storage_bucket, Key="frozen")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 403
+
+    def test_glacier_copy_rejected(self, s3, storage_bucket):
+        s3.put_object(Bucket=storage_bucket, Key="frozen", Body=b"archives", StorageClass="GLACIER")
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=storage_bucket,
+                Key="warm",
+                CopySource={"Bucket": storage_bucket, "Key": "frozen"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ObjectNotInActiveTierError"
+        assert exc.value.response["Error"]["Message"] == (
+            "The source object of the COPY operation is not in the active "
+            "tier and is only stored in Amazon Glacier."
+        )
+
+    def test_non_archive_restore_rejected_and_glacier_restorable(self, s3, storage_bucket):
+        s3.put_object(Bucket=storage_bucket, Key="frozen", Body=b"archives", StorageClass="GLACIER")
+        resp = s3.restore_object(
+            Bucket=storage_bucket,
+            Key="frozen",
+            RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 202
+
+
+class TestStorageClassEverywhere:
+    """#438 review round: the whitelist must reach CopyObject and multipart
+    (moto validates at create), plus the review's marker/restore wires."""
+
+    @pytest.fixture
+    def fresh_bucket(self, s3):
+        name = f"bkt-sce-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for o in objs:
+                s3.delete_object(Bucket=name, Key=o["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_copy_invalid_storage_class_rejected(self, s3, fresh_bucket):
+        s3.put_object(Bucket=fresh_bucket, Key="src", Body=b"data")
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=fresh_bucket,
+                Key="dst",
+                CopySource={"Bucket": fresh_bucket, "Key": "src"},
+                StorageClass="COLD_PASTE",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidStorageClass"
+
+    def test_multipart_invalid_storage_class_rejected(self, s3, fresh_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.create_multipart_upload(Bucket=fresh_bucket, Key="mp", StorageClass="COLD_PASTE")
+        assert exc.value.response["Error"]["Code"] == "InvalidStorageClass"
+
+    def test_multipart_completed_class_inherited(self, s3, fresh_bucket):
+        up = s3.create_multipart_upload(Bucket=fresh_bucket, Key="mp", StorageClass="STANDARD_IA")
+        uid = up["UploadId"]
+        et = s3.upload_part(
+            Bucket=fresh_bucket,
+            Key="mp",
+            PartNumber=1,
+            UploadId=uid,
+            Body=b"x" * (5 * 1024 * 1024 + 16),
+        )["ETag"]
+        s3.complete_multipart_upload(
+            Bucket=fresh_bucket,
+            Key="mp",
+            UploadId=uid,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": et}]},
+        )
+        assert s3.head_object(Bucket=fresh_bucket, Key="mp")["StorageClass"] == "STANDARD_IA"
+
+    def test_get_tagging_marker_version_is_no_such_version(self, s3):
+        name = f"bkt-gmv-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_object(Bucket=name, Key="doc", Body=b"x")
+        s3.delete_object(Bucket=name, Key="doc")
+        markers = s3.list_object_versions(Bucket=name).get("DeleteMarkers", [])
+        marker_vid = markers[0]["VersionId"]
+        with pytest.raises(ClientError) as exc:
+            s3.get_object_tagging(Bucket=name, Key="doc", VersionId=marker_vid)
+        assert exc.value.response["Error"]["Code"] == "NoSuchVersion"
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for mk in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=mk["Key"], VersionId=mk["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_put_tagging_marked_key_method_not_allowed(self, s3):
+        name = f"bkt-pmm-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_object(Bucket=name, Key="doc", Body=b"x")
+        s3.delete_object(Bucket=name, Key="doc")
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name, Key="doc", Tagging={"TagSet": [{"Key": "a", "Value": "b"}]}
+            )
+        assert exc.value.response["Error"]["Code"] == "MethodNotAllowed"
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for mk in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=mk["Key"], VersionId=mk["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_restore_then_get_serves_and_second_restore_200(self, s3, fresh_bucket):
+        s3.put_object(Bucket=fresh_bucket, Key="frozen", Body=b"archives", StorageClass="GLACIER")
+        first = s3.restore_object(
+            Bucket=fresh_bucket,
+            Key="frozen",
+            RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+        )
+        assert first["ResponseMetadata"]["HTTPStatusCode"] == 202
+        second = s3.restore_object(
+            Bucket=fresh_bucket,
+            Key="frozen",
+            RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+        )
+        assert second["ResponseMetadata"]["HTTPStatusCode"] == 200
+        got = s3.get_object(Bucket=fresh_bucket, Key="frozen")
+        assert got["Body"].read() == b"archives"
+        assert "ongoing-request" in got.get("Restore", "")

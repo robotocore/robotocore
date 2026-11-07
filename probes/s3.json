@@ -1,10 +1,10 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-07T19:37:24.113474+00:00",
+  "generated_at": "2026-11-07T20:37:18.539384+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "f652a7ab31b4ab843ecb7efe1507d81c0ad6d2172bc1f9106e57654f512502e7"
+    "crates/s3/src/": "6c709ebe6e6d69c3159c0b1dc1b21a58bbd7b167633def7129de4166590fbfb5"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -513,7 +513,7 @@
     {
       "operation": "PutObjectTagging",
       "status": "working",
-      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
+      "message": "likely implemented (NoSuchVersion: The specified version does not exist.)"
     },
     {
       "operation": "PutPublicAccessBlock",

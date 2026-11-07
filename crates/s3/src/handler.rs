@@ -1516,10 +1516,117 @@ impl S3Handler {
     }
 
     /// The tags map of the current (newest) version of a key.
-    fn current_tags(bucket: &Bucket, key: &str) -> Option<HashMap<String, String>> {
+    /// moto's taggable-target resolution for Get/Put/DeleteObjectTagging
+    /// (responses.py:2494-2511): an explicit versionId selects that version
+    /// (a delete-marker versionId is 405 MethodNotAllowed); without one the
+    /// key must have a live record (a marked key is MissingKey) and moto
+    /// tags the newest version. Missing key with a versionId → NoSuchVersion.
+    /// Returns the tagged version index inside the entry.
+    fn taggable_version(
+        bucket: &Bucket,
+        key: &str,
+        version_id: Option<&str>,
+        method: &str,
+    ) -> Result<usize, AwsResponse> {
         let objects = bucket.objects.read();
-        let entry = objects.get(key)?;
-        entry.versions.first().map(|v| v.tags.clone())
+        let Some(entry) = objects.get(key) else {
+            return if version_id.is_some() {
+                Err(AwsResponse::error(
+                    404,
+                    "NoSuchVersion",
+                    "The specified version does not exist.",
+                ))
+            } else {
+                Err(AwsResponse::error(
+                    404,
+                    "NoSuchKey",
+                    "The specified key does not exist",
+                ))
+            };
+        };
+        match version_id {
+            Some(vid) => {
+                if let Some(m) = entry.markers.iter().find(|m| m.version_id == vid) {
+                    if method == "GET" {
+                        // moto's GET path resolves without
+                        // return_delete_marker (responses.py:2104-2108) — a
+                        // marker versionId is simply NoSuchVersion.
+                        return Err(AwsResponse::error(
+                            404,
+                            "NoSuchVersion",
+                            "The specified version does not exist.",
+                        ));
+                    }
+                    return Err(Self::delete_marker_version_error(
+                        method,
+                        &m.version_id,
+                        m.last_modified,
+                    ));
+                }
+                entry
+                    .versions
+                    .iter()
+                    .position(|v| v.version_id == vid)
+                    .ok_or_else(|| {
+                        AwsResponse::error(
+                            404,
+                            "NoSuchVersion",
+                            "The specified version does not exist.",
+                        )
+                    })
+            }
+            None => {
+                if !entry.is_live() {
+                    // moto GET-tagging of a marked key: get_object → None →
+                    // MissingKey; PUT-tagging resolves the MARKER via
+                    // return_delete_marker → MethodNotAllowed(method=PUT)
+                    // (responses.py:2496-2501). moto's DELETE-tagging
+                    // dereferences a None key and 500s — the typed 404 is
+                    // the twin's posture (ledgered).
+                    if method == "PUT" {
+                        let marker = entry.markers.first();
+                        return match marker {
+                            Some(m) => Err(Self::delete_marker_version_error(
+                                method,
+                                &m.version_id,
+                                m.last_modified,
+                            )),
+                            None => Err(AwsResponse::error(
+                                404,
+                                "NoSuchKey",
+                                "The specified key does not exist",
+                            )),
+                        };
+                    }
+                    return Err(AwsResponse::error(
+                        404,
+                        "NoSuchKey",
+                        "The specified key does not exist",
+                    ));
+                }
+                Ok(0)
+            }
+        }
+    }
+
+    /// moto's tag-set validation (models.py:2528-2536): at most ten tags
+    /// (moto's BadRequest) and no key prefixed with "aws" (its InvalidTag).
+    fn tagging_validation(tags: &HashMap<String, String>) -> Option<AwsResponse> {
+        if tags.len() > 10 {
+            return Some(AwsResponse::error(
+                400,
+                "BadRequest",
+                "Object tags cannot be greater than 10",
+            ));
+        }
+        if tags.keys().any(|k| k.starts_with("aws")) {
+            return Some(AwsResponse::error(
+                400,
+                "InvalidTag",
+                "Your TagKey cannot be prefixed with aws:",
+            ));
+        }
+        None
     }
 
     /// True when the key has at least one stored record.
@@ -1759,6 +1866,26 @@ impl S3Handler {
             .get("x-amz-storage-class")
             .cloned()
             .unwrap_or_else(|| "STANDARD".to_string());
+        // moto models.py:2433-2437 (utils.py:42-52): an unknown storage class
+        // is InvalidStorageClass.
+        const STORAGE_CLASSES: [&str; 9] = [
+            "STANDARD",
+            "REDUCED_REDUNDANCY",
+            "STANDARD_IA",
+            "ONEZONE_IA",
+            "INTELLIGENT_TIERING",
+            "GLACIER_IR",
+            "EXPRESS_ONEZONE",
+            "GLACIER",
+            "DEEP_ARCHIVE",
+        ];
+        if !STORAGE_CLASSES.contains(&storage_class.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidStorageClass",
+                "The storage class you specified is not valid",
+            );
+        }
         let tags = req
             .headers
             .get("x-amz-tagging")
@@ -2638,6 +2765,26 @@ impl S3Handler {
             .get("x-amz-storage-class")
             .cloned()
             .unwrap_or_else(|| source.storage_class.clone());
+        // moto CopyObject validates the requested storage class against the
+        // same whitelist (it inherits the source's class otherwise).
+        const COPY_STORAGE_CLASSES: [&str; 9] = [
+            "STANDARD",
+            "REDUCED_REDUNDANCY",
+            "STANDARD_IA",
+            "ONEZONE_IA",
+            "INTELLIGENT_TIERING",
+            "GLACIER_IR",
+            "EXPRESS_ONEZONE",
+            "GLACIER",
+            "DEEP_ARCHIVE",
+        ];
+        if !COPY_STORAGE_CLASSES.contains(&storage_class.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidStorageClass",
+                "The storage class you specified is not valid",
+            );
+        }
 
         // moto models.py:3066-3083: copying an object onto itself with no
         // changing parameter raises CopyObjectMustChangeSomething — real
@@ -2645,6 +2792,22 @@ impl S3Handler {
         // explicit source version is the documented exception, and a
         // REPLACE directive / storage-class / redirect header count as
         // changing parameters.
+        // moto responses.py:2398-2404: copying an archived source that has
+        // no completed restore is ObjectNotInActiveTierError.
+        if matches!(source.storage_class.as_str(), "GLACIER" | "DEEP_ARCHIVE")
+            && !source
+                .restore
+                .as_ref()
+                .is_some_and(|r| r.contains("ongoing-request=\"false\""))
+        {
+            return AwsResponse::error(
+                403,
+                "ObjectNotInActiveTierError",
+                "The source object of the COPY operation is not in the active tier and is \
+                 only stored in Amazon Glacier.",
+            );
+        }
+
         let same_target = src_bucket.name == dest.name && src_key == dest_key;
         let storage_changed = req.headers.contains_key("x-amz-storage-class");
         let redirect_changed = req.headers.contains_key("x-amz-website-redirect-location");
@@ -2844,6 +3007,22 @@ impl S3Handler {
             found
         };
 
+        // moto responses.py:2202-2206: an archived object without a
+        // completed restore answers InvalidObjectState before any other
+        // condition.
+        if matches!(obj.storage_class.as_str(), "GLACIER" | "DEEP_ARCHIVE")
+            && !obj
+                .restore
+                .as_ref()
+                .is_some_and(|r| r.contains("ongoing-request=\"false\""))
+        {
+            return AwsResponse::error(
+                403,
+                "InvalidObjectState",
+                "The operation is not valid for the object's storage class",
+            );
+        }
+
         // Conditional requests (moto responses.py:2188-2219): 412 on
         // violated If-Match / If-Unmodified-Since, 304 on matching
         // If-None-Match / stale If-Modified-Since.
@@ -2921,6 +3100,14 @@ impl S3Handler {
                 obj.tags.len().to_string(),
             ));
         }
+        if let Some(restore) = &obj.restore {
+            resp.headers
+                .push(("x-amz-restore".to_string(), restore.clone()));
+        }
+        if obj.storage_class != "STANDARD" {
+            resp.headers
+                .push(("x-amz-storage-class".to_string(), obj.storage_class.clone()));
+        }
         if obj.version_id != NULL_VERSION_ID {
             resp.headers
                 .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
@@ -2985,6 +3172,20 @@ impl S3Handler {
                 }
             }
         };
+
+        // moto responses.py:2202-2206: InvalidObjectState gate on HEAD too.
+        if matches!(obj.storage_class.as_str(), "GLACIER" | "DEEP_ARCHIVE")
+            && !obj
+                .restore
+                .as_ref()
+                .is_some_and(|r| r.contains("ongoing-request=\"false\""))
+        {
+            return AwsResponse::error(
+                403,
+                "InvalidObjectState",
+                "The operation is not valid for the object's storage class",
+            );
+        }
 
         // Conditional requests first, moto's _get_key order but with HEAD's
         // LITERAL etag comparison (responses.py:2679/2686 — quoted
@@ -3075,6 +3276,13 @@ impl S3Handler {
                 "x-amz-tagging-count".to_string(),
                 obj.tags.len().to_string(),
             ));
+        }
+        if let Some(restore) = &obj.restore {
+            headers.push(("x-amz-restore".to_string(), restore.clone()));
+        }
+        if obj.storage_class != "STANDARD" {
+            let _ = &bucket;
+            headers.push(("x-amz-storage-class".to_string(), obj.storage_class.clone()));
         }
         if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
             headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));
@@ -3825,8 +4033,15 @@ impl S3Handler {
             Err(e) => return e,
         };
         let (_bucket_name, key) = Self::bucket_and_key(req);
-        if !Self::entry_exists(&bucket, &key) {
-            return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist");
+        if let Some(e) = Self::taggable_version(
+            &bucket,
+            &key,
+            req.query_params.get("versionId").map(|s| s.as_str()),
+            "PUT",
+        )
+        .err()
+        {
+            return e;
         }
         let body = String::from_utf8_lossy(&req.body).to_string();
         let mut tags = HashMap::new();
@@ -3837,12 +4052,18 @@ impl S3Handler {
                 tags.insert(k, v);
             }
         }
+        if let Some(e) = Self::tagging_validation(&tags) {
+            return e;
+        }
         {
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
-                if let Some(v) = entry.versions.first_mut() {
-                    v.tags = tags;
-                }
+                let idx = req
+                    .query_params
+                    .get("versionId")
+                    .and_then(|vid| entry.versions.iter().position(|v| v.version_id == *vid))
+                    .unwrap_or(0);
+                entry.versions[idx].tags = tags;
             }
         }
         AwsResponse::no_content(200)
@@ -3854,7 +4075,30 @@ impl S3Handler {
             Err(e) => return e,
         };
         let (_bucket_name, key) = Self::bucket_and_key(req);
-        let tags = Self::current_tags(&bucket, &key).unwrap_or_default();
+        if let Some(e) = Self::taggable_version(
+            &bucket,
+            &key,
+            req.query_params.get("versionId").map(|s| s.as_str()),
+            "GET",
+        )
+        .err()
+        {
+            return e;
+        }
+        let tags = {
+            let objects = bucket.objects.read();
+            match objects.get(&key) {
+                Some(entry) => {
+                    let idx = req
+                        .query_params
+                        .get("versionId")
+                        .and_then(|vid| entry.versions.iter().position(|v| v.version_id == *vid))
+                        .unwrap_or(0);
+                    entry.versions[idx].tags.clone()
+                }
+                None => HashMap::new(),
+            }
+        };
         let mut tag_xml = String::new();
         for (k, v) in tags.iter() {
             tag_xml.push_str(&format!(
@@ -3877,15 +4121,25 @@ impl S3Handler {
             Err(e) => return e,
         };
         let (_bucket_name, key) = Self::bucket_and_key(req);
-        if !Self::entry_exists(&bucket, &key) {
-            return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist");
+        if let Some(e) = Self::taggable_version(
+            &bucket,
+            &key,
+            req.query_params.get("versionId").map(|s| s.as_str()),
+            "DELETE",
+        )
+        .err()
+        {
+            return e;
         }
         {
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
-                if let Some(v) = entry.versions.first_mut() {
-                    v.tags = HashMap::new();
-                }
+                let idx = req
+                    .query_params
+                    .get("versionId")
+                    .and_then(|vid| entry.versions.iter().position(|v| v.version_id == *vid))
+                    .unwrap_or(0);
+                entry.versions[idx].tags = HashMap::new();
             }
         }
         AwsResponse::no_content(204)
@@ -4038,7 +4292,35 @@ impl S3Handler {
             .cloned()
             .unwrap_or_else(|| "binary/octet-stream".to_string());
 
-        let upload = crate::models::MultipartUpload::new(key.clone(), content_type);
+        let mp_storage_class = req
+            .headers
+            .get("x-amz-storage-class")
+            .cloned()
+            .unwrap_or_else(|| "STANDARD".to_string());
+        // moto CreateMultipartUpload validates the storage class against the
+        // same whitelist (utils.py:42-52) and the completed object inherits
+        // it.
+        const MP_STORAGE_CLASSES: [&str; 9] = [
+            "STANDARD",
+            "REDUCED_REDUNDANCY",
+            "STANDARD_IA",
+            "ONEZONE_IA",
+            "INTELLIGENT_TIERING",
+            "GLACIER_IR",
+            "EXPRESS_ONEZONE",
+            "GLACIER",
+            "DEEP_ARCHIVE",
+        ];
+        if !MP_STORAGE_CLASSES.contains(&mp_storage_class.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidStorageClass",
+                "The storage class you specified is not valid",
+            );
+        }
+
+        let mut upload = crate::models::MultipartUpload::new(key.clone(), content_type);
+        upload.storage_class = mp_storage_class;
         let upload_id = upload.upload_id.clone();
         bucket
             .multipart_uploads
@@ -4255,10 +4537,18 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
-        let (content_type, stored) = {
+        let (content_type, mp_storage_class, stored) = {
             let uploads = bucket.multipart_uploads.read();
             match uploads.get(&upload_id) {
-                Some(u) => (u.content_type.clone(), u.parts.read().clone()),
+                Some(u) => (
+                    u.content_type.clone(),
+                    if u.storage_class.is_empty() {
+                        "STANDARD".to_string()
+                    } else {
+                        u.storage_class.clone()
+                    },
+                    u.parts.read().clone(),
+                ),
                 None => {
                     return AwsResponse::error(
                         404,
@@ -4344,7 +4634,7 @@ impl S3Handler {
             content_type,
             Self::user_metadata(req),
             HashMap::new(),
-            "STANDARD".to_string(),
+            mp_storage_class,
         );
         // Override the stored etag with the AWS multipart composite format.
         if let Some(entry) = bucket.objects.write().get_mut(&key) {
@@ -4572,7 +4862,30 @@ impl S3Handler {
                 }
             }
         };
+        let already_restored = {
+            let objects = bucket.objects.read();
+            objects
+                .get(&key)
+                .and_then(|e| e.versions.first())
+                .and_then(|v| v.restore.clone())
+                .is_some_and(|r| r.contains("ongoing-request=\"false\""))
+        };
         if storage_class == "GLACIER" || storage_class == "DEEP_ARCHIVE" {
+            // moto models.py restore_object sets the x-amz-restore marker
+            // (an OngoingRequest=false completed restore) that unblocks
+            // normal reads; moto answers 200 on a re-restore
+            // (responses.py:3223-3226's had_expiry_date path).
+            if already_restored {
+                return AwsResponse::no_content(200);
+            }
+            {
+                let mut objects = bucket.objects.write();
+                if let Some(entry) = objects.get_mut(&key) {
+                    if let Some(v) = entry.versions.first_mut() {
+                        v.restore = Some("ongoing-request=\"false\"".to_string());
+                    }
+                }
+            }
             Self::fire_event(req, &bucket, &key, "s3:ObjectRestore:Post", 0, "");
             AwsResponse::no_content(202)
         } else {

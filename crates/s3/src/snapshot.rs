@@ -136,6 +136,7 @@ mod tests {
             "k.txt".to_string(),
             ObjectEntry {
                 versions: vec![ObjectVersion {
+                    restore: None,
                     version_id: NULL_VERSION_ID.to_string(),
                     seq: 1,
                     data: b"state-data".to_vec(),

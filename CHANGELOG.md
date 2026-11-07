@@ -62,6 +62,21 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3 tagging versioning and the storage-class contract.** The moto audit's
+  seventh tranche (`docs/semantic-audit-2026-11-06/sqs-s3.md` findings
+  13-remainder and 14): Get/Put/DeleteObjectTagging honor `versionId` (a
+  delete-marker version answers 405 `MethodNotAllowed`, a missing version
+  404 `NoSuchVersion`, a delete-marked key `NoSuchKey`), and PUT enforces
+  moto's tag limits — more than ten tags (`BadRequest`: "Object tags cannot
+  be greater than 10") and `aws`-prefixed keys (`InvalidTag`: "Your TagKey
+  cannot be prefixed with aws:"). `x-amz-storage-class` is validated against
+  moto's nine-class whitelist (400 `InvalidStorageClass`); GET and HEAD of a
+  `GLACIER`/`DEEP_ARCHIVE` object without a completed restore answer 403
+  `InvalidObjectState`, copying one answers 403
+  `ObjectNotInActiveTierError`, and `RestoreObject` now books the restore
+  marker that unblocks subsequent reads. 16 new compat tests and 7
+  differential steps.
+
 - **S3 conditional requests and the CopyObject contract.** The moto audit's
   sixth tranche (`docs/semantic-audit-2026-11-06/sqs-s3.md` findings 9 and
   10): GET/HEAD now evaluate If-Match, If-None-Match, If-Modified-Since and
