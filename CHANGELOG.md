@@ -62,6 +62,36 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **DynamoDB item semantics: key validation, expression operand typing, set
+  equality, GSI membership.** The moto-semantic audit's fifth tranche
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md` findings 1, 4, 5, 6, 7,
+  8, 10, 13 and the ConsistentRead half of 15), driven through the
+  differential and the compat shard:
+  puts now reject absent keys (`Missing the key {n} in the item`), key
+  types outside the schema (`Type mismatch for key {n} expected: {E}
+  actual: {A}`), empty string/binary key values, empty NS/SS sets and
+  NULL-typed index keys — all with moto's exact texts, including moto's
+  own hardcoded `Expected: S` in the NULL-index-key wording.
+  Update expressions validate operand typing like moto's AddExecutor:
+  `ADD` of a number onto a string attribute, a set onto a string, a list
+  operand, or an empty set-operand all 400 with the real-AWS/moto
+  wordings (the old twin overwrote the attribute and extended lists);
+  DELETE that empties a set removes the attribute entirely instead of
+  leaving a `{}` set; unresolved `#name` placeholders in update and
+  condition expressions answer `ValidationException` with moto's
+  "attribute name #x is not defined" text (real AWS — moto 500s).
+  Set equality in conditions/filters is unordered and
+  numeric-equal (`{"NS":["1"]}` matches `{"NS":["1.0"]}`), and number-set
+  dedup follows real AWS numerically (moto's list membership is
+  string-sensitive; live-probed and ledgered twin-preferred). GSI
+  membership requires every index key attribute (items missing the range
+  key no longer leak into Query/Scan). `ConsistentRead=true` on a GSI
+  answers `Consistent reads are not supported on global secondary
+  indexes`. GetItem now rejects overlapping projection paths with the
+  real-AWS contract text (moto silently deduped them). 16 new compat
+  tests, 9 ledger findings struck; two differential steps ledgered
+  twin-preferred (`update_unresolved_name`, `get_item_duplicate_projection`).
+
 - **S3 destruction and multipart fidelity: versioned `DeleteObjects`, part
   validation, `UploadPartCopy` ranges and 416 ranges.** The moto-semantic
   audit's fourth tranche, driven through the differential and the compat

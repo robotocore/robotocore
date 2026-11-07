@@ -19,6 +19,13 @@ DYNAMODB
    (d) Real AWS sends the "Missing the key …" text and rejects type-mismatched keys with the "Type mismatch for key" ValidationException — moto matches AWS; robotocore diverges from both.
    (e) A.
 
+   **FIXED (2026-11-07, verified in source):** put-shaped writes carry moto's exact
+   texts — `<Missing the key {name} in the item>` for absent keys and the
+   `Type mismatch for key {name} expected: {E} actual: {A}` InvalidAttributeTypeError
+   wording for a key value outside the schema type (put_shape_error in
+   crates/dynamodb/src/handler.rs, wired into PutItem). Differential step
+   `dynamodb.put_key_type_mismatch` + `put_missing_key` pin it.
+
 2. Query KeyConditionExpression is not schema-validated.
    (a) Query.
    (b) moto parses the KCE against the table/index schema (responses.py:934-951 → parsing/key_condition_expression.py:215-316): a missing hash-key equality → MockValidationException "Query condition missed key schema element: {k}" (key_condition_expression.py:250-254); a hash key used with a non-equality operator or a non-key attribute → "Query key condition not supported" (261-257, 280); a Query with neither KeyConditionExpression nor KeyConditions → "Either KeyConditions or QueryFilter should be present" (responses.py:967-970).
@@ -42,12 +49,24 @@ DYNAMODB
    (d) Real AWS rejects empty-string key values and empty sets (empty sets are unrepresentable in DynamoDB) — robotocore diverges from both.
    (e) A.
 
+   **FIXED (2026-11-07, verified in source):** empty string/binary key values, empty
+   NS/SS sets outside the keys, and NULL-typed index keys are rejected with moto's
+   exact texts (responses.py:93-161 mirrored, including moto's hardcoded
+   "Expected: S" in the NULL-index-key message). Differential steps
+   `put_empty_string_key`, `put_empty_set`.
+
 5. Unresolved `#name` placeholders: wrong error, and writes an attribute literally named `#x`.
    (a) ConditionExpression and UpdateExpression on PutItem/UpdateItem/DeleteItem (the Query/Scan pre-pass already handles its own case).
    (b) moto's condition parser resolves `#names` by strict dict access (comparisons.py:474-475) — an unresolved name crashes the request (unhandled KeyError); in update expressions the validator raises ExpressionAttributeNameNotDefined "An expression attribute name used in the document path is not defined; attribute name: #x" (parsing/validators.py:108-112), wire type ValidationException.
    (c) robotocore's resolve_path silently falls back to the raw token (expr.rs:146-151: `names.get(...).unwrap_or_else(|| head.to_string())`). In a ConditionExpression this usually evaluates false and the caller gets ConditionalCheckFailedException (handler.rs:1288-1349) instead of a ValidationException; in an UpdateExpression `SET #nope = :v` SUCCEEDS and writes an attribute literally named `#nope`. The `unbound_name_token` guard (handler.rs:1037-1067) is applied only in query/scan, not on the item-op paths.
    (d) Real AWS returns ValidationException for both shapes — robotocore diverges.
    (e) A.
+
+   **FIXED (2026-11-07, verified in source):** unresolved `#name`s on the item ops
+   answer 400 ValidationException with moto's ExpressionAttributeNameNotDefined
+   text (the unbound_name_token pre-pass applied to UpdateExpression and to the
+   condition paths via eval_condition_on). moto 500s on the update shape
+   (uncaught KeyError) — `dynamodb.update_unresolved_name` ledgered twin-preferred.
 
 6. ADD to an existing attribute of the wrong type silently overwrites it.
    (a) UpdateItem ADD (and the transact Update row).
@@ -56,6 +75,12 @@ DYNAMODB
    (d) Real AWS returns a ValidationException — robotocore diverges from both.
    (e) A.
 
+   **FIXED (2026-11-07, verified in source):** ADD enforces moto's operand typing
+   (executors.py:220-272): a non-set/non-number operand — lists included — raises
+   IncorrectDataType's "An operand in the update expression has an incorrect data
+   type"; the old twin overwrote the attribute (and extended lists). Differential
+   step `add_onto_string_attr`.
+
 7. DELETE that empties a set leaves an empty set behind; ADD of an empty set is accepted.
    (a) UpdateItem DELETE / ADD on SS/NS/BS.
    (b) moto removes the attribute entirely when the last element is deleted ("DynamoDB does not support empty sets", executors.py:177-192) and raises "An string set may not be empty" for an empty ADD operand (executors.py:228-231).
@@ -63,12 +88,24 @@ DYNAMODB
    (d) Real AWS removes the emptied attribute and rejects empty sets — robotocore diverges from both; the leftover empty set then leaks into GetItem/Scan responses.
    (e) A.
 
+   **FIXED (2026-11-07, verified in source):** DELETE that empties a set removes the
+   attribute entirely (moto executors.py:177-181) and an empty ADD operand is
+   rejected with moto's wording; the emptied attribute is consumed from the
+   stored item. Differential step `delete_set_to_empty_removes_attr` pins it.
+
 8. Set (SS/NS/BS) equality is order- and format-sensitive.
    (a) All condition/filter evaluation, ExclusiveStartKey matching, ADD/DELETE element dedup.
    (b) moto compares DynamoType via `cast_value`, which converts sets to python sets of Decimal/str (models/dynamo_type.py:81-82, 183-188): `{"SS":["a","b"]}` == `{"SS":["b","a"]}` and `{"NS":["1"]}` == `{"NS":["1.0"]}` are both true.
    (c) robotocore's attr_eq for (SS,SS)/(NS,NS)/(BS,BS) falls to the generic `a == b` JSON comparison (expr.rs:467-482) — order- and string-format-sensitive; the same raw compare governs merge_sets dedup (expr.rs:1687-1707), so ADD of "1" onto a set holding "1.0" duplicates the element, and a filter `ss = :v` with reordered elements misses.
    (d) Real AWS treats sets as unordered with numeric-equal elements — robotocore diverges from both.
    (e) A.
+
+   **FIXED in part (2026-11-07, verified in source):** whole-value set equality in
+   conditions/filters is now unordered and numeric-equal (set_eq); ADD/DELETE
+   element dedup prefers real AWS's numeric semantics for NS (moto's list
+   membership is string-sensitive — the audit's (b)/(d) overstated moto's dedup;
+   a live moto probe returns ['1','1.0','2'] — ledgered as twin-preferred when a
+   differential step covers the op).
 
 9. ConsumedCapacity is never returned on single-item/read operations.
    (a) PutItem, GetItem, DeleteItem, UpdateItem, Query, Scan, BatchGetItem.
@@ -85,6 +122,10 @@ DYNAMODB
     (c) robotocore retains candidates when the index HASH attribute is present (handler.rs:1789-1791: `candidates.retain(|(_, m)| m.contains_key(&hash_attr))`), so items missing the GSI range key flow into Query/Scan results (their sort/compare segments treat the missing range key as equal, handler.rs:1811-1847).
     (d) Real AWS indexes an item only if every key attribute of the index is present — robotocore diverges from both.
     (e) A.
+
+   **FIXED (2026-11-07, verified in source):** GSI membership requires every
+   index key attribute (candidates.retain over the full index key schema,
+   mirroring models/table.py:877-882/1019-1033).
 
 11. BatchGetItem: missing limits, duplicate-key check and response ConsumedCapacity.
     (a) BatchGetItem.
@@ -107,6 +148,13 @@ DYNAMODB
     (d) Real AWS returns a ValidationException — robotocore diverges from both. (Query/Scan/TransactGet/BatchGet return the error correctly; only GetItem swallows it.)
     (e) A.
 
+   **FIXED (2026-11-07, verified in source):** GetItem's invalid projection now
+   propagates the ValidationException (overlapping paths get moto's own
+   exceptions.py:316 contract text — moto itself never ran the validator on
+   GetItem, ledgered `dynamodb.get_item_duplicate_projection` twin-preferred; the
+   other half of the audit's reserved-keyword/digit/whitespace list remains for
+   a later tranche).
+
 14. UpdateTimeToLive: wrong error code and wrong validation trigger; DescribeTimeToLive drops AttributeName after disable.
     (a) UpdateTimeToLive, DescribeTimeToLive.
     (b) moto raises `JsonRESTError("InvalidParameterValue", "TimeToLiveSpecification does not contain Enabled and AttributeName")` whenever either member is missing — including Enabled=false with no AttributeName (models/__init__.py:578-594); DescribeTimeToLive returns the stored dict, so AttributeName persists after a disable (models/__init__.py:596-602).
@@ -120,6 +168,10 @@ DYNAMODB
     (c) robotocore never reads ConsistentRead (query/scan handlers 1616-1675) and returns all table names unpaginated, sorted (handler.rs:137-142).
     (d) Real AWS rejects consistent reads on GSIs (ValidationException) and paginates ListTables — robotocore diverges on both.
     (e) A.
+
+   **FIXED in part (2026-11-07, verified in source):** ConsistentRead=true on a GSI
+   (Query or Scan) answers 400 ValidationException with moto's exact text. Still
+   open: ListTables pagination.
 
 IAM
 
