@@ -869,12 +869,9 @@ impl KmsHandler {
     ) -> Result<String, AwsResponse> {
         if Self::is_alias_ref(key_id) {
             let canonical = crate::models::normalize_key_ref(key_id);
-            let found = {
-                let target = state.alias_target(&canonical);
-                target
-            };
-            if found.is_some() {
-                return Ok(found.unwrap());
+            let found = state.alias_target(&canonical);
+            if let Some(target) = found {
+                return Ok(target);
             }
             // moto additionally auto-creates a default key behind its 14
             // reserved `alias/aws/*` names; the twin keeps those forever
@@ -1006,12 +1003,12 @@ impl KmsHandler {
         let bytes_param = req.params.get("NumberOfBytes").and_then(Value::as_i64);
         let key_spec = pstr(req, "KeySpec");
         let bytes_given = matches!(bytes_param, Some(n) if n != 0);
-        let spec_given = key_spec.as_deref().map_or(false, |s| !s.is_empty());
+        let spec_given = key_spec.as_deref().is_some_and(|s| !s.is_empty());
 
         // 1. numberOfBytes range — the message only cites the ≤1024 bound
         //    even for values below 1 (moto:553-558).
         if let Some(n) = bytes_param {
-            if n != 0 && (n > 1024 || n < 1) {
+            if n != 0 && !(1..=1024).contains(&n) {
                 return AwsResponse::error(
                     400,
                     "ValidationException",
@@ -1552,7 +1549,7 @@ impl KmsHandler {
             .iter()
             .filter(|g| g.key_id == key.key_id)
             // moto models.py:194-196 — optional GrantId filter.
-            .filter(|g| grant_id.as_deref().map_or(true, |id| g.grant_id == id))
+            .filter(|g| grant_id.as_deref().is_none_or(|id| g.grant_id == id))
             .map(Self::grant_json)
             .collect();
         let count = grants.len();
@@ -1959,7 +1956,7 @@ fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsRespons
         return Err(sign_usage_error(key));
     }
     let (_, allowed, _) = key.algorithms();
-    if !allowed.iter().any(|a| *a == algo) {
+    if !allowed.contains(&algo) {
         return Err(sign_algo_error(key, algo));
     }
     if key.is_rsa() {
@@ -2041,7 +2038,7 @@ fn verify_raw(
         return Err(sign_usage_error(key));
     }
     let (_, allowed, _) = key.algorithms();
-    if !allowed.iter().any(|a| *a == algo) {
+    if !allowed.contains(&algo) {
         return Err(sign_algo_error(key, algo));
     }
     if key.is_rsa() {

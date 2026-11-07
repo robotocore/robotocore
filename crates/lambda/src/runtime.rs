@@ -2078,7 +2078,7 @@ fn ensure_dotnet_local_bootstrap(tfm: &str) -> Option<std::path::PathBuf> {
 /// (with or without `runtimeconfig.json`) run as built; a package carrying
 /// `.cs` sources and no DLL compiles first through the hardened
 /// [`docker_runtime::compile_dotnet_source_if_needed`] staging (csproj guard
-/// + escape-proof staging dir + subdirectory build); a self-contained app
+/// plus escape-proof staging dir + subdirectory build); a self-contained app
 /// (own `runtimeconfig.json`) runs `dotnet exec <assembly.dll>` directly,
 /// a class library runs `dotnet exec <bootstrap.dll>` from the cached
 /// reflection-bootstrap dir with `LAMBDA_CODE_DIR` pointing at the code dir.
@@ -2102,6 +2102,39 @@ pub fn execute_dotnet(
     region: &str,
     account_id: &str,
 ) -> ExecResult {
+    // Era handler split: "Assembly::Type::Method" (parts[0] names the
+    // assembly for the load path and generated csproj). Pure validation —
+    // it runs before the SDK check so a malformed or traversal-ish handler
+    // name gets its real error on machines without a .NET SDK too.
+    let parts: Vec<&str> = handler.split("::").collect();
+    if parts.len() < 3 {
+        let message =
+            format!("Bad .NET handler format: {handler}. Expected Assembly::Type::Method");
+        return ExecResult {
+            payload: json!({
+                "errorMessage": message,
+                "errorType": "Runtime.HandlerNotFound",
+            })
+            .to_string(),
+            function_error: Some("Runtime.HandlerNotFound".to_string()),
+            logs: message,
+        };
+    }
+    let assembly_name = parts[0];
+    // Same guard the docker-mode compile path enforces — applied to every
+    // load path here (the name is joined into paths/csproj fragments).
+    if let Some(violation) = crate::docker_runtime::dotnet_assembly_violation(assembly_name) {
+        let message = format!("Invalid .NET handler assembly '{assembly_name}': {violation}");
+        return ExecResult {
+            payload: json!({
+                "errorMessage": message,
+                "errorType": "Runtime.ImportModuleError",
+            })
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: message,
+        };
+    }
     let Some(dotnet_bin) = find_dotnet() else {
         return ExecResult {
             payload: "null".to_string(),
@@ -2128,40 +2161,6 @@ pub fn execute_dotnet(
     if let Err(e) = extract_family_code(code_zip, layer_zips, &work) {
         cleanup(&work);
         return missing_runtime_result(&e);
-    }
-
-    // Era handler split: "Assembly::Type::Method" (parts[0] names the
-    // assembly for the load path and generated csproj).
-    let parts: Vec<&str> = handler.split("::").collect();
-    if parts.len() < 3 {
-        cleanup(&work);
-        let message =
-            format!("Bad .NET handler format: {handler}. Expected Assembly::Type::Method");
-        return ExecResult {
-            payload: json!({
-                "errorMessage": message,
-                "errorType": "Runtime.HandlerNotFound",
-            })
-            .to_string(),
-            function_error: Some("Runtime.HandlerNotFound".to_string()),
-            logs: message,
-        };
-    }
-    let assembly_name = parts[0];
-    // Same guard the docker-mode compile path enforces — applied to every
-    // load path here (the name is joined into paths/csproj fragments).
-    if let Some(violation) = crate::docker_runtime::dotnet_assembly_violation(assembly_name) {
-        cleanup(&work);
-        let message = format!("Invalid .NET handler assembly '{assembly_name}': {violation}");
-        return ExecResult {
-            payload: json!({
-                "errorMessage": message,
-                "errorType": "Runtime.ImportModuleError",
-            })
-            .to_string(),
-            function_error: Some("Runtime.ImportModuleError".to_string()),
-            logs: message,
-        };
     }
 
     // Locate the assembly DLL: code dir first, then a publish/ subdir (era).
@@ -3803,7 +3802,8 @@ exports.handler = async (event, context) => {
     fn test_execute_dotnet_bad_handler_format_and_guard() {
         // Era test_bad_handler_format + the docker-mode assembly guard: no
         // interpreter runs for a malformed handler spec or a traversal-ish
-        // assembly name.
+        // assembly name. (No SDK guard: the validation below the split is
+        // pure string work and execute_dotnet checks it before find_dotnet.)
         let bad_format = exec_dotnet(
             &make_files_zip(&[("dummy.txt", "")]),
             "bad-format",
@@ -3850,6 +3850,9 @@ exports.handler = async (event, context) => {
         // Era test_missing_assembly: no DLL and no .cs sources answers
         // ImportModuleError naming the assembly. The message rides the
         // payload object (the docker-mode compile path's shape).
+        if !has_bin("dotnet") {
+            return;
+        }
         let res = exec_dotnet(
             &make_files_zip(&[("readme.txt", "nothing useful")]),
             "MyAssembly::MyNamespace.MyClass::MyMethod",

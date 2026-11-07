@@ -412,8 +412,6 @@ fn handle_get_access_key_last_used(
     Ok(xml_response(body))
 }
 
-/// Helper: build a ParsedResponse from raw XML.
-
 /// XML-escape a client-controlled value interpolated into the STS XML body
 /// (rotocore::proto::xml_escape parity; `<`/`&` etc. would otherwise break
 /// the response or inject sibling elements).

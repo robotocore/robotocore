@@ -1320,33 +1320,27 @@ impl CloudwatchHandler {
         // moto: start/end are required and must be ordered
         // (InvalidParameterValue otherwise) — defaulting missing markers to
         // "now" evaluated empty ranges against the wrong domain silently.
-        let start = Self::ts_param_strict(&req.params, "StartTime")
-            .ok_or(())
-            .or_else(|_| {
-                Err(Self::error_for(
+        let start = match Self::ts_param_strict(&req.params, "StartTime") {
+            Some(v) => v,
+            None => {
+                return Self::error_for(
                     req,
                     400,
                     "InvalidParameterValue",
                     "StartTime is required and must be a valid timestamp",
-                ))
-            });
-        let start = match start {
-            Ok(v) => v,
-            Err(resp) => return resp,
+                )
+            }
         };
-        let end = Self::ts_param_strict(&req.params, "EndTime")
-            .ok_or(())
-            .or_else(|_| {
-                Err(Self::error_for(
+        let end = match Self::ts_param_strict(&req.params, "EndTime") {
+            Some(v) => v,
+            None => {
+                return Self::error_for(
                     req,
                     400,
                     "InvalidParameterValue",
                     "EndTime is required and must be a valid timestamp",
-                ))
-            });
-        let end = match end {
-            Ok(v) => v,
-            Err(resp) => return resp,
+                )
+            }
         };
         if start >= end {
             return Self::error_for(
@@ -2336,6 +2330,9 @@ mod tests {
     use super::*;
     use bytes::Bytes;
     use serde_json::json;
+    use std::sync::Arc;
+
+    type AlarmArmedSlot = Arc<parking_lot::Mutex<Option<(Arc<CloudwatchHandler>, AwsRequest)>>>;
 
     fn make_req(operation: &str, params: Value) -> AwsRequest {
         AwsRequest {
@@ -2864,8 +2861,7 @@ mod tests {
         // the handler with a staged PutMetricData — the exact shape a Lambda
         // alarm action runs with (one take() disarms it, keeping the nested
         // deliveries one level deep).
-        let armed: Arc<parking_lot::Mutex<Option<(Arc<CloudwatchHandler>, AwsRequest)>>> =
-            Arc::default();
+        let armed: AlarmArmedSlot = Arc::default();
         let armed_hook = Arc::clone(&armed);
         crate::bridge::register_alarm_action(
             "sns",

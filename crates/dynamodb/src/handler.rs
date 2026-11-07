@@ -1682,7 +1682,7 @@ impl DynamoDbHandler {
         // grammar instead of a silently-empty result set.
         for (expr, member) in [
             (key_cond, "KeyConditionExpression"),
-            (&filter, "FilterExpression"),
+            (filter, "FilterExpression"),
         ] {
             if expr.trim().is_empty() {
                 continue;
@@ -2200,8 +2200,8 @@ impl DynamoDbHandler {
                     if let Some(item_json) = write.pointer("/PutRequest/Item").cloned() {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
-                        let Some(key) = item_key(&table, &attrs) else {
-                            return keyed_lookup_error(&table, &attrs);
+                        let Some(key) = item_key(table, &attrs) else {
+                            return keyed_lookup_error(table, &attrs);
                         };
                         // moto dedups puts on the WHOLE item dump
                         // (dynamo_json_dump over the item): identical items
@@ -2232,7 +2232,7 @@ impl DynamoDbHandler {
                     if let Some(key_json) = write.pointer("/DeleteRequest/Key").cloned() {
                         let key_attrs: Map<String, Value> =
                             key_json.as_object().cloned().unwrap_or_default();
-                        let Some(key) = item_key(&table, &key_attrs) else {
+                        let Some(key) = item_key(table, &key_attrs) else {
                             // moto's batch DELETE rows resolve through
                             // backend.delete_item → get_keys_value, whose
                             // whole schema arm is the generic text — the

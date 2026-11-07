@@ -3100,7 +3100,6 @@ mod tests {
                    "ClientRequestToken": update_token}),
         ));
         assert_eq!(resp.status, 200, "update body: {}", resp.body);
-        let new_id = update_token.clone();
 
         // The stage reads resolve FROM the stage (the regression core —
         // the old path defaulted AWSCURRENT and returned the NEW value

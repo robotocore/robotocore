@@ -753,7 +753,7 @@ impl KinesisHandler {
             // exceptions.py:25-29), for whichever side is missing — moto
             // resolves the pair independently.
             let missing = {
-                let have1 = stream.shard_by_id(&shard1_id).is_some();
+                let have1 = stream.shard_by_id(shard1_id).is_some();
                 if have1 {
                     &shard2_id
                 } else {
