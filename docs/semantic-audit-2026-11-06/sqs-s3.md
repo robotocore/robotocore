@@ -82,6 +82,18 @@ S3
    **FIXED (2026-11-07, verified in source):** the request body is parsed for the listed `<Part>` entries; every listed part must exist and match its ETag (InvalidPart, moto's message), part numbers must ascend with no duplicates (InvalidPartOrder), every listed part except the last must be >= 5 MiB (EntityTooSmall), and only the listed parts in listed order compose the object. An empty list now answers MalformedXML (the old twin answered InvalidPart "At least one part must be uploaded"). Verified live against moto via the differential corpus; `s3.complete_multipart` is ledgered moto-only for the `<VersionId>null</VersionId>` member moto emits on unversioned buckets (real AWS omits VersionId).
 
 9. Conditional requests (If-Match / If-None-Match / If-Modified-Since / If-Unmodified-Since) are unimplemented on GET/HEAD/PUT
+
+   **FIXED (2026-11-07, verified in source):** If-Match / If-None-Match /
+   If-Modified-Since / If-Unmodified-Since on GET and HEAD drive the
+   moto-ordered evaluation (hard 412s first, then the 304 outcome); PUT
+   honors If-Match (MissingKey when absent) and If-None-Match=*, DELETE
+   honors If-Match — all with moto's "At least one of the pre-conditions
+   you specified did not hold" text. A garbage date header behaves as
+   absent (moto 500s; the malformed-date contract is deferred). Differen-
+   tial steps get_if_match_wrong / get_if_modified_since_future /
+   get_if_none_match_current / put_if_none_match_star /
+   delete_if_match_wrong; the If-Modified-Since subsecond caveat stays
+   as moto has it.
    (a) GetObject, HeadObject, PutObject, DeleteObject.
    (b) moto M/s3/responses.py:2188-2219 (`_get_key` — 304 on If-Modified-Since/If-None-Match, 412 PreconditionFailed on If-Match/If-Unmodified-Since), head_object at 2675-2687, put_object If-Match / If-None-Match=* preconditions at 2286-2296, delete_object If-Match at 3083-3090.
    (c) R/s3/src/handler.rs:2515-2637 (get), 2639-2719 (head), 1545-1606 (put), 2721-2775 (delete) — no If-* header is read anywhere (grep confirms zero occurrences in the crate).
@@ -89,6 +101,15 @@ S3
    (e) High confidence.
 
 10. CopyObject: no in-place guard, no copy-source-version-id header, wrong error for a missing source version
+
+   **FIXED (2026-11-07, verified in source):** copying an object onto itself
+   with no changing parameter answers moto's CopyObjectMustChangeSomething
+   contract (400 InvalidRequest with real AWS's full legality message);
+   missing source with an explicit versionId is 404 NoSuchVersion
+   ("The specified version does not exist.") while a version-less missing
+   source stays NoSuchKey; the response carries x-amz-copy-source-version-id
+   for any non-null source version. Pins: copy_in_place / copy_in_place_replace
+   / copy_missing_version corpus steps + five compat tests.
     (a) CopyObject.
     (b) moto M/s3/models.py:3066-3083 — copying onto itself with no changing parameter raises CopyObjectMustChangeSomething (unless versioned with a provided version id); responses.py:2429-2431 — a missing source with versionId raises MissingVersion (code NoSuchVersion) vs MissingKey without one; responses.py:2446-2447 — response carries `x-amz-copy-source-version-id` whenever the source version != "null".
     (c) R/s3/src/handler.rs:2344-2451 (`do_copy_object`) — no in-place check (silently succeeds), always 404 NoSuchKey for any missing source (bucket or version), and never sends x-amz-copy-source-version-id. Metadata/tagging directive handling (COPY/REPLACE) matches moto.

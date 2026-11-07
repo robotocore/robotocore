@@ -1857,3 +1857,209 @@ class TestS3MultipartAndDeleteFidelity:
         got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=0-1,3-4")
         assert got["Body"].read() == body
         assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3ConditionalRequests:
+    """moto responses.py:2188-2219 (_get_key), 2286-2296 (PUT), 3083-3090
+    (DELETE): If-Match/If-Unmodified-Since → 412, If-Modified-Since /
+    If-None-Match → 304 on GET/HEAD."""
+
+    @pytest.fixture
+    def obj_bucket(self, s3):
+        name = f"bkt-cond-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_object(Bucket=name, Key="doc", Body=b"hello", ContentType="text/plain")
+        yield name
+        try:
+            s3.delete_object(Bucket=name, Key="doc")
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    @pytest.fixture
+    def etag_of(self):
+        def get(client, bucket, key):
+            return client.get_object(Bucket=bucket, Key=key)["ETag"].strip('"')
+
+        return get
+
+    def test_get_incorrect_if_match_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.get_object(Bucket=obj_bucket, Key="doc", IfMatch='"deadbeef"')
+        assert exc.value.response["Error"]["Code"] == "PreconditionFailed"
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 412
+
+    def test_get_matching_if_match_200(self, s3, obj_bucket, etag_of):
+        got = s3.get_object(
+            Bucket=obj_bucket, Key="doc", IfMatch=f'"{etag_of(s3, obj_bucket, "doc")}"'
+        )
+        assert got["Body"].read() == b"hello"
+
+    def test_get_if_modified_since_not_modified_304(self, s3, obj_bucket, etag_of):
+        # a timestamp far in the future: last_modified <= header → 304
+        future = "Wed, 01 Jan 2031 00:00:00 GMT"
+        with pytest.raises(ClientError) as exc:
+            s3.get_object(Bucket=obj_bucket, Key="doc", IfModifiedSince=future)
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 304
+
+    def test_get_if_modified_since_older_200(self, s3, obj_bucket):
+        got = s3.get_object(
+            Bucket=obj_bucket, Key="doc", IfModifiedSince="Wed, 01 Jan 2001 00:00:00 GMT"
+        )
+        assert got["Body"].read() == b"hello"
+
+    def test_get_if_none_match_current_304(self, s3, obj_bucket, etag_of):
+        with pytest.raises(ClientError) as exc:
+            s3.get_object(
+                Bucket=obj_bucket,
+                Key="doc",
+                IfNoneMatch=f'"{etag_of(s3, obj_bucket, "doc")}"',
+            )
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 304
+
+    def test_get_if_none_match_stale_200(self, s3, obj_bucket):
+        got = s3.get_object(Bucket=obj_bucket, Key="doc", IfNoneMatch='"deadbeef"')
+        assert got["Body"].read() == b"hello"
+
+    def test_get_if_unmodified_since_stale_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.get_object(
+                Bucket=obj_bucket, Key="doc", IfUnmodifiedSince="Wed, 01 Jan 2001 00:00:00 GMT"
+            )
+        assert exc.value.response["Error"]["Code"] == "PreconditionFailed"
+
+    def test_head_incorrect_if_match_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.head_object(Bucket=obj_bucket, Key="doc", IfMatch='"deadbeef"')
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 412
+
+    def test_head_if_none_match_current_304(self, s3, obj_bucket, etag_of):
+        try:
+            s3.head_object(
+                Bucket=obj_bucket,
+                Key="doc",
+                IfNoneMatch=f'"{etag_of(s3, obj_bucket, "doc")}"',
+            )
+            raised = False
+        except ClientError as ci:
+            raised = True
+            assert ci.response["ResponseMetadata"]["HTTPStatusCode"] == 304
+        assert raised
+
+    def test_put_if_match_mismatch_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.put_object(Bucket=obj_bucket, Key="doc", Body=b"x", IfMatch='"deadbeef"')
+        assert exc.value.response["Error"]["Code"] == "PreconditionFailed"
+        # and the object was not overwritten
+        assert s3.get_object(Bucket=obj_bucket, Key="doc")["Body"].read() == b"hello"
+
+    def test_put_if_none_match_star_existing_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.put_object(Bucket=obj_bucket, Key="doc", Body=b"x", IfNoneMatch="*")
+        assert exc.value.response["Error"]["Code"] == "PreconditionFailed"
+        assert s3.get_object(Bucket=obj_bucket, Key="doc")["Body"].read() == b"hello"
+
+    def test_delete_if_match_mismatch_412(self, s3, obj_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.delete_object(Bucket=obj_bucket, Key="doc", IfMatch='"deadbeef"')
+        assert exc.value.response["Error"]["Code"] == "PreconditionFailed"
+        assert s3.head_object(Bucket=obj_bucket, Key="doc")["ContentLength"] == 5
+
+
+class TestS3CopyObjectContract:
+    """moto models.py:3066-3083 + responses.py:2429-2447: self-copy guard,
+    NoSuchVersion for a missing source version, copy-source-version-id."""
+
+    @pytest.fixture
+    def copy_bucket(self, s3):
+        name = f"bkt-copy-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_object(Bucket=name, Key="src", Body=b"payload")
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for o in objs:
+                s3.delete_object(Bucket=name, Key=o["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_in_place_copy_rejected(self, s3, copy_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=copy_bucket,
+                Key="src",
+                CopySource={"Bucket": copy_bucket, "Key": "src"},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequest"
+        assert exc.value.response["Error"]["Message"] == (
+            "This copy request is illegal because it is trying to copy an "
+            "object to itself without changing the object's metadata, "
+            "storage class, website redirect location or encryption attributes."
+        )
+
+    def test_in_place_copy_with_replace_allowed(self, s3, copy_bucket):
+        resp = s3.copy_object(
+            Bucket=copy_bucket,
+            Key="src",
+            CopySource={"Bucket": copy_bucket, "Key": "src"},
+            MetadataDirective="REPLACE",
+            Metadata={"why": "different"},
+        )
+        assert "ETag" in resp["CopyObjectResult"]
+
+    def test_missing_source_version_no_such_version(self, s3, copy_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=copy_bucket,
+                Key="dst",
+                CopySource={
+                    "Bucket": copy_bucket,
+                    "Key": "src",
+                    "VersionId": "never-created-version",
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchVersion"
+        assert exc.value.response["Error"]["Message"] == ("The specified version does not exist.")
+
+    def test_versioned_copy_carries_source_version_id(self, s3):
+        name = f"bkt-vcopy-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_object(Bucket=name, Key="src", Body=b"v1")
+        resp = s3.copy_object(
+            Bucket=name,
+            Key="dst",
+            CopySource={"Bucket": name, "Key": "src"},
+        )
+        # the source is a live versioned object: its version id rides the header
+        src_vid = s3.head_object(Bucket=name, Key="src")["VersionId"]
+        assert (
+            resp["CopyObjectResult"]
+            .get("ResponseMetadata", {})
+            .get("HTTPHeaders", {})
+            .get("x-amz-copy-source-version-id")
+            == src_vid
+            or resp.get("ResponseMetadata", {})
+            .get("HTTPHeaders", {})
+            .get("x-amz-copy-source-version-id")
+            == src_vid
+        )
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for m in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_normal_cross_key_copy_unchanged(self, s3, copy_bucket):
+        resp = s3.copy_object(
+            Bucket=copy_bucket,
+            Key="dst",
+            CopySource={"Bucket": copy_bucket, "Key": "src"},
+        )
+        assert "ETag" in resp["CopyObjectResult"]
+        assert s3.get_object(Bucket=copy_bucket, Key="dst")["Body"].read() == b"payload"
