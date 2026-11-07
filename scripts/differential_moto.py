@@ -730,6 +730,32 @@ def corpus_dynamodb(engine):
             err_wrap(lambda: d.list_tables(Limit=50)),
         ),
         (
+            # -- tranche-10: KCE schema validation (moto
+            #    key_condition_expression.py:215-316) --------------------
+            "query_missing_hash_key",
+            err_wrap(
+                lambda: d.query(
+                    TableName=t,
+                    KeyConditionExpression="sk = :s",
+                    ExpressionAttributeValues={":s": {"N": "1"}},
+                )
+            ),
+        ),
+        (
+            "query_hash_non_equality",
+            err_wrap(
+                lambda: d.query(
+                    TableName=t,
+                    KeyConditionExpression="sk BETWEEN :lo AND :hi",
+                    ExpressionAttributeValues={":lo": {"N": "0"}, ":hi": {"N": "9"}},
+                )
+            ),
+        ),
+        (
+            "query_without_kce",
+            err_wrap(lambda: d.query(TableName=t)),
+        ),
+        (
             # -- tranche-5b: BatchGetItem limits (moto responses.py:835-861,
             #    893-895) ----------------------------------------------
             "batch_get_consumed",

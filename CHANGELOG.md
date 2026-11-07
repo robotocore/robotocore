@@ -62,6 +62,22 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **DynamoDB Query: the KeyConditionExpression is schema-validated.** The
+  moto audit's ninth tranche (`docs/semantic-audit-2026-11-06/
+  dynamodb-iam.md`, finding 2's open half): a Query now validates its KCE
+  against the queried index's schema exactly like moto's validate_schema —
+  a missing hash key answers `Query condition missed key schema element:
+  {pk}`, a hash key under a non-equality operator answers `Query key
+  condition not supported`, an unknown KCE attribute answers missed-element
+  when a schema range key is missing (moto reports the first missing range
+  key) and the generic shape otherwise, an empty-string hash key carries
+  moto's KeyIsEmptyStringException contract, and a Query with no
+  KeyConditionExpression answers `Either KeyConditions or QueryFilter
+  should be present` (query-only; Scan unaffected — the check's first cut
+  leaked into Scan and broke the scan suite, caught in-process before
+  push). 7 new compat tests and 3 differential corpus steps (both engines
+  agree: moto runs the same validator).
+
 - **DynamoDB limits and pagination.** The moto audit's eighth tranche
   (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`, findings 11 and the
   ListTables half of 15): `BatchGetItem` validates like moto — over 100

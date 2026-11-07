@@ -1938,6 +1938,16 @@ impl DynamoDbHandler {
             );
         }
 
+        // moto responses.py:966-970 — a Query without a KCE and without the
+        // legacy KeyConditions members is a ValidationException (the old
+        // twin scanned the whole table).
+        if key_cond.trim().is_empty() && req.params.get("KeyConditions").is_none() {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Either KeyConditions or QueryFilter should be present",
+            );
+        }
         // Fails the request when the named index does not exist.
         let _index = match resolve_index(&table, &index_name) {
             Ok(i) => i,
@@ -2045,6 +2055,93 @@ impl DynamoDbHandler {
                 expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
             {
                 return AwsResponse::error(400, "ValidationException", &format!("{member}: {e}"));
+            }
+        }
+        // moto responses.py:2145-2216 + parsing/key_condition_expression.py
+        // validate_schema: the KCE must pin the hash key with equality, name
+        // only schema keys, and cannot select a key outside the schema while
+        // a range key is missing — real AWS's three ValidationException
+        // shapes (finding 2's open half). An empty key value is moto's
+        // KeyIsEmptyStringException contract.
+        if !key_cond.trim().is_empty() {
+            let mut schema_attrs: Vec<(String, String)> = Vec::new();
+            match index_of(table, param_str(&req.params, "IndexName").unwrap_or("")) {
+                Some(idx) => {
+                    for k in &idx.key_schema {
+                        schema_attrs.push((k.attribute_name.clone(), k.key_type.clone()));
+                    }
+                }
+                None => {
+                    if let Some(k) = table.hash_key() {
+                        schema_attrs.push((k.attribute_name.clone(), "HASH".to_string()));
+                    }
+                    if let Some(k) = table.range_key() {
+                        schema_attrs.push((k.attribute_name.clone(), "RANGE".to_string()));
+                    }
+                }
+            }
+            let hash_key = schema_attrs
+                .iter()
+                .find(|(_, kind)| kind == "HASH")
+                .map(|(name, _)| name.clone());
+            let range_keys: Vec<String> = schema_attrs
+                .iter()
+                .filter(|(_, kind)| kind == "RANGE")
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            let pairs =
+                expr_engine::key_condition_attrs(key_cond, &names, &values).unwrap_or_default();
+            let mut by_key: std::collections::HashMap<String, (String, Value)> =
+                std::collections::HashMap::new();
+            for (attr, op, value) in pairs {
+                by_key.insert(attr, (op, value)); // moto: last entry wins
+            }
+            let empty_string_key_error = |attr: &str| {
+                AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "One or more parameter values are not valid. The AttributeValue \
+                         for a key attribute cannot contain an empty string value. Key: {attr}"
+                    ),
+                )
+            };
+            // validate_schema: hash keys FIRST (before unknown-key checks)
+            if let Some(hash) = &hash_key {
+                let Some((op, value)) = by_key.get(hash) else {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!("Query condition missed key schema element: {hash}"),
+                    );
+                };
+                if op != "=" {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "Query key condition not supported",
+                    );
+                }
+                if value.get("S").and_then(|v| v.as_str()) == Some("") {
+                    return empty_string_key_error(hash);
+                }
+            }
+            let provided: Vec<&String> = by_key.keys().collect();
+            let unknown: Vec<&String> = provided
+                .into_iter()
+                .filter(|name| !schema_attrs.iter().any(|(s_name, _)| s_name == *name))
+                .collect();
+            if !unknown.is_empty() {
+                let missing_range = range_keys
+                    .iter()
+                    .find(|rk| !by_key.contains_key(*rk))
+                    .cloned();
+                let message = match missing_range {
+                    Some(rk) => format!("Query condition missed key schema element: {rk}"),
+                    None => "Query key condition not supported".to_string(),
+                };
+                return AwsResponse::error(400, "ValidationException", &message);
             }
         }
         // Real AWS types the key condition against the schema up front: an N
