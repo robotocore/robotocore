@@ -31,6 +31,11 @@ pub struct ObjectVersion {
     pub legal_hold: Option<String>,
     #[serde(default)]
     pub retention: Option<(String, String)>,
+    /// Restore state from RestoreObject — moto's `x-amz-restore` response
+    /// dict entry; a GLACIER/DEEP_ARCHIVE object only serves normal reads
+    /// while a completed restore marker is present.
+    #[serde(default)]
+    pub restore: Option<String>,
 }
 
 impl ObjectVersion {
@@ -50,6 +55,7 @@ impl ObjectVersion {
             tags: HashMap::new(),
             legal_hold: None,
             retention: None,
+            restore: None,
         }
     }
 }

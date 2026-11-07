@@ -16,5 +16,6 @@
  "s3.get_if_none_match_current": "follow-up: same checksum slot gap \u2014 moto's stored checksum rides GET responses (x-amz-checksum-crc32); the twin does not yet compute flex-checksums on PUT or serve them on GET (own future tranche)",
  "s3.list_v1": "twin-preferred: the twin echoes real AWS's Marker member on v1 listings; moto omits it",
  "s3.list_v2_prefix": "follow-up: real AWS (and moto) report ChecksumAlgorithm [CRC32] on objects stored without an explicit checksum \u2014 needs the ObjectVersion checksum slot recorded in crates/s3/src/aws_chunked.rs",
+ "s3.put_glacier_storage_class": "follow-up: same checksum slot gap \u2014 moto's PUT response carries ChecksumCRC32; the twin does not compute flex-checksums yet",
  "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys"
 }
