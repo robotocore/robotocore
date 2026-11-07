@@ -722,6 +722,39 @@ def corpus_dynamodb(engine):
         ),
         ("scan", err_wrap(lambda: d.scan(TableName=t))),
         (
+            # -- tranche-5b: BatchGetItem limits (moto responses.py:835-861,
+            #    893-895) ----------------------------------------------
+            "batch_get_consumed",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={t: {"Keys": [{"pk": {"S": "p1"}, "sk": {"N": "1"}}]}}
+                )
+            ),
+        ),
+        (
+            "batch_get_per_table_over_100",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={t: {"Keys": [{"pk": {"S": "x"}, "sk": {"N": "1"}}] * 101}}
+                )
+            ),
+        ),
+        (
+            "batch_get_duplicates",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={
+                        t: {
+                            "Keys": [
+                                {"pk": {"S": "p1"}, "sk": {"N": "1"}},
+                                {"pk": {"S": "p1"}, "sk": {"N": "1"}},
+                            ]
+                        }
+                    }
+                )
+            ),
+        ),
+        (
             "delete_item",
             err_wrap(lambda: d.delete_item(TableName=t, Key=key, ReturnValues="ALL_OLD")),
         ),

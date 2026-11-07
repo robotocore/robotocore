@@ -135,10 +135,47 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn list_tables(&self, req: &AwsRequest) -> AwsResponse {
+        // moto responses.py:326-338 + models/__init__.py:136-158: Limit
+        // defaults to 100; ExclusiveStartTableName SKIPS past that name (an
+        // unknown start name starts at the end); LastEvaluatedTableName is
+        // the page's last entry when more tables follow.
         let state = self.get_state(req.account, &req.region);
         let mut names: Vec<String> = state.list_tables();
         names.sort();
-        AwsResponse::json(200, json!({ "TableNames": names }))
+        let limit = req
+            .params
+            .get("Limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let start = match req
+            .params
+            .get("ExclusiveStartTableName")
+            .and_then(|v| v.as_str())
+        {
+            Some(name) => names
+                .iter()
+                .position(|n| n == name)
+                .map(|idx| idx + 1)
+                .unwrap_or(names.len()),
+            None => 0,
+        };
+        let end = match limit {
+            Some(limit) => (start + limit).min(names.len()),
+            None => names.len(),
+        };
+        let page = names
+            .get(start.min(names.len())..end)
+            .map(|slice| slice.to_vec())
+            .unwrap_or_default();
+        let mut body = json!({ "TableNames": page });
+        if let Some(limit) = limit {
+            if names.len() > start + limit {
+                if let Some(last) = page.last() {
+                    body["LastEvaluatedTableName"] = json!(last);
+                }
+            }
+        }
+        AwsResponse::json(200, body)
     }
 
     fn parse_key_schema(v: Option<&Value>) -> Vec<KeySchema> {
@@ -2398,7 +2435,61 @@ impl DynamoDbHandler {
         let mut responses = Map::new();
 
         if let Some(obj) = request_items.as_object() {
+            // moto responses.py:835-861, in moto's order: per-table >100
+            // first, then the across-all-tables cap, then duplicate keys per
+            // table.
+            let mut total_keys = 0usize;
             for (table_name, spec) in obj {
+                let n = spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                if n > 100 {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "1 validation error detected: Value at 'requestItems.{table_name}.member.keys' \
+                             failed to satisfy constraint: Member must have length less than or equal to 100"
+                        ),
+                    );
+                }
+                total_keys += n;
+            }
+            if total_keys > 100 {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "Too many items requested for the BatchGetItem call",
+                );
+            }
+            for (_table_name, spec) in obj {
+                let keys: Vec<Value> = spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let mut seen: HashSet<String> = HashSet::new();
+                for key in &keys {
+                    if !seen.insert(key.to_string()) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Provided list of item keys contains duplicates",
+                        );
+                    }
+                }
+            }
+            let mut consumed: Vec<Value> = Vec::new();
+            for (table_name, spec) in obj {
+                let keys = spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let key_count = keys.len();
+                let _ = table_name;
                 let Some(table) = state.get_table(table_name) else {
                     return AwsResponse::error(
                         400,
@@ -2421,12 +2512,7 @@ impl DynamoDbHandler {
                     .map(String::from);
 
                 let mut found: Vec<Value> = Vec::new();
-                for key_json in spec
-                    .get("Keys")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default()
-                {
+                for key_json in keys {
                     let key_attrs: Map<String, Value> =
                         key_json.as_object().cloned().unwrap_or_default();
                     // moto's response layer resolves each key against the
@@ -2459,12 +2545,29 @@ impl DynamoDbHandler {
                     found.push(projected);
                 }
                 responses.insert(table_name.clone(), Value::Array(found));
+                // moto responses.py:893-895 — BatchGetItem always renders the
+                // per-table ConsumedCapacity over the REQUESTED key count.
+                consumed.push(json!({
+                    "CapacityUnits": key_count,
+                    "TableName": table_name,
+                }));
             }
+            return AwsResponse::json(
+                200,
+                json!({
+                    "Responses": responses,
+                    "UnprocessedKeys": {},
+                    "ConsumedCapacity": consumed,
+                }),
+            );
         }
-
         AwsResponse::json(
             200,
-            json!({ "Responses": responses, "UnprocessedKeys": {} }),
+            json!({
+                "Responses": Map::new(),
+                "UnprocessedKeys": {},
+                "ConsumedCapacity": Vec::<serde_json::Value>::new(),
+            }),
         )
     }
 

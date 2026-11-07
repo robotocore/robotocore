@@ -346,3 +346,141 @@ class TestGetItemProjection:
             "paths overlap with each other; must remove or rewrite one of these "
             "paths; path one: [name], path two: [name]"
         )
+
+
+class TestListTablesPagination:
+    """moto responses.py:326-338 + models/__init__.py:136-158."""
+
+    def _make(self, ddb, n, prefix):
+        for i in range(n):
+            ddb.create_table(
+                TableName=f"{prefix}{i:02d}",
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+
+    def _cleanup(self, ddb, prefix):
+        names = ddb.list_tables().get("TableNames", [])
+        for t in names:
+            if t.startswith(prefix):
+                ddb.delete_table(TableName=t)
+
+    def test_paginates_with_limit_and_last_evaluated(self, ddb):
+        prefix = "lt-pag"
+        self._make(ddb, 3, prefix)
+        try:
+            # LastEvaluatedTableName depends on whether ANY table (ours or a
+            # neighbor test's) follows this page — mirror moto's
+            # `len(all_tables) > start + limit` against the live list.
+            total = len(ddb.list_tables()["TableNames"])
+            page = ddb.list_tables(Limit=2, ExclusiveStartTableName=f"{prefix}00")
+            assert [t for t in page["TableNames"] if t.startswith(prefix)] == [
+                f"{prefix}01",
+                f"{prefix}02",
+            ]
+            if total > 3:
+                assert page.get("LastEvaluatedTableName") == f"{prefix}02"
+                page2 = ddb.list_tables(
+                    Limit=2, ExclusiveStartTableName=page["LastEvaluatedTableName"]
+                )
+                assert not [t for t in page2.get("TableNames", []) if t.startswith(prefix)]
+        finally:
+            self._cleanup(ddb, prefix)
+
+    def test_unknown_exclusive_start_starts_at_end(self, ddb):
+        prefix = "lt-unk"
+        self._make(ddb, 1, prefix)
+        try:
+            page = ddb.list_tables(ExclusiveStartTableName="zzz-not-a-table")
+            assert not [t for t in page.get("TableNames", []) if t.startswith(prefix)]
+        finally:
+            self._cleanup(ddb, prefix)
+
+
+class TestBatchGetItemLimits:
+    """moto responses.py:829-895 limits, duplicate rejection and
+    ConsumedCapacity rendering."""
+
+    @pytest.fixture
+    def table(self, ddb):
+        name = f"bg-{uuid.uuid4().hex[:10]}"
+        ddb.create_table(
+            TableName=name,
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "N"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "N"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        for i in range(3):
+            ddb.put_item(
+                TableName=name,
+                Item={"pk": {"S": "a"}, "sk": {"N": str(i)}, "v": {"S": f"x{i}"}},
+            )
+        yield name
+        try:
+            items = ddb.scan(TableName=name).get("Items", [])
+            for item in items:
+                ddb.delete_item(
+                    TableName=name,
+                    Key={k: item[k] for k in ("pk", "sk") if k in item},
+                )
+            ddb.delete_table(TableName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_over_hundred_keys_per_table_rejected(self, ddb, table):
+        keys = [{"pk": {"S": f"k{i}"}, "sk": {"N": "1"}} for i in range(101)]
+        with pytest.raises(ClientError) as exc:
+            ddb.batch_get_item(RequestItems={table: {"Keys": keys}})
+        assert err_msg(exc) == (
+            "1 validation error detected: Value at 'requestItems."
+            f"{table}.member.keys' failed to satisfy constraint: Member must "
+            "have length less than or equal to 100"
+        )
+
+    def test_over_hundred_keys_total_rejected(self, ddb):
+        prefix = "bg-two"
+        t1 = f"{prefix}a"
+        t2 = f"{prefix}b"
+        for t in (t1, t2):
+            ddb.create_table(
+                TableName=t,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+        try:
+            keys1 = [{"pk": {"S": f"a{i}"}} for i in range(60)]
+            keys2 = [{"pk": {"S": f"b{i}"}} for i in range(45)]
+            with pytest.raises(ClientError) as exc:
+                ddb.batch_get_item(RequestItems={t1: {"Keys": keys1}, t2: {"Keys": keys2}})
+            assert err_msg(exc) == "Too many items requested for the BatchGetItem call"
+        finally:
+            for t in (t1, t2):
+                ddb.delete_table(TableName=t)
+
+    def test_duplicate_keys_rejected(self, ddb, table):
+        keys = [{"pk": {"S": "a"}, "sk": {"N": "1"}}, {"pk": {"S": "a"}, "sk": {"N": "1"}}]
+        with pytest.raises(ClientError) as exc:
+            ddb.batch_get_item(RequestItems={table: {"Keys": keys}})
+        assert err_msg(exc) == "Provided list of item keys contains duplicates"
+
+    def test_consumed_capacity_rendered_always(self, ddb, table):
+        resp = ddb.batch_get_item(
+            RequestItems={
+                table: {
+                    "Keys": [
+                        {"pk": {"S": "a"}, "sk": {"N": "1"}},
+                        {"pk": {"S": "a"}, "sk": {"N": "2"}},
+                    ]
+                }
+            }
+        )
+        cc = resp["ConsumedCapacity"]
+        assert cc == [{"CapacityUnits": 2, "TableName": table}]

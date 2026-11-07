@@ -4,7 +4,7 @@
   "impl_fingerprint": {
     "rotocore/src/services/dynamodb.rs": "absent",
     "rotocore/src/services/dynamodb/": "absent",
-    "crates/dynamodb/src/": "4eb32d64d4a08d7167304d324092f0be7a127dbb3eb4df767e1a4479608b7697"
+    "crates/dynamodb/src/": "f2f76f0f11fb87f80a1a0805c7ce3cc29eba18168ee30af6dc59e0d52f80f44a"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

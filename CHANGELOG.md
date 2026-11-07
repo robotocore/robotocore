@@ -62,6 +62,19 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **DynamoDB limits and pagination.** The moto audit's eighth tranche
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`, findings 11 and the
+  ListTables half of 15): `BatchGetItem` validates like moto — over 100
+  keys in a table (`1 validation error detected: Value at
+  'requestItems.<table>.member.keys' ...`), the 100-key cross-table cap
+  ("Too many items requested for the BatchGetItem call"), duplicate keys
+  ("Provided list of item keys contains duplicates") — and carries the
+  always-on per-table `ConsumedCapacity` over requested keys.
+  `ListTables` paginates (Limit default 100, `ExclusiveStartTableName`
+  skip semantics with moto's unknown-name start-at-end, and
+  `LastEvaluatedTableName` when more tables follow). 6 new compat tests,
+  3 differential steps.
+
 - **S3 tagging versioning and the storage-class contract.** The moto audit's
   seventh tranche (`docs/semantic-audit-2026-11-06/sqs-s3.md` findings
   13-remainder and 14): Get/Put/DeleteObjectTagging honor `versionId` (a
