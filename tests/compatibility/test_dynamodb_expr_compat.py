@@ -508,11 +508,15 @@ class TestListTablesDefaultLimit:
                     BillingMode="PAY_PER_REQUEST",
                 )
                 made += 1
-            # absent Limit caps at moto's default 100 with a token
+            # absent Limit caps at moto's default 100 with a token: the
+            # page holds exactly 100 names (foreign tables can occupy slots,
+            # so assert the CAP and the token = the page's last entry, the
+            # race-safe observable)
             page = ddb.list_tables()
             mine = [t for t in page["TableNames"] if t.startswith(prefix)]
-            assert len(mine) == 100
-            assert page.get("LastEvaluatedTableName") == f"{prefix}099"
+            assert len(page["TableNames"]) == 100
+            assert page.get("LastEvaluatedTableName") == page["TableNames"][-1]
+            assert len(mine) >= 99 and len(mine) <= 100
             # Limit=0 is falsy in moto (unlimited) but botocore's client
             # side rejects it (min 1), so the falsy path stays raw-only.
             # Absent-Limit never produces a token when fewer than 100
