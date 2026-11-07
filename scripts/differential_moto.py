@@ -722,6 +722,47 @@ def corpus_dynamodb(engine):
         ),
         ("scan", err_wrap(lambda: d.scan(TableName=t))),
         (
+            # ListTables order+pagination: the twin sorts (real-AWS order)
+            # and its stateful table list includes neighbor corpora, so the
+            # full TableNames arrays diverge from fresh moto — the ledger
+            # entry documents both halves; the step pins the walk shape.
+            "list_tables_walk",
+            err_wrap(lambda: d.list_tables(Limit=50)),
+        ),
+        (
+            # -- tranche-5b: BatchGetItem limits (moto responses.py:835-861,
+            #    893-895) ----------------------------------------------
+            "batch_get_consumed",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={t: {"Keys": [{"pk": {"S": "p1"}, "sk": {"N": "1"}}]}}
+                )
+            ),
+        ),
+        (
+            "batch_get_per_table_over_100",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={t: {"Keys": [{"pk": {"S": "x"}, "sk": {"N": "1"}}] * 101}}
+                )
+            ),
+        ),
+        (
+            "batch_get_duplicates",
+            err_wrap(
+                lambda: d.batch_get_item(
+                    RequestItems={
+                        t: {
+                            "Keys": [
+                                {"pk": {"S": "p1"}, "sk": {"N": "1"}},
+                                {"pk": {"S": "p1"}, "sk": {"N": "1"}},
+                            ]
+                        }
+                    }
+                )
+            ),
+        ),
+        (
             "delete_item",
             err_wrap(lambda: d.delete_item(TableName=t, Key=key, ReturnValues="ALL_OLD")),
         ),

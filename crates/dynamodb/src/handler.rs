@@ -135,10 +135,51 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn list_tables(&self, req: &AwsRequest) -> AwsResponse {
+        // moto responses.py:326-338 + models/__init__.py:136-158: Limit
+        // defaults to 100; ExclusiveStartTableName SKIPS past that name (an
+        // unknown start name starts at the end); LastEvaluatedTableName is
+        // the page's last entry when more tables follow.
         let state = self.get_state(req.account, &req.region);
         let mut names: Vec<String> = state.list_tables();
         names.sort();
-        AwsResponse::json(200, json!({ "TableNames": names }))
+        // moto responses.py:329 — Limit ABSENT defaults to 100; Limit=0 is
+        // falsy in moto and means "no limit".
+        let limit: Option<usize> = match req.params.get("Limit") {
+            None => Some(100),
+            Some(v) => match v.as_u64() {
+                Some(0) | None => None,
+                Some(n) => Some(n as usize),
+            },
+        };
+        let start = match req
+            .params
+            .get("ExclusiveStartTableName")
+            .and_then(|v| v.as_str())
+        {
+            Some(name) => names
+                .iter()
+                .position(|n| n == name)
+                .map(|idx| idx + 1)
+                .unwrap_or(names.len()),
+            None => 0,
+        };
+        let end = match limit {
+            Some(limit) => (start + limit).min(names.len()),
+            None => names.len(),
+        };
+        let page = names
+            .get(start.min(names.len())..end)
+            .map(|slice| slice.to_vec())
+            .unwrap_or_default();
+        let mut body = json!({ "TableNames": page });
+        if let Some(limit) = limit {
+            if names.len() > start + limit {
+                if let Some(last) = page.last() {
+                    body["LastEvaluatedTableName"] = json!(last);
+                }
+            }
+        }
+        AwsResponse::json(200, body)
     }
 
     fn parse_key_schema(v: Option<&Value>) -> Vec<KeySchema> {
@@ -1261,6 +1302,34 @@ fn validate_empty_sets(val: &Value) -> Option<String> {
         }
     }
     None
+}
+
+/// Canonical storage key for an item given its key attributes.
+/// Member-order-independent JSON canonicalization (sorted keys,
+/// recursively) — the shape moto's Python dict equality compares over
+/// when its duplicate-key checks run.
+fn canonical_json(v: &Value) -> String {
+    match v {
+        Value::Object(map) => {
+            let mut members: Vec<String> = map
+                .iter()
+                .map(|(k, val)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap_or_default(),
+                        canonical_json(val)
+                    )
+                })
+                .collect();
+            members.sort();
+            format!("{{{}}}", members.join(","))
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(canonical_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        other => other.to_string(),
+    }
 }
 
 /// Canonical storage key for an item given its key attributes.
@@ -2398,7 +2467,43 @@ impl DynamoDbHandler {
         let mut responses = Map::new();
 
         if let Some(obj) = request_items.as_object() {
+            // moto responses.py:835-861, in moto's order: per-table >100
+            // first, then the across-all-tables cap, then duplicate keys per
+            // table.
+            let mut total_keys = 0usize;
             for (table_name, spec) in obj {
+                let n = spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                if n > 100 {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "1 validation error detected: Value at 'requestItems.{table_name}.member.keys' \
+                             failed to satisfy constraint: Member must have length less than or equal to 100"
+                        ),
+                    );
+                }
+                total_keys += n;
+            }
+            if total_keys > 100 {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "Too many items requested for the BatchGetItem call",
+                );
+            }
+            let mut consumed: Vec<Value> = Vec::new();
+            for (table_name, spec) in obj {
+                let keys = spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let key_count = keys.len();
                 let Some(table) = state.get_table(table_name) else {
                     return AwsResponse::error(
                         400,
@@ -2406,6 +2511,20 @@ impl DynamoDbHandler {
                         &format!("Requested resource not found: Table: {table_name} not found"),
                     );
                 };
+                // moto's duplicate check runs per table AFTER the table
+                // resolves (responses.py:845-849) — a missing table wins the
+                // error race — and the dump is member-order independent
+                // (Python dict equality), so members sort recursively.
+                let mut seen: HashSet<String> = HashSet::new();
+                for key in &keys {
+                    if !seen.insert(canonical_json(key)) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Provided list of item keys contains duplicates",
+                        );
+                    }
+                }
                 let names: Names = spec
                     .get("ExpressionAttributeNames")
                     .and_then(|v| v.as_object())
@@ -2421,12 +2540,7 @@ impl DynamoDbHandler {
                     .map(String::from);
 
                 let mut found: Vec<Value> = Vec::new();
-                for key_json in spec
-                    .get("Keys")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default()
-                {
+                for key_json in keys {
                     let key_attrs: Map<String, Value> =
                         key_json.as_object().cloned().unwrap_or_default();
                     // moto's response layer resolves each key against the
@@ -2459,12 +2573,29 @@ impl DynamoDbHandler {
                     found.push(projected);
                 }
                 responses.insert(table_name.clone(), Value::Array(found));
+                // moto responses.py:893-895 — BatchGetItem always renders the
+                // per-table ConsumedCapacity over the REQUESTED key count.
+                consumed.push(json!({
+                    "CapacityUnits": key_count as f64,
+                    "TableName": table_name,
+                }));
             }
+            return AwsResponse::json(
+                200,
+                json!({
+                    "Responses": responses,
+                    "UnprocessedKeys": {},
+                    "ConsumedCapacity": consumed,
+                }),
+            );
         }
-
         AwsResponse::json(
             200,
-            json!({ "Responses": responses, "UnprocessedKeys": {} }),
+            json!({
+                "Responses": Map::new(),
+                "UnprocessedKeys": {},
+                "ConsumedCapacity": Vec::<serde_json::Value>::new(),
+            }),
         )
     }
 
@@ -2533,10 +2664,9 @@ impl DynamoDbHandler {
                         // (dynamo_json_dump over the item): identical items
                         // twice raise; same key with differing payloads
                         // passes (both stored; later put wins).
-                        let fingerprint = format!(
-                            "{table_name}:{}",
-                            serde_json::to_string(&item_json).unwrap_or_default()
-                        );
+                        // moto's whole-item dump compare is member-order
+                        // independent (dict equality).
+                        let fingerprint = format!("{table_name}:{}", canonical_json(&item_json));
                         if !seen_puts.insert(fingerprint) {
                             return AwsResponse::error(
                                 400,

@@ -116,6 +116,12 @@ DYNAMODB
    (d) Real AWS returns ConsumedCapacity when TOTAL/INDEXES is requested — robotocore diverges (moto's UpdateItem/DeleteItem always-on rendering is moto-specific).
    (e) A.
 
+   **FIXED in part (2026-11-08, verified in source):** the BatchGetItem
+   leg of the ConsumedCapacity family is rendered always-on per moto
+   (CapacityUnits = requested key count). Still open: the single-item
+   / Query / Scan members (moto gates them on ReturnConsumedCapacity
+   --- with moto's always-on quirks on UpdateItem/DeleteItem).
+
    **FIXED in part (2026-11-06, verified in source):** one related table-description member is fixed — `describe_table_response` now renders `NumberOfDecreasesToday` in the provisioned-throughput block (crates/dynamodb/src/handler.rs:627). The missing ConsumedCapacity rendering described above remains open.
 
 10. GSI membership requires only the index hash key.
@@ -135,6 +141,17 @@ DYNAMODB
     (c) robotocore implements none of these (handler.rs:2128-2206): no 100-key limits, no duplicate check (numeric-equal or not), UnprocessedKeys always `{}`, no ConsumedCapacity; it does keep moto's "Validation Exception" text for schema-mismatched keys.
     (d) Real AWS enforces the 100-key caps and duplicate rejection and returns ConsumedCapacity when requested — robotocore diverges.
     (e) A.
+
+   **FIXED (2026-11-08, verified in source):** BatchGetItem validates like
+   moto (responses.py:835-861) — >100 keys per table with moto's exact
+   path-constraint text, the 100-key across-all-tables cap ('Too many
+   items requested for the BatchGetItem call'), duplicate-key rejection
+   ('Provided list of item keys contains duplicates') — and renders the
+   always-on per-table ConsumedCapacity over requested keys
+   (responses.py:893-895). Corpus steps batch_get_consumed /
+   batch_get_per_table_over_100 / batch_get_duplicates. Still open: the
+   16 MB UnprocessedKeys overflow (needs >16 MB items to pin — the twin
+   computes item sizes via the same item_size fn moto walks).
 
 12. BatchWriteItem row containing both Put and Delete executes both (delete wins).
     (a) BatchWriteItem.
@@ -170,6 +187,13 @@ DYNAMODB
     (c) robotocore never reads ConsistentRead (query/scan handlers 1616-1675) and returns all table names unpaginated, sorted (handler.rs:137-142).
     (d) Real AWS rejects consistent reads on GSIs (ValidationException) and paginates ListTables — robotocore diverges on both.
     (e) A.
+
+   **FIXED in part (2026-11-08, verified in source):** ListTables paginates
+   with moto's semantics (Limit default 100, ExclusiveStartTableName skips
+   past the named table, unknown start name starts at the end,
+   LastEvaluatedTableName = the page's last entry when more tables
+   follow). The ConsistentRead-on-GSI half was fixed earlier in this
+   branch's tranche.
 
    **FIXED in part (2026-11-07, verified in source):** ConsistentRead=true on a GSI
    (Query or Scan) answers 400 ValidationException with moto's exact text. Still
