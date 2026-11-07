@@ -47,8 +47,6 @@ under *Changelog discipline*.
   `>`, `>=`) with values above, below and on the boundary; it catches the
   mutation.
 
-### Fixed
-
 - **The nightly parity run collects the parked `legacy-py-provider` suites
   again (71 failures per night since 2026-10-30).** The Oct 27 quarantine
   (`ddc41e54`) moved the 18 python-provider-era suites out of compat
