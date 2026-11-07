@@ -2086,7 +2086,7 @@ class TestConditionalDeletesAndMarkers:
                 s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_put_if_match_on_marked_key_404_no_resurrection(self, s3, marked_bucket):
         name, etag = marked_bucket
@@ -2160,4 +2160,4 @@ class TestConditionalDeletesAndMarkers:
                 s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
