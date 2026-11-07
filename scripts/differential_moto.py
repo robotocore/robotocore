@@ -162,6 +162,185 @@ def corpus_s3(engine):
         ("get_missing", err_wrap(lambda: s3.get_object(Bucket=b, Key="a/c.txt"))),
         ("head_missing", err_wrap(lambda: s3.head_object(Bucket=b, Key="a/c.txt"))),
         ("missing_bucket_get", err_wrap(lambda: s3.get_object(Bucket=b + "-none", Key="x"))),
+        # -- range semantics (moto responses.py:1785-1836) ----------------
+        (
+            "range_unsatisfiable",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=100-")),
+        ),
+        (
+            "range_suffix_zero",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=-0")),
+        ),
+        (
+            "range_suffix",
+            err_wrap(
+                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=-2")[
+                    "Body"
+                ].read().hex()
+            ),
+        ),
+        (
+            "range_bounded",
+            err_wrap(
+                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=0-1")[
+                    "Body"
+                ].read().hex()
+            ),
+        ),
+        (
+            "range_open",
+            err_wrap(
+                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=1-")[
+                    "Body"
+                ].read().hex()
+            ),
+        ),
+        (
+            "range_multiples_200",
+            err_wrap(
+                lambda: s3.get_object(
+                    Bucket=b, Key="a/b.txt", Range="bytes=0-1,3-4"
+                )["Body"].read().hex()
+            ),
+        ),
+        # -- versioned DeleteObjects (moto models.py:2942-3046) ------------
+    ]
+    vb = engine.res_name("diff-ver-bucket")
+    s3.create_bucket(Bucket=vb)
+    s3.put_bucket_versioning(Bucket=vb, VersioningConfiguration={"Status": "Enabled"})
+    v1 = s3.put_object(Bucket=vb, Key="v.txt", Body=b"first")["VersionId"]
+    s3.put_object(Bucket=vb, Key="v.txt", Body=b"second")
+    out += [
+        (
+            "delete_objects_markers",
+            err_wrap(
+                lambda: s3.delete_objects(
+                    Bucket=vb, Delete={"Objects": [{"Key": "v.txt"}]}
+                )
+            ),
+        ),
+        (
+            "get_after_marker",
+            err_wrap(lambda: s3.get_object(Bucket=vb, Key="v.txt")),
+        ),
+        (
+            "list_versions_after_marker",
+            err_wrap(lambda: s3.list_object_versions(Bucket=vb)),
+        ),
+        (
+            "delete_objects_explicit_version",
+            err_wrap(
+                lambda: s3.delete_objects(
+                    Bucket=vb,
+                    Delete={
+                        "Objects": [{"Key": "v.txt", "VersionId": v1["VersionId"]}]
+                    },
+                )
+            ),
+        ),
+        (
+            "list_versions_after_version_delete",
+            err_wrap(lambda: s3.list_object_versions(Bucket=vb)),
+        ),
+        (
+            "delete_objects_unknown_key",
+            err_wrap(
+                lambda: s3.delete_objects(
+                    Bucket=vb, Delete={"Objects": [{"Key": "ghost"}]}
+                )
+            ),
+        ),
+        (
+            "delete_objects_empty",
+            err_wrap(lambda: s3.delete_objects(Bucket=b, Delete={"Objects": []})),
+        ),
+        # -- multipart validation (moto models.py:473-515) ------------------
+    ]
+    mp = engine.res_name("diff-mp-bucket")
+    s3.create_bucket(Bucket=mp)
+    up = s3.create_multipart_upload(Bucket=mp, Key="mp.txt")
+    uid = up["UploadId"]
+    big = s3.upload_part(
+        Bucket=mp, Key="mp.txt", PartNumber=1, UploadId=uid, Body=b"z" * 5242880
+    )["ETag"]
+    tail = s3.upload_part(
+        Bucket=mp, Key="mp.txt", PartNumber=2, UploadId=uid, Body=b"tail"
+    )["ETag"]
+    out += [
+        (
+            "complete_multipart",
+            err_wrap(
+                lambda: s3.complete_multipart_upload(
+                    Bucket=mp,
+                    Key="mp.txt",
+                    UploadId=uid,
+                    MultipartUpload={
+                        "Parts": [{"PartNumber": 1, "ETag": big}, {"PartNumber": 2, "ETag": tail}]
+                    },
+                )
+            ),
+        ),
+        (
+            "get_multipart_object",
+            err_wrap(
+                lambda: s3.get_object(Bucket=mp, Key="mp.txt")["Body"].read()[:16].hex()
+            ),
+        ),
+        (
+            "complete_multipart_bad_etag",
+            err_wrap(
+                lambda: s3.complete_multipart_upload(
+                    Bucket=mp,
+                    Key="mp2.txt",
+                    UploadId=s3.create_multipart_upload(Bucket=mp, Key="mp2.txt")["UploadId"],
+                    MultipartUpload={
+                        "Parts": [{"PartNumber": 1, "ETag": '"deadbeefdeadbeefdeadbeefdeadbeef"'}]
+                    },
+                )
+            ),
+        ),
+        (
+            "complete_multipart_entity_too_small",
+            err_wrap(
+                lambda: s3.complete_multipart_upload(
+                    Bucket=mp,
+                    Key="mp3.txt",
+                    UploadId=s3.create_multipart_upload(Bucket=mp, Key="mp3.txt")["UploadId"],
+                    MultipartUpload={"Parts": []},
+                )
+            ),
+        ),
+        (
+            "upload_part_number_too_big",
+            err_wrap(
+                lambda: s3.upload_part(
+                    Bucket=b,
+                    Key="pn.txt",
+                    PartNumber=10001,
+                    UploadId=s3.create_multipart_upload(Bucket=b, Key="pn.txt")["UploadId"],
+                    Body=b"x" * 16,
+                )
+            ),
+        ),
+        (
+            "abort_multipart_unknown",
+            err_wrap(
+                lambda: s3.abort_multipart_upload(Bucket=b, Key="pn.txt", UploadId="gone")
+            ),
+        ),
+        (
+            "upload_part_copy_ranged",
+            err_wrap(
+                lambda: s3.upload_part_copy(
+                    Bucket=b,
+                    Key="cpart",
+                    PartNumber=1,
+                    UploadId=s3.create_multipart_upload(Bucket=b, Key="cpart")["UploadId"],
+                    CopySource={"Bucket": b, "Key": "a/b.txt"},
+                    CopySourceRange="bytes=1-3",
+                )
+            ),
+        ),
     ]
     return out
 

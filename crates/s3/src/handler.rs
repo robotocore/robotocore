@@ -287,31 +287,92 @@ fn list_key_render(req: &AwsRequest, key: &str) -> String {
     xml_escape(&s)
 }
 
-fn parse_range(spec: &str, size: usize) -> Option<std::ops::Range<usize>> {
-    let body = spec.strip_prefix("bytes=")?;
+/// Extract the text of a child element from an XML fragment (no
+/// attributes, one level deep — the twin's S3 bodies are flat).
+fn xml_child_text(node: &str, tag: &str) -> Option<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let start = node.find(&open)? + open.len();
+    let end = node[start..].find(&close)? + start;
+    Some(xml_unescape(&node[start..end]))
+}
+
+/// Inner text of every `<tag>..</tag>` element found in `body`, in document
+/// order.
+fn xml_nodes(body: &str, tag: &str) -> Vec<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let mut nodes = Vec::new();
+    let mut rest = body;
+    while let Some(start) = rest.find(&open) {
+        let after = &rest[start + open.len()..];
+        let Some(end) = after.find(&close) else {
+            break;
+        };
+        nodes.push(after[..end].to_string());
+        rest = &after[end + close.len()..];
+    }
+    nodes
+}
+
+/// Outcome of parsing a Range header against an object of `size` bytes,
+/// mirroring moto's `_handle_range_header` (responses.py:1785-1835):
+/// a multi-range or unparsable spec is ignored (200 with the full body),
+/// an unsatisfiable single range is an error (416 InvalidRange).
+enum RangeOutcome {
+    Ignore,
+    Unsatisfiable,
+    Satisfiable(std::ops::Range<usize>),
+}
+
+fn parse_range(spec: &str, size: usize) -> RangeOutcome {
+    let Some(body) = spec.strip_prefix("bytes=") else {
+        return RangeOutcome::Ignore;
+    };
     // Multi-range specs ("bytes=0-1,3-4") and anything with a comma are
     // not a single range: real AWS ignores the Range member and answers
     // 200 with the full body — the old parse read "0-1,3-4" as end
     // "1,3-4", failed to parse it, and served a WRONG 206 partial body.
     if body.contains(',') {
-        return None;
+        return RangeOutcome::Ignore;
     }
-    let (start_s, end_s) = body.split_once('-')?;
+    let unparsed = |s: &str| -> Option<usize> { s.parse().ok() };
+    let Some((start_s, end_s)) = body.split_once('-') else {
+        return RangeOutcome::Ignore;
+    };
     if start_s.is_empty() {
-        let n: usize = end_s.parse().ok()?;
-        if n == 0 || size == 0 {
-            return None;
+        // Suffix range `bytes=-n`: an explicit -0 is unsatisfiable even on
+        // an empty object (moto takes the InvalidRange branch first); any
+        // other suffix on an empty object falls through to a 200.
+        match unparsed(end_s) {
+            Some(0) => return RangeOutcome::Unsatisfiable,
+            Some(_) if size == 0 => return RangeOutcome::Ignore,
+            Some(n) => {
+                let len = n.min(size);
+                return RangeOutcome::Satisfiable(size - len..size);
+            }
+            None => return RangeOutcome::Ignore,
         }
-        let len = n.min(size);
-        return Some(size - len..size);
     }
-    let start: usize = start_s.parse().ok()?;
-    let end: usize = end_s.parse().ok().unwrap_or(size.saturating_sub(1));
-    if start >= size || start > end {
-        return None;
+    let Some(start) = unparsed(start_s) else {
+        return RangeOutcome::Ignore;
+    };
+    let end = match unparsed(end_s) {
+        Some(end) => end,
+        None if end_s.is_empty() => size.saturating_sub(1),
+        None => return RangeOutcome::Ignore,
+    };
+    if start >= size {
+        // begin > last: 416 InvalidRange with the actual size
+        return RangeOutcome::Unsatisfiable;
+    }
+    if start > end {
+        // `bytes=5-3` clamps into an impossible slice: moto's
+        // `begin > min(end, last)` branch answers 200 with the full body.
+        return RangeOutcome::Ignore;
     }
     let end = end.min(size - 1);
-    Some(start..end + 1)
+    RangeOutcome::Satisfiable(start..end + 1)
 }
 
 /// Parse an `x-amz-copy-source` value into `(bucket, key, Option<versionId>)`.
@@ -2596,31 +2657,40 @@ impl S3Handler {
         };
 
         // Range handling
-        if let Some(range) = range_header
-            .as_deref()
-            .and_then(|r| parse_range(r, obj.size))
-        {
-            let body = obj.data[range.clone()].to_vec();
-            let mut resp = AwsResponse::binary(206, body, &obj.content_type);
-            resp.headers.push((
-                "Content-Range".to_string(),
-                format!("bytes {}-{}/{}", range.start, range.end - 1, obj.size),
-            ));
-            resp.headers
-                .push(("Accept-Ranges".to_string(), "bytes".to_string()));
-            resp.headers
-                .push(("ETag".to_string(), format!("\"{}\"", obj.etag)));
-            resp.headers
-                .push(("Last-Modified".to_string(), httpdate(obj.last_modified)));
-            if obj.version_id != NULL_VERSION_ID {
+        match range_header.as_deref().map(|r| parse_range(r, obj.size)) {
+            Some(RangeOutcome::Unsatisfiable) => {
+                // botocore translates a 416 InvalidRange body into
+                // ClientError; bare 416s answer the same shape.
+                return AwsResponse::error(
+                    416,
+                    "InvalidRange",
+                    "The requested range is not satisfiable",
+                );
+            }
+            Some(RangeOutcome::Satisfiable(range)) => {
+                let body = obj.data[range.clone()].to_vec();
+                let mut resp = AwsResponse::binary(206, body, &obj.content_type);
+                resp.headers.push((
+                    "Content-Range".to_string(),
+                    format!("bytes {}-{}/{}", range.start, range.end - 1, obj.size),
+                ));
                 resp.headers
-                    .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
+                    .push(("Accept-Ranges".to_string(), "bytes".to_string()));
+                resp.headers
+                    .push(("ETag".to_string(), format!("\"{}\"", obj.etag)));
+                resp.headers
+                    .push(("Last-Modified".to_string(), httpdate(obj.last_modified)));
+                if obj.version_id != NULL_VERSION_ID {
+                    resp.headers
+                        .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
+                }
+                for (k, v) in obj.metadata.iter() {
+                    resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
+                }
+                Self::apply_response_header_overrides(req, &mut resp.headers);
+                return resp;
             }
-            for (k, v) in obj.metadata.iter() {
-                resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
-            }
-            Self::apply_response_header_overrides(req, &mut resp.headers);
-            return resp;
+            None | Some(RangeOutcome::Ignore) => {}
         }
 
         let mut resp = AwsResponse::binary(200, obj.data.clone(), &obj.content_type);
@@ -3307,6 +3377,13 @@ impl S3Handler {
     }
 
     fn delete_objects(&self, req: &AwsRequest) -> AwsResponse {
+        // moto's _bucket_response_delete_keys (responses.py:1722-1783):
+        // every <Object> entry carries a Key and an optional VersionId and
+        // an empty entry list is MalformedXML. Each entry runs the same
+        // per-key semantics as single DeleteObject (models.py:2942-3011):
+        // a versioned bucket books a delete marker, an explicit VersionId
+        // removes only that version, a missing key/version is a tolerant
+        // no-op that still lands in the Deleted list.
         let (_state, bucket) = match self.with_bucket(req) {
             Ok(pair) => pair,
             Err(e) => return e,
@@ -3314,30 +3391,62 @@ impl S3Handler {
         let body_str = String::from_utf8_lossy(&req.body).to_string();
         let quiet = body_str.contains("<Quiet>true</Quiet>");
 
-        let mut deleted: Vec<String> = Vec::new();
+        let mut entries: Vec<(String, Option<String>)> = Vec::new();
         let mut rest: &str = &body_str;
-        while let Some(start) = rest.find("<Key>") {
-            let after = &rest[start + 5..];
-            match after.find("</Key>") {
-                Some(end) => {
-                    let key = xml_unescape(&after[..end]);
-                    if !key.is_empty() {
-                        deleted.push(key);
-                    }
+        while let Some(start) = rest.find("<Object>") {
+            let after = &rest[start + 8..];
+            let Some(end) = after.find("</Object>") else {
+                break;
+            };
+            let node = &after[..end];
+            if let Some(key) = xml_child_text(node, "Key") {
+                if !key.is_empty() {
+                    entries.push((key, xml_child_text(node, "VersionId")));
                 }
-                None => break,
             }
-            rest = after;
+            rest = &after[end + 9..];
+        }
+        if entries.is_empty() {
+            return AwsResponse::error(
+                400,
+                "MalformedXML",
+                "The XML you provided was not well-formed or did not validate against our published schema",
+            );
         }
 
+        // (key, explicit VersionId requested, delete-marker version id)
+        let mut deleted: Vec<(String, Option<String>, Option<String>)> = Vec::new();
         {
             let mut objects = bucket.objects.write();
-            for key in &deleted {
-                if let Some(entry) = objects.get_mut(key) {
-                    entry.versions.clear();
-                    entry.markers.clear();
-                }
-                objects.remove(key);
+            for (key, version_id) in &entries {
+                let marker_id = {
+                    let mut marker_out = None;
+                    if bucket.is_versioned() && version_id.is_none() {
+                        let marker = DeleteMarker {
+                            version_id: uuid::Uuid::new_v4().to_string(),
+                            seq: bucket.next_seq(),
+                            last_modified: chrono::Utc::now().timestamp() as u64,
+                        };
+                        marker_out = Some(marker.version_id.clone());
+                        let entry = objects.entry(key.clone()).or_default();
+                        entry.markers.insert(0, marker);
+                    } else {
+                        if let Some(entry) = objects.get_mut(key) {
+                            match version_id {
+                                Some(vid) => {
+                                    entry.versions.retain(|v| v.version_id != *vid);
+                                    entry.markers.retain(|m| m.version_id != *vid);
+                                }
+                                None => entry.versions.clear(),
+                            }
+                        }
+                    }
+                    if objects.get(key).is_some_and(|e| e.is_empty()) {
+                        objects.remove(key);
+                    }
+                    marker_out
+                };
+                deleted.push((key.clone(), version_id.clone(), marker_id));
             }
         }
 
@@ -3346,8 +3455,19 @@ impl S3Handler {
             ns = S3_NS
         );
         if !quiet {
-            for k in &deleted {
-                xml.push_str(&format!("<Deleted><Key>{}</Key></Deleted>", xml_escape(k)));
+            for (key, version_id, marker_id) in &deleted {
+                xml.push_str("<Deleted><Key>");
+                xml.push_str(&xml_escape(key));
+                xml.push_str("</Key>");
+                if let Some(vid) = marker_id {
+                    xml.push_str(&format!(
+                        "<DeleteMarkerVersionId>{}</DeleteMarkerVersionId><DeleteMarker>true</DeleteMarker>",
+                        xml_escape(vid)
+                    ));
+                } else if let Some(vid) = version_id {
+                    xml.push_str(&format!("<VersionId>{}</VersionId>", xml_escape(vid)));
+                }
+                xml.push_str("</Deleted>");
             }
         }
         xml.push_str("</DeleteResult>");
@@ -3647,6 +3767,23 @@ impl S3Handler {
             .get("partNumber")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
+        // moto responses.py:2567-2570 rejects partNumber above the wire
+        // maximum; part numbers <= 1 land on the NoSuchUpload branch of
+        // backend.set_part (models.py:513-515).
+        if part_number > 10000 {
+            return AwsResponse::error(
+                400,
+                "InvalidArgument",
+                "Part number must be an integer between 1 and 10000, inclusive",
+            );
+        }
+        if part_number == 0 {
+            return AwsResponse::error(
+                404,
+                "NoSuchUpload",
+                "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
+            );
+        }
 
         let exists = bucket.multipart_uploads.read().contains_key(&upload_id);
         if !exists {
@@ -3699,6 +3836,16 @@ impl S3Handler {
                 "The specified multipart upload does not exist (upload might have been aborted or completed)",
             );
         }
+        // moto's copy path validates only through backend.set_part
+        // (models.py:513-515): partNumber < 1 is NoSuchUpload; there is no
+        // >10000 client check on the copy leg.
+        if part_number == 0 {
+            return AwsResponse::error(
+                404,
+                "NoSuchUpload",
+                "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
+            );
+        }
 
         let (src_bucket_name, src_key, src_version_id) = parse_copy_source(copy_source);
         let state = self.get_state(req.account, &req.region);
@@ -3741,12 +3888,32 @@ impl S3Handler {
             }
         };
 
-        let etag = source.etag.clone();
+        // moto models.py:2774-2793: the copy-source range slices the
+        // source value (`src_value[start : end + 1]`, python-clamped);
+        // a missing or unparsable `x-amz-copy-source-range` copies the
+        // whole object, and start > end yields the empty python slice.
+        let part_data: Vec<u8> = match req
+            .headers
+            .get("x-amz-copy-source-range")
+            .and_then(|r| r.strip_prefix("bytes="))
+            .and_then(|b| b.split_once('-'))
+            .and_then(|(s, e)| match (s.parse::<usize>(), e.parse::<usize>()) {
+                (Ok(start), Ok(end)) => Some((start, end)),
+                _ => None,
+            }) {
+            Some((start, end)) => source
+                .data
+                .get(start..(end + 1).min(source.data.len()))
+                .unwrap_or_default()
+                .to_vec(),
+            None => source.data.clone(),
+        };
+        let etag = md5_hex(&part_data);
         let part = MultipartPart {
             part_number,
             etag: etag.clone(),
-            size: source.size,
-            data: source.data.clone(),
+            size: part_data.len(),
+            data: part_data,
             last_modified: chrono::Utc::now().timestamp() as u64,
         };
         if let Some(upload) = bucket.multipart_uploads.read().get(&upload_id) {
@@ -3777,10 +3944,10 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
-        let content_type = {
+        let (content_type, stored) = {
             let uploads = bucket.multipart_uploads.read();
             match uploads.get(&upload_id) {
-                Some(u) => u.content_type.clone(),
+                Some(u) => (u.content_type.clone(), u.parts.read().clone()),
                 None => {
                     return AwsResponse::error(
                         404,
@@ -3791,22 +3958,70 @@ impl S3Handler {
             }
         };
 
-        let parts: Vec<MultipartPart> = {
-            let uploads = bucket.multipart_uploads.read();
-            match uploads.get(&upload_id) {
-                Some(u) => u.parts.read().values().cloned().collect(),
-                None => Vec::new(),
+        // moto responses.py:3104-3112 parses the listed <Part> entries in
+        // order and models.py:479-511 validates as it composes: every listed
+        // part must exist and match its ETag (InvalidPart), part numbers
+        // must ascend (InvalidPartOrder), every listed part except the last
+        // must be >= 5 MiB (EntityTooSmall), and an empty list is
+        // MalformedXML. Only the listed parts, in listed order, compose the
+        // object.
+        const S3_UPLOAD_PART_MIN_SIZE: usize = 5 * 1024 * 1024;
+        let body_str = String::from_utf8_lossy(&req.body).to_string();
+        let mut listed: Vec<MultipartPart> = Vec::new();
+        let mut prev = 0u32;
+        for node in xml_nodes(&body_str, "Part") {
+            let pn = xml_child_text(&node, "PartNumber")
+                .and_then(|t| t.parse::<u32>().ok())
+                .unwrap_or(0);
+            if pn <= prev {
+                return AwsResponse::error(
+                    400,
+                    "InvalidPartOrder",
+                    "The list of parts was not in ascending order. The parts list must be specified in order by part number.",
+                );
             }
-        };
-        if parts.is_empty() {
-            return AwsResponse::error(400, "InvalidPart", "At least one part must be uploaded");
+            prev = pn;
+            let Some(part) = stored.get(&pn) else {
+                return AwsResponse::error(
+                    400,
+                    "InvalidPart",
+                    "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.",
+                );
+            };
+            let claimed = xml_child_text(&node, "ETag")
+                .map(|t| t.trim_matches('"').to_string())
+                .unwrap_or_default();
+            if claimed != part.etag.trim_matches('"') {
+                return AwsResponse::error(
+                    400,
+                    "InvalidPart",
+                    "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.",
+                );
+            }
+            if let Some(last) = listed.last() {
+                if last.size < S3_UPLOAD_PART_MIN_SIZE {
+                    return AwsResponse::error(
+                        400,
+                        "EntityTooSmall",
+                        "Your proposed upload is smaller than the minimum allowed object size.",
+                    );
+                }
+            }
+            listed.push(part.clone());
+        }
+        if listed.is_empty() {
+            return AwsResponse::error(
+                400,
+                "MalformedXML",
+                "The XML you provided was not well-formed or did not validate against our published schema",
+            );
         }
         let etag = {
-            let part_etags: Vec<String> = parts.iter().map(|p| p.etag.clone()).collect();
-            multipart_etag(&part_etags, parts.len())
+            let part_etags: Vec<String> = listed.iter().map(|p| p.etag.clone()).collect();
+            multipart_etag(&part_etags, listed.len())
         };
         let mut combined = Vec::new();
-        for part in &parts {
+        for part in &listed {
             combined.extend_from_slice(&part.data);
         }
         let total_size = combined.len();
@@ -3869,7 +4084,20 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
-        bucket.multipart_uploads.write().remove(&upload_id);
+        // moto models.py:2660-2665 — aborting an unknown uploadId raises
+        // NoSuchUpload instead of answering 204.
+        if bucket
+            .multipart_uploads
+            .write()
+            .remove(&upload_id)
+            .is_none()
+        {
+            return AwsResponse::error(
+                404,
+                "NoSuchUpload",
+                "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
+            );
+        }
         AwsResponse::no_content(204)
     }
 
@@ -3922,10 +4150,29 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
+        let marker: u32 = req
+            .query_params
+            .get("part-number-marker")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let max_parts: usize = req
+            .query_params
+            .get("max-parts")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1000);
+        // moto models.py:2667-2695 — parts after part-number-marker, capped
+        // at max-parts, with IsTruncated/NextPartNumberMarker carrying the
+        // cut position.
         let parts: Vec<MultipartPart> = {
             let uploads = bucket.multipart_uploads.read();
             match uploads.get(&upload_id) {
-                Some(u) => u.parts.read().values().cloned().collect(),
+                Some(u) => u
+                    .parts
+                    .read()
+                    .values()
+                    .filter(|p| p.part_number > marker)
+                    .cloned()
+                    .collect(),
                 None => {
                     return AwsResponse::error(
                         404,
@@ -3935,10 +4182,12 @@ impl S3Handler {
                 }
             }
         };
+        let truncated = parts.len() > max_parts;
+        let selected: Vec<MultipartPart> = parts.into_iter().take(max_parts).collect();
 
-        let next_marker = parts.iter().map(|p| p.part_number).max().unwrap_or(0);
+        let next_marker = selected.last().map(|p| p.part_number).unwrap_or(marker);
         let mut parts_xml = String::new();
-        for p in &parts {
+        for p in &selected {
             parts_xml.push_str(&format!(
                 "<Part><PartNumber>{n}</PartNumber><LastModified>{dt}</LastModified><ETag>&quot;{et}&quot;</ETag><Size>{sz}</Size></Part>",
                 n = p.part_number,
@@ -3948,13 +4197,16 @@ impl S3Handler {
             ));
         }
         let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListPartsResult xmlns=\"{ns}\"><Bucket>{b}</Bucket><Key>{k}</Key><UploadId>{u}</UploadId><PartNumberMarker>0</PartNumberMarker><NextPartNumberMarker>{next}</NextPartNumberMarker><MaxParts>1000</MaxParts><IsTruncated>false</IsTruncated>{parts}<Initiator><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Initiator><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner><StorageClass>STANDARD</StorageClass></ListPartsResult>",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListPartsResult xmlns=\"{ns}\"><Bucket>{b}</Bucket><Key>{k}</Key><UploadId>{u}</UploadId><PartNumberMarker>{marker}</PartNumberMarker><NextPartNumberMarker>{next}</NextPartNumberMarker><MaxParts>{max_parts}</MaxParts><IsTruncated>{truncated}</IsTruncated>{parts}<Initiator><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Initiator><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner><StorageClass>STANDARD</StorageClass></ListPartsResult>",
             ns = S3_NS,
             b = xml_escape(&bucket_name),
             k = xml_escape(&key),
             u = xml_escape(&upload_id),
             next = next_marker,
             parts = parts_xml,
+            marker = marker,
+            max_parts = max_parts,
+            truncated = truncated,
             owner = OWNER_ID,
             disp = OWNER_DISPLAY
         );

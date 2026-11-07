@@ -1505,3 +1505,328 @@ class TestS3RestoreObjectNotification:
         assert record["eventName"] == "ObjectRestore:Post"
         assert record["s3"]["bucket"]["name"] == unique_bucket
         assert record["s3"]["object"]["key"] == "glacier-obj"
+
+
+class TestS3MultipartAndDeleteFidelity:
+    """Moto-mirrored S3 semantics: versioned DeleteObjects, multipart
+    completion validation, part-number bounds and range errors.
+
+    Reference: moto 5.2.5 s3/models.py (delete_object/delete_objects,
+    FakeMultipart.complete/set_part, list_parts) and
+    s3/responses.py (_bucket_response_delete_keys, _complete_multipart_body,
+    _handle_range_header).
+    """
+
+    @pytest.fixture
+    def versioned_bucket(self, s3):
+        name = f"bkt-fid-ver-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        yield name
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for m in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    @pytest.fixture
+    def ephemeral_bucket(self, s3):
+        name = f"bkt-fid-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objs:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def _delete_object(self, code):
+        from botocore.errorfactory import ClientError  # noqa: F401
+
+        def inner(exc):
+            return exc.response["Error"]["Code"]
+
+        return inner
+
+    # -- versioned DeleteObjects ---------------------------------------
+
+    def test_delete_objects_versioned_creates_markers(self, s3, versioned_bucket):
+        for i in range(2):
+            s3.put_object(Bucket=versioned_bucket, Key=f"k{i}", Body=b"x")
+        resp = s3.delete_objects(
+            Bucket=versioned_bucket,
+            Delete={"Objects": [{"Key": "k0"}, {"Key": "k1"}]},
+        )
+        deleted = sorted(resp["Deleted"], key=lambda d: d["Key"])
+        assert [d["Key"] for d in deleted] == ["k0", "k1"]
+        for row in deleted:
+            assert row["DeleteMarker"] is True
+            marker_id = row["DeleteMarkerVersionId"]
+            assert marker_id and marker_id != "null"
+        # the objects read back as gone under the bare key
+        for i in range(2):
+            with pytest.raises(ClientError) as exc:
+                s3.get_object(Bucket=versioned_bucket, Key=f"k{i}")
+            assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+        # and the real versions still exist
+        versions = s3.list_object_versions(Bucket=versioned_bucket)
+        assert len(versions["Versions"]) == 2
+        assert len(versions["DeleteMarkers"]) == 2
+
+    def test_delete_objects_explicit_version_removes_only_it(self, s3, versioned_bucket):
+        v1 = s3.put_object(Bucket=versioned_bucket, Key="k", Body=b"one")
+        v2 = s3.put_object(Bucket=versioned_bucket, Key="k", Body=b"two")
+        resp = s3.delete_objects(
+            Bucket=versioned_bucket,
+            Delete={
+                "Objects": [
+                    {"Key": "k", "VersionId": v1["VersionId"]},
+                ]
+            },
+        )
+        row = resp["Deleted"][0]
+        assert row["Key"] == "k"
+        assert row["VersionId"] == v1["VersionId"]
+        assert "DeleteMarker" not in row
+        # v2 still live, v1 gone
+        assert s3.get_object(Bucket=versioned_bucket, Key="k")["Body"].read() == b"two"
+        versions = s3.list_object_versions(Bucket=versioned_bucket)
+        assert [v["VersionId"] for v in versions["Versions"]] == [v2["VersionId"]]
+
+    def test_delete_objects_unknown_key_is_tolerant(self, s3, versioned_bucket):
+        resp = s3.delete_objects(
+            Bucket=versioned_bucket,
+            Delete={"Objects": [{"Key": "ghost"}]},
+        )
+        assert resp["Deleted"][0]["Key"] == "ghost"
+
+    def test_delete_objects_empty_list_is_malformed_xml(self, s3, ephemeral_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.delete_objects(Bucket=ephemeral_bucket, Delete={"Objects": []})
+        assert exc.value.response["Error"]["Code"] == "MalformedXML"
+
+    def test_delete_objects_unversioned_clears_object(self, s3, ephemeral_bucket):
+        s3.put_object(Bucket=ephemeral_bucket, Key="gone", Body=b"data")
+        resp = s3.delete_objects(Bucket=ephemeral_bucket, Delete={"Objects": [{"Key": "gone"}]})
+        row = resp["Deleted"][0]
+        assert row["Key"] == "gone"
+        assert "DeleteMarker" not in row
+        with pytest.raises(ClientError):
+            s3.head_object(Bucket=ephemeral_bucket, Key="gone")
+
+    # -- complete multipart upload validation --------------------------
+
+    def _start_multipart(self, s3, bucket, key="mp-obj"):
+        up = s3.create_multipart_upload(Bucket=bucket, Key=key)
+        return up["UploadId"]
+
+    def _upload_parts(self, s3, bucket, upload_id, sizes):
+        parts = []
+        for n, size in enumerate(sizes, start=1):
+            et = s3.upload_part(
+                Bucket=bucket,
+                Key="mp-obj",
+                PartNumber=n,
+                UploadId=upload_id,
+                Body=b"x" * size,
+            )["ETag"]
+            parts.append({"ETag": et, "PartNumber": n})
+        return parts
+
+    def test_complete_multipart_happy_path_lists_parts_in_order(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        big1 = 5 * 1024 * 1024
+        big2 = 5 * 1024 * 1024
+        tail = 16
+        parts = self._upload_parts(s3, ephemeral_bucket, upload_id, [big1, big2, tail])
+        resp = s3.complete_multipart_upload(
+            Bucket=ephemeral_bucket,
+            Key="mp-obj",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        assert resp["ETag"].rstrip('"').endswith("-3")
+        body = s3.get_object(Bucket=ephemeral_bucket, Key="mp-obj")
+        assert body["ContentLength"] == big1 + big2 + tail
+
+    def test_complete_multipart_bad_etag_is_invalid_part(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        parts = self._upload_parts(s3, ephemeral_bucket, upload_id, [5 * 1024 * 1024])
+        parts[0]["ETag"] = '"deadbeefdeadbeefdeadbeefdeadbeef"'
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidPart"
+
+    def test_complete_multipart_ascending_order(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        parts = self._upload_parts(s3, ephemeral_bucket, upload_id, [5 * 1024 * 1024])
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": [parts[0], dict(parts[0], PartNumber=1)]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidPartOrder"
+        # reverse order too (moto's generator rejects the second element)
+        parts2 = self._upload_parts(s3, ephemeral_bucket, upload_id, [5 * 1024 * 1024, 16])
+        reversed_parts = list(reversed(parts2))
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": reversed_parts},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidPartOrder"
+
+    def test_complete_multipart_entity_too_small(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        small = 1024
+        tail = 16
+        parts = self._upload_parts(s3, ephemeral_bucket, upload_id, [small, tail])
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityTooSmall"
+
+    def test_complete_multipart_no_parts_is_malformed_xml(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        s3.upload_part(
+            Bucket=ephemeral_bucket,
+            Key="mp-obj",
+            PartNumber=1,
+            UploadId=upload_id,
+            Body=b"x" * 16,
+        )
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": []},
+            )
+        assert exc.value.response["Error"]["Code"] == "MalformedXML"
+
+    def test_complete_multipart_ignores_unlisted_parts(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        big = 5 * 1024 * 1024
+        self._upload_parts(s3, ephemeral_bucket, upload_id, [big, big, 16])
+        parts = self._upload_parts(s3, ephemeral_bucket, upload_id, [5 * 1024 * 1024])
+        # only part 1 listed: the object is composed from part 1 alone
+        resp = s3.complete_multipart_upload(
+            Bucket=ephemeral_bucket,
+            Key="mp-obj",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts[:1]},
+        )
+        assert resp["ETag"].rstrip('"').endswith("-1")
+        assert s3.get_object(Bucket=ephemeral_bucket, Key="mp-obj")["ContentLength"] == big
+
+    # -- part number bounds and abort ----------------------------------
+
+    def test_upload_part_above_10000_rejected(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.upload_part(
+                Bucket=ephemeral_bucket,
+                Key="mp-obj",
+                PartNumber=10001,
+                UploadId=upload_id,
+                Body=b"x" * 16,
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidArgument"
+
+    def test_abort_multipart_unknown_id_404(self, s3, ephemeral_bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.abort_multipart_upload(
+                Bucket=ephemeral_bucket, Key="mp-obj", UploadId="does-not-exist"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchUpload"
+
+    def test_list_parts_honors_pagination(self, s3, ephemeral_bucket):
+        upload_id = self._start_multipart(s3, ephemeral_bucket)
+        self._upload_parts(s3, ephemeral_bucket, upload_id, [16, 17, 18])
+        page = s3.list_parts(
+            Bucket=ephemeral_bucket, Key="mp-obj", UploadId=upload_id, MaxParts=2
+        )
+        assert [p["PartNumber"] for p in page["Parts"]] == [1, 2]
+        assert page["IsTruncated"] is True
+        assert page["NextPartNumberMarker"] == 2
+        page2 = s3.list_parts(
+            Bucket=ephemeral_bucket,
+            Key="mp-obj",
+            UploadId=upload_id,
+            PartNumberMarker=page["NextPartNumberMarker"],
+        )
+        assert [p["PartNumber"] for p in page2["Parts"]] == [3]
+        assert page2["IsTruncated"] is False
+
+    def test_upload_part_copy_honors_range(self, s3, ephemeral_bucket):
+        body = b"0123456789"
+        s3.put_object(Bucket=ephemeral_bucket, Key="src", Body=body)
+        upload_id = self._start_multipart(s3, ephemeral_bucket, key="dst")
+        resp = s3.upload_part_copy(
+            Bucket=ephemeral_bucket,
+            Key="dst",
+            PartNumber=1,
+            UploadId=upload_id,
+            CopySource={"Bucket": ephemeral_bucket, "Key": "src"},
+            CopySourceRange="bytes=2-5",
+        )
+        assert resp["CopyPartResult"]["ETag"] is not None
+        parts = [{"ETag": resp["CopyPartResult"]["ETag"], "PartNumber": 1}]
+        done = s3.complete_multipart_upload(
+            Bucket=ephemeral_bucket,
+            Key="dst",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        assert done["ETag"].rstrip('"').endswith("-1")
+        assert s3.get_object(Bucket=ephemeral_bucket, Key="dst")["Body"].read() == body[2:6]
+
+    # -- range errors ---------------------------------------------------
+
+    def test_get_object_unsatisfiable_range_416(self, s3, ephemeral_bucket):
+        s3.put_object(Bucket=ephemeral_bucket, Key="r", Body=b"1234567890")
+        for rng in ("bytes=100-", "bytes=-0"):
+            with pytest.raises(ClientError) as exc:
+                s3.get_object(Bucket=ephemeral_bucket, Key="r", Range=rng)
+            assert exc.value.response["Error"]["Code"] == "InvalidRange"
+            assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 416
+        # begin > end (but begin in bounds) is ignored: 200 with the full body
+        got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=5-3")
+        assert got["Body"].read() == b"1234567890"
+        assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_object_range_happy_paths(self, s3, ephemeral_bucket):
+        body = b"1234567890"
+        s3.put_object(Bucket=ephemeral_bucket, Key="r", Body=body)
+        # suffix range
+        got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=-4")
+        assert got["Body"].read() == b"7890"
+        # open-ended range
+        got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=7-")
+        assert got["Body"].read() == b"890"
+        # bounded range
+        got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=0-2")
+        assert got["Body"].read() == b"123"
+        # a multi-range spec is ignored: 200 with the full body
+        got = s3.get_object(Bucket=ephemeral_bucket, Key="r", Range="bytes=0-1,3-4")
+        assert got["Body"].read() == body
+        assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
