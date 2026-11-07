@@ -1093,6 +1093,176 @@ fn format_created_at(ts: u64) -> String {
         .to_string()
 }
 
+/// moto's write-shape validation, in moto's own order: the response layer
+/// checks empty/NULL values first (responses.py:93-161: empty GSI string
+/// keys, empty item keys, empty NS/SS sets — BS is not checked, mirroring
+/// moto — and NULL-typed index keys), then table.put_item adds missing-key
+/// and key-type checks (models/table.py:627-654). Only the table keys are
+/// type-checked.
+#[allow(clippy::too_many_lines)]
+fn put_shape_error(
+    table: &Table,
+    attrs: &Map<String, Value>,
+    custom_empty_key: Option<&str>,
+) -> Option<AwsResponse> {
+    // moto: `next(iter(val.keys())) in ["S","B"] and next(iter(val.values())) == ""`
+    fn type_of(v: &Value) -> Option<&str> {
+        v.as_object()
+            .and_then(|o| o.keys().next())
+            .map(|s| s.as_str())
+    }
+    let is_empty_str = |opt: &Value| -> bool {
+        matches!(type_of(opt), Some("S") | Some("B"))
+            && opt.as_object().and_then(|o| o.values().next())
+                == Some(&Value::String(String::new()))
+    };
+    let defs: Vec<(String, String)> = table
+        .attribute_definitions
+        .read()
+        .iter()
+        .map(|d| (d.attribute_name.clone(), d.attribute_type.clone()))
+        .collect();
+
+    // Empty string/binary values among the key attributes, indexes first
+    // (responses.py:93-131 — but moto's IndexName is hardcoded to
+    // global_indexes[0]).
+    {
+        let indexes = table.global_secondary_indexes.read();
+        let gsi_key_attrs: Vec<&str> = indexes
+            .iter()
+            .flat_map(|g| g.key_schema.iter().map(|k| k.attribute_name.as_str()))
+            .collect();
+        for attr in gsi_key_attrs {
+            if attrs.get(attr).is_some_and(is_empty_str) {
+                let name = indexes.first().map(|g| g.name.clone()).unwrap_or_default();
+                return Some(AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "One or more parameter values are not valid. A value specified for a \
+                         secondary index key is not supported. The AttributeValue for a key \
+                         attribute cannot contain an empty string value. IndexName: {name}, \
+                         IndexKey: {attr}"
+                    ),
+                ));
+            }
+        }
+    }
+    for key in &table.key_schema {
+        let name = key.attribute_name.as_str();
+        if attrs.get(name).is_some_and(is_empty_str) {
+            // moto's custom_error_msg slot: BatchWriteItem and the transact
+            // Update-Key arm pass their own wording (responses.py:748-751,
+            // 1511-1516); puts keep the default.
+            let message = match custom_empty_key {
+                Some(template) => template.replace("{}", name),
+                None => format!(
+                    "One or more parameter values were invalid: An AttributeValue \
+                     may not contain an empty string. Key: {name}"
+                ),
+            };
+            return Some(AwsResponse::error(400, "ValidationException", &message));
+        }
+    }
+
+    // Empty sets anywhere outside the key attributes (responses.py:134-146).
+    for (attr, val) in attrs {
+        if table.key_schema.iter().any(|k| &k.attribute_name == attr) {
+            continue; // moto skips key attributes here
+        }
+        if let Some(tag) = validate_empty_sets(val) {
+            let label = if tag == "NS" { "number" } else { "string" };
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: One or more parameter values were \
+                     invalid: An {} set  may not be empty",
+                    label
+                ),
+            ));
+        }
+    }
+
+    // NULL-typed index keys (responses.py:154-161; moto's "Expected: S" is
+    // hardcoded there and mirrored verbatim)
+    let indexes_for = table.global_secondary_indexes.read();
+    for gsi in indexes_for.iter() {
+        for key in &gsi.key_schema {
+            if attrs.get(&key.attribute_name) == Some(&json!({"NULL": true})) {
+                return Some(AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "One or more parameter values were invalid: Type mismatch for \
+                         Index Key {} Expected: S Actual: NULL IndexName: {}",
+                        key.attribute_name, gsi.name
+                    ),
+                ));
+            }
+        }
+    }
+    drop(indexes_for);
+
+    // Missing key members (table.py:627-638): hash first, then range.
+    for key in &table.key_schema {
+        if !attrs.contains_key(&key.attribute_name) {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "One or more parameter values were invalid: Missing the key {} in the item",
+                    key.attribute_name
+                ),
+            ));
+        }
+    }
+
+    // Key type mismatch against the schema's AttributeDefinitions
+    // (table.py:643-654 + exceptions.py:299-303).
+    for key in &table.key_schema {
+        let name = key.attribute_name.as_str();
+        let Some(actual) = type_of(attrs.get(name).unwrap_or(&Value::Null)) else {
+            continue;
+        };
+        let expected = defs
+            .iter()
+            .find(|(n, _)| n.as_str() == name)
+            .map(|(_, t)| t.as_str());
+        if let Some(expected) = expected {
+            if expected != actual {
+                return Some(AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "One or more parameter values were invalid: Type mismatch for key \
+                         {name} expected: {expected} actual: {actual}"
+                    ),
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Recursive check for empty NS/SS members (moto responses.py:134-146 — its
+/// `_validate_attr` sweeps nested dicts but, like `_validate_item_types`,
+/// never descends into lists). Returns the offending tag ("NS"/"SS").
+fn validate_empty_sets(val: &Value) -> Option<String> {
+    let obj = val.as_object()?;
+    for (tag, v) in obj {
+        if matches!(tag.as_str(), "NS" | "SS") && v.as_array().is_some_and(|a| a.is_empty()) {
+            return Some(tag.clone());
+        }
+        if let Some(nested) = v.as_object() {
+            if let Some(found) = validate_empty_sets(&Value::Object(nested.clone())) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 /// Canonical storage key for an item given its key attributes.
 fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
     compute_key_from_attrs(&table.key_schema, &attrs_to_map(attrs))
@@ -1341,6 +1511,19 @@ impl DynamoDbHandler {
         if cond.trim().is_empty() {
             return Ok(());
         }
+        // moto's condition parser resolves `#names` by strict dict access —
+        // real AWS answers ValidationException for an unresolved placeholder
+        // on the item ops (the query/scan pre-pass guards its own shapes).
+        if let Some(tok) = unbound_name_token(cond, names) {
+            return Err(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "An expression attribute name used in the document path is not \
+                     defined; attribute name: {tok}"
+                ),
+            ));
+        }
         let item = match existing.cloned() {
             Some(m) => Value::Object(m.into_iter().collect()),
             None => Value::Object(Map::new()),
@@ -1367,6 +1550,12 @@ impl DynamoDbHandler {
 
         let item_json = req.params.get("Item").cloned().unwrap_or(Value::Null);
         let attrs: Map<String, Value> = item_json.as_object().cloned().unwrap_or_default();
+        // moto's response-layer shape validations run before the key checks
+        // (responses.py:680-691), then table.put_item's missing/type checks
+        // (models/table.py:627-654) before any condition evaluation.
+        if let Some(e) = put_shape_error(&table, &attrs, None) {
+            return e;
+        }
         let key = match item_key(&table, &attrs) {
             Some(k) => k,
             None => {
@@ -1442,7 +1631,16 @@ impl DynamoDbHandler {
             return AwsResponse::json(200, json!({}));
         };
         let item_json = Value::Object(item.attributes.clone().into_iter().collect());
-        let projected = project_from_req(req, &item_json);
+        // moto responses.py:245-281: GetItem rejects an invalid
+        // ProjectionExpression (overlapping paths, reserved words, bad
+        // syntax) — the old twin swallowed the error and over-returned the
+        // full item.
+        let projected = match project_from_req(req, &item_json) {
+            Ok(v) => v,
+            Err(msg) => {
+                return AwsResponse::error(400, "ValidationException", &msg);
+            }
+        };
         AwsResponse::json(200, json!({ "Item": projected }))
     }
 
@@ -1540,6 +1738,21 @@ impl DynamoDbHandler {
         let old_was_present = existing.is_some();
 
         let update_expr = expr_str(req.params.get("UpdateExpression")).unwrap_or("");
+        // moto's update validator raises ExpressionAttributeNameNotDefined
+        // for an unresolved `#name` in a document path (validators.py:108-112);
+        // the old twin silently wrote attributes literally named `#x`.
+        if !update_expr.trim().is_empty() {
+            if let Some(tok) = unbound_name_token(update_expr, &get_names(req)) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!(
+                        "An expression attribute name used in the document path is not \
+                         defined; attribute name: {tok}"
+                    ),
+                );
+            }
+        }
         let outcome_result = if update_expr.trim().is_empty() {
             Ok(expr_engine::UpdateOutcome {
                 set_paths: Vec::new(),
@@ -1636,6 +1849,26 @@ impl DynamoDbHandler {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        // Consistent reads are not supported on global secondary indexes
+        // (moto models/table.py:785-787; LSIs are fine).
+        if req
+            .params
+            .get("ConsistentRead")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            && table
+                .global_secondary_indexes
+                .read()
+                .iter()
+                .any(|g| g.name == index_name)
+        {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Consistent reads are not supported on global secondary indexes",
+            );
+        }
+
         // Fails the request when the named index does not exist.
         let _index = match resolve_index(&table, &index_name) {
             Ok(i) => i,
@@ -1663,6 +1896,25 @@ impl DynamoDbHandler {
         let index_name = param_str(&req.params, "IndexName")
             .unwrap_or("")
             .to_string();
+        // Consistent reads are not supported on global secondary indexes
+        // in scans either (moto models/table.py:1053-1056; LSIs are fine).
+        if req
+            .params
+            .get("ConsistentRead")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            && table
+                .global_secondary_indexes
+                .read()
+                .iter()
+                .any(|g| g.name == index_name)
+        {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Consistent reads are not supported on global secondary indexes",
+            );
+        }
         // Fails the request when the named index does not exist.
         let _index = match resolve_index(&table, &index_name) {
             Ok(i) => i,
@@ -1790,11 +2042,16 @@ impl DynamoDbHandler {
             })
             .collect();
 
-        // Index hash-key presence filter: items missing the index keys are not
-        // part of that index.
+        // Index membership: an item is part of an index only when ALL of the
+        // index's key attributes are present (moto query models/table.py:877-882
+        // and scan has_idx_items:1019-1033; the old twin retained on the hash
+        // alone, so items missing the index range key leaked into results).
         if let Some(idx) = index_of(table, param_str(&req.params, "IndexName").unwrap_or("")) {
-            let hash_attr = idx.hash_attr().unwrap_or("").to_string();
-            candidates.retain(|(_, m)| m.contains_key(&hash_attr));
+            candidates.retain(|(_, m)| {
+                idx.key_schema
+                    .iter()
+                    .all(|k| m.contains_key(&k.attribute_name))
+            });
         }
 
         // Key condition filter.
@@ -2091,17 +2348,17 @@ fn forward_reverse(forward: bool) -> bool {
 }
 
 /// Apply the ProjectionExpression of a request to a single item.
-fn project_from_req(req: &AwsRequest, item: &Value) -> Value {
+fn project_from_req(req: &AwsRequest, item: &Value) -> Result<Value, String> {
     let Some(proj) = expr_str(req.params.get("ProjectionExpression")) else {
-        return item.clone();
+        return Ok(item.clone());
     };
     if proj.trim().is_empty() {
-        return item.clone();
+        return Ok(item.clone());
     }
     let names = get_names(req);
     match expr_engine::parse_projection(proj, &names) {
-        Ok(paths) => Value::Object(expr_engine::project_item(item, &paths)),
-        Err(_) => item.clone(),
+        Ok(paths) => Ok(Value::Object(expr_engine::project_item(item, &paths))),
+        Err(msg) => Err(msg),
     }
 }
 
@@ -2254,6 +2511,21 @@ impl DynamoDbHandler {
                     if let Some(item_json) = write.pointer("/PutRequest/Item").cloned() {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
+                        // moto's batch response layer (responses.py:745-751)
+                        // validates the put shape with its own empty-key
+                        // wording; the type/missing checks ride the backend
+                        // put.
+                        if let Some(e) = put_shape_error(
+                            table,
+                            &attrs,
+                            Some(
+                                "One or more parameter values are not valid. The \
+                                 AttributeValue for a key attribute cannot contain an \
+                                 empty string value. Key: {}",
+                            ),
+                        ) {
+                            return e;
+                        }
                         let Some(key) = item_key(table, &attrs) else {
                             return keyed_lookup_error(table, &attrs);
                         };
@@ -2538,6 +2810,12 @@ impl DynamoDbHandler {
                     let item_json = op.get("Item").cloned().unwrap_or(Value::Null);
                     let attrs: Map<String, Value> =
                         item_json.as_object().cloned().unwrap_or_default();
+                    // moto's transact response layer validates the Put shape
+                    // with the standard empty-key texts (responses.py:1499-1513);
+                    // key types ride the backend put.
+                    if let Some(e) = put_shape_error(&table, &attrs, None) {
+                        return e;
+                    }
                     let Some(key) = item_key(&table, &attrs) else {
                         return AwsResponse::error(
                             400,
@@ -2632,24 +2910,51 @@ impl DynamoDbHandler {
                             // cancels the whole transaction (this row's own
                             // payload included) instead of leaving earlier
                             // rows committed. Phase 2 then only overwrites.
+                            // moto's transact Update arm validates the Key
+                            // shape with the batch custom text
+                            // (responses.py:1509-1516) and its
+                            // validate_attributes_used rejects unresolved
+                            // `#name`s in the row's UpdateExpression.
+                            if let Some(e) = put_shape_error(
+                                &table,
+                                &key_attrs,
+                                Some(
+                                    "One or more parameter values are not valid. The \
+                                     AttributeValue for a key attribute cannot contain an \
+                                     empty string value. Key: {}",
+                                ),
+                            ) {
+                                return e;
+                            }
+                            let update = expr_str(op.get("UpdateExpression")).unwrap_or("");
+                            if !update.trim().is_empty() {
+                                if let Some(tok) = unbound_name_token(update, &op_names(op)) {
+                                    return AwsResponse::error(
+                                        400,
+                                        "ValidationException",
+                                        &format!(
+                                            "An expression attribute name used in the document \
+                                             path is not defined; attribute name: {tok}"
+                                        ),
+                                    );
+                                }
+                            }
                             let mut new_attrs: Map<String, Value> = match &pre {
                                 Some(m) => m.clone().into_iter().collect(),
                                 None => key_attrs.clone(),
                             };
-                            if let Some(update) = expr_str(op.get("UpdateExpression")) {
-                                if !update.trim().is_empty() {
-                                    if let Err(e) = expr_engine::apply_update(
-                                        &mut new_attrs,
-                                        update,
-                                        &op_names(op),
-                                        &op_values(op),
-                                    ) {
-                                        return AwsResponse::error(
-                                            400,
-                                            "ValidationException",
-                                            e.as_str(),
-                                        );
-                                    }
+                            if !update.trim().is_empty() {
+                                if let Err(e) = expr_engine::apply_update(
+                                    &mut new_attrs,
+                                    update,
+                                    &op_names(op),
+                                    &op_values(op),
+                                ) {
+                                    return AwsResponse::error(
+                                        400,
+                                        "ValidationException",
+                                        e.as_str(),
+                                    );
                                 }
                             }
                             // moto's transactional Update re-raises the size

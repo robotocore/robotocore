@@ -489,6 +489,82 @@ def corpus_dynamodb(engine):
                 )
             ),
         ),
+        # -- tranche-5 pins (semantic-audit 2026-11-06 dynamodb findings) ----
+        (
+            "put_key_type_mismatch",
+            err_wrap(lambda: d.put_item(TableName=t, Item={"pk": {"S": "p2"}, "sk": {"S": "5"}})),
+        ),
+        (
+            "put_missing_key",
+            err_wrap(lambda: d.put_item(TableName=t, Item={"pk": {"S": "p3"}})),
+        ),
+        (
+            "put_empty_string_key",
+            err_wrap(lambda: d.put_item(TableName=t, Item={"pk": {"S": ""}, "sk": {"N": "1"}})),
+        ),
+        (
+            "put_empty_set",
+            err_wrap(
+                lambda: d.put_item(
+                    TableName=t, Item={"pk": {"S": "p4"}, "sk": {"N": "1"}, "tags": {"SS": []}}
+                )
+            ),
+        ),
+        (
+            "add_onto_string_attr",
+            err_wrap(
+                lambda: d.update_item(
+                    TableName=t,
+                    Key=key,
+                    UpdateExpression="ADD payload :one",
+                    ExpressionAttributeValues={":one": {"N": "5"}},
+                )
+            ),
+        ),
+        (
+            "add_empty_set_operand",
+            err_wrap(
+                lambda: d.update_item(
+                    TableName=t,
+                    Key=key,
+                    UpdateExpression="ADD tags :empty",
+                    ExpressionAttributeValues={":empty": {"SS": []}},
+                )
+            ),
+        ),
+        (
+            "delete_set_to_empty_removes_attr",
+            err_wrap(
+                lambda: d.update_item(
+                    TableName=t,
+                    Key=key,
+                    UpdateExpression="DELETE payload :v",
+                    ExpressionAttributeValues={":v": {"S": "z"}},
+                )
+            ),
+        ),
+        (
+            "update_unresolved_name",
+            err_wrap(
+                lambda: d.update_item(
+                    TableName=t,
+                    Key=key,
+                    UpdateExpression="SET #nope = :v",
+                    ExpressionAttributeValues={":v": {"S": "x"}},
+                )
+            ),
+        ),
+        (
+            "get_item_duplicate_projection",
+            err_wrap(
+                lambda: d.get_item(
+                    TableName=t,
+                    Key=key,
+                    ProjectionExpression="payload, #p",
+                    ExpressionAttributeNames={"#p": "payload"},
+                )
+            ),
+        ),
         ("scan", err_wrap(lambda: d.scan(TableName=t))),
         (
             "delete_item",

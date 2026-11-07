@@ -466,7 +466,9 @@ fn dec_cmp(a: &str, b: &str) -> Option<std::cmp::Ordering> {
 pub fn attr_eq(a: &Value, b: &Value) -> bool {
     match (type_of(a), type_of(b)) {
         (Some("S"), Some("S")) | (Some("B"), Some("B")) | (Some("BOOL"), Some("BOOL")) => a == b,
+        (Some(sa), Some(sb)) if sa == sb && matches!(sa, "SS" | "NS" | "BS") => set_eq(a, b),
         (Some("N"), Some("N")) => {
+            // fall through unchanged
             let (Some(x), Some(y)) = (
                 a.get("N").and_then(|v| v.as_str()),
                 b.get("N").and_then(|v| v.as_str()),
@@ -479,6 +481,38 @@ pub fn attr_eq(a: &Value, b: &Value) -> bool {
         }
         (Some("NULL"), Some("NULL")) => true,
         _ => a == b,
+    }
+}
+
+/// Set (SS/NS/BS) equality under DynamoDB semantics: unordered members,
+/// numeric strings equal by value — moto's DynamoType.__eq__ walks
+/// cast_value (dynamo_type.py:81, 183-188), where sets become python sets
+/// of Decimals/strings. The stored members are raw strings inside the
+/// array, so the element compare is numeric for NS and byte-wise
+/// otherwise.
+fn set_eq(a: &Value, b: &Value) -> bool {
+    let (Some(av), Some(bv)) = (
+        a.as_object()
+            .and_then(|o| o.values().next())
+            .and_then(Value::as_array),
+        b.as_object()
+            .and_then(|o| o.values().next())
+            .and_then(Value::as_array),
+    ) else {
+        return a == b;
+    };
+    let numeric = type_of(a) == Some("NS");
+    av.len() == bv.len()
+        && av
+            .iter()
+            .all(|x| bv.iter().any(|y| member_eq(x, y, numeric)))
+}
+
+/// Element-level equality inside SS/NS/BS members.
+fn member_eq(x: &Value, y: &Value, numeric: bool) -> bool {
+    match (numeric, x.as_str(), y.as_str()) {
+        (true, Some(xs), Some(ys)) => dec_cmp(xs, ys).map(|o| o.is_eq()).unwrap_or(false),
+        _ => x == y,
     }
 }
 
@@ -1416,7 +1450,7 @@ pub fn apply_update(
             }
             UpdateClause::Add(actions) => {
                 for (path, val) in actions {
-                    let updated = add_to_attr(attrs.get_path(&path).cloned(), &val);
+                    let updated = add_to_attr(attrs.get_path(&path).cloned(), &val)?;
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
                     item_view = Value::Object(attrs.clone());
@@ -1424,14 +1458,22 @@ pub fn apply_update(
             }
             UpdateClause::Delete(actions) => {
                 for (path, val) in actions {
-                    let Some(updated) = delete_from_attr(attrs.get_path(&path).cloned(), &val)?
-                    else {
-                        // Attribute absent: DELETE is a no-op, nothing created.
-                        item_view = Value::Object(attrs.clone());
-                        continue;
-                    };
-                    set_path(attrs, &path, updated.clone())?;
-                    outcome.add_paths.push((path, updated));
+                    match delete_from_attr(attrs.get_path(&path).cloned(), &val)? {
+                        DeleteOutcome::Unchanged => {
+                            // Attribute absent: DELETE is a no-op, nothing created.
+                        }
+                        DeleteOutcome::Updated(updated) => {
+                            set_path(attrs, &path, updated.clone())?;
+                            outcome.add_paths.push((path, updated));
+                        }
+                        DeleteOutcome::Removed => {
+                            // Emptied set gone entirely (no empty sets in
+                            // DynamoDB, moto executors.py:177-181); the
+                            // consumed attribute is only reported by
+                            // UPDATED_OLD via the old item.
+                            remove_path(attrs, &path);
+                        }
+                    }
                     item_view = Value::Object(attrs.clone());
                 }
             }
@@ -1621,47 +1663,94 @@ fn nested_value_mut<'m>(tv: &'m mut Value, segs: &[String]) -> Option<&'m mut Va
     nested_value_mut(next?, rest)
 }
 
-/// ADD: numeric addition for N, set union for SS/NS/BS, otherwise copy.
-fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
-    match (current, type_of(val)) {
-        (Some(cur), Some("N")) if type_of(&cur) == Some("N") => {
-            let a = cur.get("N").and_then(|v| v.as_str()).unwrap_or("0");
-            let b = val.get("N").and_then(|v| v.as_str()).unwrap_or("0");
-            match dec_add(a, b) {
-                Some(n) => json!({ "N": n }),
-                None => fmt_num(a.parse::<f64>().unwrap_or(0.0) + b.parse::<f64>().unwrap_or(0.0)),
+/// moto AddExecutor's IncorrectDataType message.
+const ADD_TYPE_MSG: &str = "An operand in the update expression has an incorrect data type";
+
+/// ADD: numeric addition for N, set union for same-kind SS/NS/BS. moto's
+/// AddExecutor (executors.py:220-272) raises IncorrectDataType for every
+/// other target/operand pairing (including ADD onto a list or a map), and
+/// requires a non-empty set operand; an absent attribute is created.
+fn add_to_attr(current: Option<Value>, val: &Value) -> Result<Value, String> {
+    match type_of(val) {
+        Some("N") => match current {
+            None => Ok(val.clone()),
+            Some(cur) if type_of(&cur) == Some("N") => {
+                let a = cur.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+                let b = val.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+                Ok(match dec_add(a, b) {
+                    Some(n) => json!({ "N": n }),
+                    None => {
+                        fmt_num(a.parse::<f64>().unwrap_or(0.0) + b.parse::<f64>().unwrap_or(0.0))
+                    }
+                })
+            }
+            Some(_) => Err(ADD_TYPE_MSG.to_string()),
+        },
+        Some(st @ ("SS" | "NS" | "BS")) => {
+            let operand = val
+                .as_object()
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if operand.is_empty() {
+                // moto's hardcoded wording — always "string", on every kind
+                return Err(
+                    "1 validation error detected: One or more parameter values were invalid: An string set  may not be empty"
+                        .to_string(),
+                );
+            }
+            match current {
+                None => Ok(val.clone()),
+                Some(cur) if type_of(&cur) == Some(st) => Ok(merge_sets(&cur, val)),
+                Some(_) => Err(ADD_TYPE_MSG.to_string()),
             }
         }
-        (Some(cur), Some("SS")) if type_of(&cur) == Some("SS") => merge_sets(&cur, val),
-        (Some(cur), Some("NS")) if type_of(&cur) == Some("NS") => merge_sets(&cur, val),
-        (Some(cur), Some("BS")) if type_of(&cur) == Some("BS") => merge_sets(&cur, val),
-        (Some(cur), Some("L")) if type_of(&cur) == Some("L") => {
-            let mut out = cur
-                .get("L")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let add = val
-                .get("L")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            out.extend(add);
-            json!({ "L": out })
-        }
-        _ => val.clone(),
+        _ => Err(ADD_TYPE_MSG.to_string()),
     }
 }
 
-/// DELETE: set difference for SS/NS/BS. A missing attribute is a no-op
-/// (None): nothing is created or reported.
-fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Option<Value>, String> {
+/// What a DELETE clause did to its target.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeleteOutcome {
+    /// Attribute unchanged (was absent).
+    Unchanged,
+    /// Set difference applied.
+    Updated(Value),
+    /// Emptied — the attribute is removed entirely (no empty sets).
+    Removed,
+}
+
+/// DELETE: set difference for SS/NS/BS. A missing attribute is a no-op.
+/// Emptied sets are removed the way moto's DeleteExecutor does
+/// (executors.py:177-181): "DynamoDB does not support empty sets".
+fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<DeleteOutcome, String> {
     let Some(cur) = current else {
-        return Ok(None); // attribute absent — nothing to delete from
+        return Ok(DeleteOutcome::Unchanged); // attribute absent — nothing to delete from
     };
     let tag = type_of(&cur).unwrap_or("SS");
     if !matches!(tag, "SS" | "NS" | "BS") {
-        return Err("DELETE requires a set attribute".to_string());
+        // moto DeleteExecutor (executors.py:139-143) raises
+        // IncorrectOperandType with the human type name.
+        let human = match tag {
+            "S" => "STRING",
+            "N" => "NUMBER",
+            "B" => "BINARY",
+            "M" => "MAP",
+            "L" => "LIST",
+            "BOOL" => "BOOLEAN",
+            "NULL" => "NULL",
+            other => other,
+        };
+        return Err(format!(
+            "Invalid UpdateExpression: Incorrect operand type for operator or function; \
+             operator or function: operator: DELETE, operand type: {human}"
+        ));
+    }
+    if type_of(val) != Some(tag) {
+        // moto: DELETE of a different set kind raises IncorrectDataType
+        // (executors.py:159-160).
+        return Err(ADD_TYPE_MSG.to_string());
     }
     let mut out = cur
         .as_object()
@@ -1678,7 +1767,10 @@ fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Option<Value>
     {
         out.retain(|e| !attr_eq(e, &needle));
     }
-    Ok(Some(json!({ tag: out })))
+    if out.is_empty() {
+        return Ok(DeleteOutcome::Removed);
+    }
+    Ok(DeleteOutcome::Updated(json!({ tag: out })))
 }
 
 fn merge_sets(cur: &Value, val: &Value) -> Value {
@@ -1695,8 +1787,13 @@ fn merge_sets(cur: &Value, val: &Value) -> Value {
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
+    let numeric = type_of(cur) == Some("NS");
     for e in add {
-        if !out.iter().any(|x| attr_eq(x, &e)) {
+        // moto's list membership is string-sensitive (AddExecutor's `value
+        // in current_string_set.value`, executors.py:252-254); real AWS
+        // treats number-set members as numerically deduped, so the twin
+        // prefers numeric equality for NS — ledgered twin-preferred.
+        if !out.iter().any(|x| member_eq(x, &e, numeric)) {
             out.push(e);
         }
     }
@@ -1730,6 +1827,26 @@ pub fn parse_projection(expr: &str, names: &Names) -> Result<Vec<Vec<String>>, S
         };
         paths.push(segs);
     }
+    // Real AWS rejects overlapping document paths in one projection with
+    // the overlap contract (template: moto exceptions.py:316). Identical
+    // paths overlap too — moto never ran this validator on GetItem, so the
+    // twin answers real AWS here.
+    for i in 0..paths.len() {
+        for j in 0..paths.len() {
+            if i != j
+                && paths[i].len() <= paths[j].len()
+                && paths[i][..] == paths[j][..paths[i].len()]
+            {
+                let one = paths[i].join(".");
+                let two = paths[j].join(".");
+                return Err(format!(
+                    "1 validation error detected: Invalid ProjectionExpression: Two \
+                     document paths overlap with each other; must remove or rewrite \
+                     one of these paths; path one: [{one}], path two: [{two}]"
+                ));
+            }
+        }
+    }
     Ok(paths)
 }
 
@@ -1760,6 +1877,23 @@ mod tests {
 
     fn item(v: Value) -> Value {
         v
+    }
+
+    #[test]
+    fn set_equality_is_numeric_and_orderless() {
+        let a = json!({"NS": ["1"]});
+        assert!(attr_eq(&a, &json!({"NS": ["1.0"]})));
+        assert!(!attr_eq(&a, &json!({"NS": ["1", "3"]})));
+        assert!(!attr_eq(
+            &json!({"SS": ["a", "b"]}),
+            &json!({"SS": ["b", "a", "c"]})
+        ));
+        assert!(attr_eq(
+            &json!({"SS": ["a", "b"]}),
+            &json!({"SS": ["b", "a"]})
+        ));
+        let merged = merge_sets(&a, &json!({"NS": ["1.0", "2"]}));
+        assert_eq!(merged, json!({"NS": ["1", "2"]}));
     }
 
     #[test]

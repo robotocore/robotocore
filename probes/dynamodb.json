@@ -1,10 +1,10 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-11-06T19:42:38.869269+00:00",
+  "generated_at": "2026-11-07T04:03:04.796411+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/dynamodb.rs": "absent",
     "rotocore/src/services/dynamodb/": "absent",
-    "crates/dynamodb/src/": "05ed3c4c8efac665ee7c92b98013b69e0230999b367509c80752e8491a733d33"
+    "crates/dynamodb/src/": "4eb32d64d4a08d7167304d324092f0be7a127dbb3eb4df767e1a4479608b7697"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

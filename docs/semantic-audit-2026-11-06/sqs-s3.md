@@ -44,12 +44,16 @@ SQS
    (d) Real AWS: filters by the requested names and rejects unknown ones. Rust diverges.
    (e) High confidence.
 
+   **FIXED (2026-11-06, verified on main during the ledger-freshness pass; wording corrected 2026-11-07 by adversarial wire review):** GetQueueAttributes projects the requested subset and raises InvalidAttributeName with moto's "Unknown Attribute {n}." for unknown names (crates/sqs/src/handler.rs:1554-1586); with AttributeNames omitted or empty it returns the full default map (SQS's own documented default), unlike moto which drops the member entirely.
+
 5. ReceiveMessage does not filter message attributes by MessageAttributeNames
    (a) ReceiveMessage.
    (b) moto M/sqs/models.py:669-691 (`_filter_message_attributes`: exact names, "All", and `<prefix>.*` patterns) applied to a deepcopy at responses.py:1036-1038, with MD5OfMessageAttributes computed over the *filtered* set (responses.py:314-316); non-matching attributes are omitted.
    (c) R/sqs/src/handler.rs:1196-1213 — if any requested name is "All" or matches *any* of the message's attribute keys (`name_pattern_matches`, handler.rs:1539-1547 — `*` wildcard instead of moto's `.*`-prefix rule), it returns the FULL unfiltered attribute map and computes the MD5 over the full set; a specific-name request returns every attribute instead of only the matching ones.
    (d) Real AWS returns only the matching attributes and an MD5 over exactly what it returns. Rust diverges on both payload and checksum.
    (e) High confidence.
+
+   **FIXED (2026-11-06, verified on main during the ledger-freshness pass):** ReceiveMessage filters system and message attributes to the requested names (exact + prefix patterns per moto's rule) and computes MD5OfMessageAttributes over the filtered set (crates/sqs/src/handler.rs:181, 633-644, 1591-1600).
 
 6. DeleteMessage does not accept old receipt handles or repeat deletes; DeleteMessageBatch Failed rows are shaped differently
    (a) DeleteMessage / DeleteMessageBatch.
