@@ -22,12 +22,16 @@ rust-fmt: ## rustfmt check
 
 ## ── Testing ────────────────────────────────────────────────────────────
 
+# The enforce_iam_toggle suite flips a process-global knob: it runs
+# sequentially, after the concurrent shard, never inside one.
 compat-test: ## Compatibility tests (auto-starts the rust server)
 	bash scripts/start_parity_servers.sh
-	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
+	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
+	uv run pytest tests/compatibility/ -q --tb=short -m enforce_iam_toggle
 
 compat-test-hot: ## Compatibility tests (assumes server already running)
-	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
+	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
+	uv run pytest tests/compatibility/ -q --tb=short -m enforce_iam_toggle
 
 parity: ## Full rust-only parity run against the golden baseline
 	$(MAKE) probe-freshness

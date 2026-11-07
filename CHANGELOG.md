@@ -9,7 +9,43 @@ under *Changelog discipline*.
 
 ## Unreleased
 
+### Added
+
+- **`ENFORCE_IAM=1` request enforcement is ported to the Rust gateway.**
+  The python twin's `gateway/iam_middleware.py` never made the 2.0 port:
+  the IAM-enforcement compat suite could only skip (the runtime-config
+  endpoint 403s without `ENABLE_CONFIG_UPDATES=1`, and with it on, every
+  `ENFORCE_IAM` write answered 400 because `CONSUMED_SETTINGS` was empty —
+  nothing in the gateway read it). The new `core::iam_enforcement` module
+  wires the toggle to the existing policy evaluator: when on, requests for
+  an enforcing service are evaluated against the principal's identity
+  policies (IAM user found by access key: inline + attached, plus every
+  group's inline + attached); anything but an explicit Allow answers 403
+  `AccessDenied` in the service's wire protocol (`AccessDeniedException`
+  for JSON services, the XML `ErrorResponse` shape otherwise). IAM and STS
+  stay exempt (bootstrap deadlock). S3 requests resolve to named actions
+  through the python `_detect_rest_operation` table (sub-resource queries
+  included) — so `Deny s3:DeleteBucket` beside `Allow s3:*` bites and an
+  `Allow s3:PutObject` grants nothing else; other REST services degrade to
+  `service:*`, python parity. Assumed-role session credentials are denied
+  (STS issues a canned session key and keeps no per-session registry — the
+  python middleware's STS session store is not ported). The twin's
+  parity/nightly lanes now boot with `ENABLE_CONFIG_UPDATES=1` so the suite
+  runs in CI instead of silently skipping, and PR CI runs the enforcement
+  file as a gate; it runs SEQUENTIALLY, never inside a shared-server
+  shard — a mid-run ON window would implicitly deny every other worker's
+  default-account requests (`enforce_iam_toggle` marker).
+
 ### Fixed
+
+- **DynamoDB's comparison operators are pinned by the compat suite.** A
+  mutation test that dropped the less-than arm from `<=` (making
+  `attribute <= value` reject smaller values) survived all 198 DynamoDB
+  compat tests and the 52 unit tests — no check evaluated a comparison
+  with values on both sides of the stored number. The new
+  `TestComparisonOperators` pins all six operators (`=`, `<>`, `<`, `<=`,
+  `>`, `>=`) with values above, below and on the boundary; it catches the
+  mutation.
 
 - **The nightly parity run collects the parked `legacy-py-provider` suites
   again (71 failures per night since 2026-10-30).** The Oct 27 quarantine

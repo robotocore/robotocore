@@ -46,12 +46,14 @@ pub const MUTABLE_SETTINGS: &[(&str, &str)] = &[
 
 /// Subset of `MUTABLE_SETTINGS` with a live consumer in the rust gateway.
 ///
-/// Derived from actual `runtime_config::get(key)` call sites: today none of
-/// the whitelisted settings are consumed anywhere in this codebase, so the
-/// endpoint rejects every key until a consumer is wired. This check must
-/// not be skipped when re-enabling a key — an accepted key MUST have a
-/// reader, otherwise the config endpoint lies about taking effect.
-pub const CONSUMED_SETTINGS: &[&str] = &[];
+/// Derived from actual `runtime_config::get(key)` call sites. This check
+/// must not be skipped when re-enabling a key — an accepted key MUST have
+/// a reader, otherwise the config endpoint lies about taking effect.
+pub const CONSUMED_SETTINGS: &[&str] = &[
+    // Read per request by `core::iam_enforcement::intercept` — the python
+    // gateway's iam_middleware port (opt-in request enforcement).
+    "ENFORCE_IAM",
+];
 
 static UPDATES_ENABLED: Lazy<bool> =
     Lazy::new(|| std::env::var("ENABLE_CONFIG_UPDATES").as_deref() == Ok("1"));
@@ -144,7 +146,11 @@ mod tests {
                 "consumed key {key} must be whitelisted in MUTABLE_SETTINGS"
             );
         }
-        assert!(!known_consumed("ENFORCE_IAM"));
+        // ENFORCE_IAM is consumed by `core::iam_enforcement::intercept`.
+        assert!(known_consumed("ENFORCE_IAM"));
+        // LOG_LEVEL stays whitelisted-but-unconsumed: accepting it would
+        // lie about taking effect.
+        assert!(!known_consumed("LOG_LEVEL"));
         assert!(!known_consumed("NOT_A_SETTING"));
     }
 

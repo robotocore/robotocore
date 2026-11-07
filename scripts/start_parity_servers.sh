@@ -47,6 +47,10 @@ if [ -n "$RUST_OLD" ]; then
     sleep 1
 fi
 
+# The IAM-enforcement compat suite toggles enforcement through
+# POST /_robotocore/config; without this the whole file silently skips.
+export ENABLE_CONFIG_UPDATES=${ENABLE_CONFIG_UPDATES:-1}
+
 cargo build --release 2>&1 | tail -1
 nohup target/release/robotocore-rust \
     --host ${RUST_HOST} \

@@ -1440,13 +1440,42 @@ pub async fn catch_all_handler(
         operation: operation.clone(),
         params,
         body: body_bytes.clone(),
-        region,
+        region: region.clone(),
         account,
         method: method.as_str().to_string(),
         path: uri.path().to_string(),
         query_string: uri.query().unwrap_or("").to_string(),
         headers: header_map,
     };
+
+    // ENFORCE_IAM request enforcement (python gateway iam_middleware port):
+    // a deny short-circuits dispatch with the service's 403 AccessDenied.
+    let iam_ctx = crate::core::iam_enforcement::RequestContext {
+        service: &service,
+        operation: &operation,
+        method: method.as_str(),
+        path: uri.path(),
+        query: uri.query().unwrap_or(""),
+        headers: &parsed_req.headers,
+        account,
+        region: &region,
+    };
+    if let Some(denied) =
+        crate::core::iam_enforcement::intercept(&state.registry.native.iam, &iam_ctx)
+    {
+        audit_out(
+            Some(&service),
+            opt_op(&operation),
+            &req_method,
+            &req_path,
+            403,
+            req_start,
+            &account_id,
+            &region_for_audit,
+            Some("Denied by ENFORCE_IAM policy evaluation".to_string()),
+        );
+        return denied;
+    }
 
     // Get service handler
     let handler = state.registry.get(&service);
@@ -3481,11 +3510,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn config_update_rejects_whitelisted_key_with_no_consumer() {
-        // ENFORCE_IAM stays whitelisted (python parity) but nothing in the
-        // rust gateway reads it: accepting it would be a silent bypass, so
-        // the endpoint must answer 400 instead of a lying 200.
+    async fn config_update_accepts_enforce_iam_now_that_it_is_consumed() {
+        // ENFORCE_IAM has a live reader (`core::iam_enforcement::intercept`),
+        // so the endpoint accepts it with a truthful 200. The enforcement
+        // toggle test asserts the reverse (a key with no consumer still
+        // answers 400) in config_update_rejects_unknown_key's shape below.
         let resp = config_update(r#"{"ENFORCE_IAM": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = config_body_value(resp).await;
+        assert_eq!(body["status"], "updated");
+        assert_eq!(body["updated"]["ENFORCE_IAM"], "1");
+        // Restore: the override table is process-global.
+        config_update(r#"{"ENFORCE_IAM": "0"}"#).await;
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_whitelisted_key_with_no_consumer() {
+        // LOG_LEVEL is whitelisted (python parity) but nothing in the rust
+        // gateway reads it: accepting it would be a silent bypass, so the
+        // endpoint must answer 400 instead of a lying 200.
+        let resp = config_update(r#"{"LOG_LEVEL": "DEBUG"}"#).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let body = config_body_value(resp).await;
         assert!(body["error"]

@@ -98,4 +98,5 @@ testpaths = ["tests"]
 markers = [
     "iac: IaC integration tests (requires running server)",
     "compat: Compatibility tests (requires running server)",
+    "enforce_iam_toggle: Toggles the process-global ENFORCE_IAM knob — must run AFTER the concurrent shard, never inside one (a mid-run ON window denies every other worker's default-account requests)",
 ]

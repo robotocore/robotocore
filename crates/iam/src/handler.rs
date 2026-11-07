@@ -42,6 +42,51 @@ impl IamHandler {
         self.dispatch(&req, &op)
     }
 
+    /// Gateway `ENFORCE_IAM` hook: every identity-policy document that
+    /// applies to the principal holding `access_key` — the user's inline
+    /// and attached policies, plus the inline and attached policies of
+    /// every group the user belongs to (python `gateway/iam_middleware.py`
+    /// `_gather_policies`). `None` when the key belongs to no user.
+    pub fn policy_docs_for_access_key(
+        &self,
+        account: u64,
+        access_key: &str,
+    ) -> Option<Vec<(String, String)>> {
+        let state = self.get_state(account);
+        let user = state
+            .users
+            .read()
+            .values()
+            .find(|u| {
+                u.access_keys
+                    .read()
+                    .iter()
+                    .any(|k| k.access_key_id == access_key)
+            })
+            .cloned()?;
+        let mut docs = Vec::new();
+        for (i, name) in user.policies.read().iter().enumerate() {
+            if let Some(doc) = user.policy_documents.read().get(name) {
+                docs.push((format!("InlineUserPolicy{}", i + 1), doc.clone()));
+            }
+        }
+        let arns = user.attached_policies.read().clone();
+        self.push_attached_docs(&state, &arns, &mut docs);
+        for group in state.groups.read().values() {
+            if !group.users.read().iter().any(|n| *n == user.username) {
+                continue;
+            }
+            for (i, name) in group.inline_policies.read().iter().enumerate() {
+                if let Some(doc) = group.policy_documents.read().get(name) {
+                    docs.push((format!("InlineGroupPolicy{}", i + 1), doc.clone()));
+                }
+            }
+            let group_arns = group.attached_policies.read().clone();
+            self.push_attached_docs(&state, &group_arns, &mut docs);
+        }
+        Some(docs)
+    }
+
     fn dispatch(&self, req: &AwsRequest, op: &str) -> AwsResponse {
         match op {
             // Users

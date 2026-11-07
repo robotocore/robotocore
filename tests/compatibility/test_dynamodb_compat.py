@@ -409,6 +409,64 @@ class TestConditionalWrites:
         assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
 
 
+class TestComparisonOperators:
+    """Every comparison operator is pinned with values on BOTH sides of the
+    stored number plus the boundary itself — an operator that mis-assigns an
+    ordering arm (e.g. `=` also matching less-than values) must fail here."""
+
+    @pytest.fixture(autouse=True)
+    def item(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "cmp-ops"}, "num": {"N": "5"}},
+        )
+        yield
+
+    def _put_with(self, dynamodb, table, expression, value):
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "cmp-ops"}, "num": {"N": "5"}},
+            ConditionExpression=expression,
+            ExpressionAttributeValues={":v": {"N": value}},
+        )
+
+    def _expect_failed(self, dynamodb, table, expression, value):
+        with pytest.raises(ClientError) as exc_info:
+            self._put_with(dynamodb, table, expression, value)
+        assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+    def test_eq_matches_only_the_equal_value(self, dynamodb, table):
+        # num is 5: only :v == 5 satisfies `=`.
+        self._put_with(dynamodb, table, "num = :v", "5")
+        self._expect_failed(dynamodb, table, "num = :v", "7")
+        self._expect_failed(dynamodb, table, "num = :v", "3")
+
+    def test_lt_matches_only_greater_operands(self, dynamodb, table):
+        self._put_with(dynamodb, table, "num < :v", "7")
+        self._expect_failed(dynamodb, table, "num < :v", "5")
+        self._expect_failed(dynamodb, table, "num < :v", "3")
+
+    def test_le_matches_greater_and_equal_operands(self, dynamodb, table):
+        self._put_with(dynamodb, table, "num <= :v", "7")
+        self._put_with(dynamodb, table, "num <= :v", "5")
+        self._expect_failed(dynamodb, table, "num <= :v", "3")
+
+    def test_gt_matches_only_lesser_operands(self, dynamodb, table):
+        self._put_with(dynamodb, table, "num > :v", "3")
+        self._expect_failed(dynamodb, table, "num > :v", "5")
+        self._expect_failed(dynamodb, table, "num > :v", "7")
+
+    def test_ge_matches_lesser_and_equal_operands(self, dynamodb, table):
+        self._put_with(dynamodb, table, "num >= :v", "3")
+        self._put_with(dynamodb, table, "num >= :v", "5")
+        self._expect_failed(dynamodb, table, "num >= :v", "7")
+
+    def test_ne_matches_both_sides_but_not_equal(self, dynamodb, table):
+        self._put_with(dynamodb, table, "num <> :v", "3")
+        self._put_with(dynamodb, table, "num <> :v", "7")
+        self._expect_failed(dynamodb, table, "num <> :v", "5")
+
+
 class TestGlobalSecondaryIndex:
     def test_gsi_table_has_index(self, dynamodb, gsi_table):
         """Describe table shows the GSI."""

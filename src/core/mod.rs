@@ -14,6 +14,7 @@ pub mod chaos;
 pub mod cross_service;
 pub mod esm_engine;
 pub mod furl_exec;
+pub mod iam_enforcement;
 pub mod introspection;
 pub mod protocol;
 pub mod runtime_config;

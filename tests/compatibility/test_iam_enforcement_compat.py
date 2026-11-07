@@ -22,6 +22,12 @@ from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import ENDPOINT_URL
 
+# Every test here flips the process-global ENFORCE_IAM through the runtime
+# config endpoint: while one is ON, every other worker's default-account
+# request is implicitly denied. The suite must run sequentially, after the
+# concurrent shard (Makefile compat-test, nightly parity lane).
+pytestmark = [pytest.mark.enforce_iam_toggle]
+
 CONFIG_URL = f"{ENDPOINT_URL}/_robotocore/config"
 
 
@@ -620,4 +626,86 @@ class TestEnforcementToggle:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             _set_enforce_iam(False)
+            _cleanup_user(iam, user_name)
+
+
+class TestS3OperationLevelActions:
+    """S3 requests resolve to named actions (s3:PutObject, not the s3:*
+    wildcard): an explicit deny on one op must not be silently bypassed by
+    an `Allow s3:*`, and an `Allow s3:PutObject` must not grant the rest.
+    (_detect_rest_operation parity — python enforced op-level S3 actions.)"""
+
+    def test_deny_delete_bucket_over_allow_star(self, iam):
+        """Allow s3:* + Deny s3:DeleteBucket denies DeleteBucket only."""
+        user_name = f"s3-op-deny-{uuid.uuid4().hex[:8]}"
+        bucket = f"s3-op-deny-{uuid.uuid4().hex[:8]}"
+        try:
+            admin_s3 = _make_s3_client("testing", "testing")
+            admin_s3.create_bucket(Bucket=bucket)
+            key = _create_user_with_policy(
+                iam,
+                user_name,
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Effect": "Allow", "Action": "s3:*", "Resource": "*"},
+                        {
+                            "Effect": "Deny",
+                            "Action": "s3:DeleteBucket",
+                            "Resource": "*",
+                        },
+                    ],
+                },
+            )
+            _set_enforce_iam(True)
+
+            s3 = _make_s3_client(key["AccessKeyId"], key["SecretAccessKey"])
+            # PutObject allowed by the Allow s3:* arm.
+            s3.put_object(Bucket=bucket, Key="k", Body=b"v")
+            # DeleteBucket hits the explicit deny.
+            with pytest.raises(ClientError) as exc_info:
+                s3.delete_bucket(Bucket=bucket)
+            assert exc_info.value.response["Error"]["Code"] == "AccessDenied"
+        finally:
+            _set_enforce_iam(False)
+            try:
+                _make_s3_client("testing", "testing").delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+            _cleanup_user(iam, user_name)
+
+    def test_allow_put_object_only(self, iam):
+        """Allow s3:PutObject grants PutObject but not ListBuckets."""
+        user_name = f"s3-op-allow-{uuid.uuid4().hex[:8]}"
+        bucket = f"s3-op-allow-{uuid.uuid4().hex[:8]}"
+        try:
+            admin_s3 = _make_s3_client("testing", "testing")
+            admin_s3.create_bucket(Bucket=bucket)
+            key = _create_user_with_policy(
+                iam,
+                user_name,
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "s3:PutObject",
+                            "Resource": f"arn:aws:s3:::{bucket}/*",
+                        },
+                    ],
+                },
+            )
+            _set_enforce_iam(True)
+
+            s3 = _make_s3_client(key["AccessKeyId"], key["SecretAccessKey"])
+            s3.put_object(Bucket=bucket, Key="k", Body=b"v")
+            with pytest.raises(ClientError) as exc_info:
+                s3.list_buckets()
+            assert exc_info.value.response["Error"]["Code"] == "AccessDenied"
+        finally:
+            _set_enforce_iam(False)
+            try:
+                _make_s3_client("testing", "testing").delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
             _cleanup_user(iam, user_name)

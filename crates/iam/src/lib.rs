@@ -32,6 +32,17 @@ impl Default for DefaultIamHandler {
 }
 
 impl DefaultIamHandler {
+    /// Gateway `ENFORCE_IAM` hook: every identity-policy document that
+    /// applies to the principal holding `access_key` (see
+    /// `handler::IamHandler::policy_docs_for_access_key`).
+    pub fn policy_docs_for_access_key(
+        &self,
+        account: u64,
+        access_key: &str,
+    ) -> Option<Vec<(String, String)>> {
+        self.inner.policy_docs_for_access_key(account, access_key)
+    }
+
     /// Serialize the full service state to JSON (state snapshot channel).
     pub fn snapshot_json(&self) -> serde_json::Value {
         self.inner.snapshot_json()

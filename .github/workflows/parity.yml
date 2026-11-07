@@ -38,10 +38,22 @@ jobs:
         run: uv run python scripts/probe_freshness.py
       - name: Start robotocore from source
         uses: ./.github/actions/start-twin-from-source
+        with:
+          # The IAM-enforcement compat suite toggles enforcement through
+          # POST /_robotocore/config — without this the whole file
+          # silently skips and enforcement semantics ship unvalidated.
+          env-vars: "ENABLE_CONFIG_UPDATES=1"
       - name: Run parity tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
         run: uv run pytest tests/parity/ -v --tb=short --junitxml=results-parity.xml
+      # The compat suite (incl. ENFORCE_IAM enforcement) is nightly-only —
+      # these 15 tests are its security-semantic core and cost under a
+      # second, so every PR sees them.
+      - name: IAM enforcement compat (PR gate)
+        env:
+          ENDPOINT_URL: http://localhost:4566
+        run: uv run pytest tests/compatibility/test_iam_enforcement_compat.py -q --tb=short
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
