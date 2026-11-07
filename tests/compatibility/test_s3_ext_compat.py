@@ -1933,18 +1933,17 @@ class TestS3ConditionalRequests:
             s3.head_object(Bucket=obj_bucket, Key="doc", IfMatch='"deadbeef"')
         assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 412
 
-    def test_head_if_none_match_current_304(self, s3, obj_bucket, etag_of):
-        try:
-            s3.head_object(
-                Bucket=obj_bucket,
-                Key="doc",
-                IfNoneMatch=f'"{etag_of(s3, obj_bucket, "doc")}"',
-            )
-            raised = False
-        except ClientError as ci:
-            raised = True
-            assert ci.response["ResponseMetadata"]["HTTPStatusCode"] == 304
-        assert raised
+    def test_head_if_none_match_current_quoted_304_unquoted_200(self, s3, obj_bucket, etag_of):
+        # moto HEAD compares LITERALLY against the QUOTED stored etag
+        # (responses.py:2686): the quoted form matches → 304 — which
+        # botocore surfaces as a ClientError for HEAD; the raw literal
+        # mismatches → 200.
+        etag = etag_of(s3, obj_bucket, "doc")
+        resp = s3.head_object(Bucket=obj_bucket, Key="doc", IfNoneMatch=etag)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        with pytest.raises(ClientError) as exc:
+            s3.head_object(Bucket=obj_bucket, Key="doc", IfNoneMatch=f'"{etag}"')
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 304
 
     def test_put_if_match_mismatch_412(self, s3, obj_bucket):
         with pytest.raises(ClientError) as exc:
@@ -2063,3 +2062,102 @@ class TestS3CopyObjectContract:
         )
         assert "ETag" in resp["CopyObjectResult"]
         assert s3.get_object(Bucket=copy_bucket, Key="dst")["Body"].read() == b"payload"
+
+
+class TestConditionalDeletesAndMarkers:
+    """Adversarial-review pins for #437 round 2: live-record gating on
+    delete-marked keys (moto get_object → MissingKey) and HEAD's literal
+    etag comparison."""
+
+    @pytest.fixture
+    def marked_bucket(self, s3):
+        name = f"bkt-mark-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_object(Bucket=name, Key="gone", Body=b"data")
+        etag = s3.get_object(Bucket=name, Key="gone")["ETag"]
+        s3.delete_object(Bucket=name, Key="gone")  # books a delete marker
+        yield name, etag
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for m in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_put_if_match_on_marked_key_404_no_resurrection(self, s3, marked_bucket):
+        name, etag = marked_bucket
+        with pytest.raises(ClientError) as exc:
+            s3.put_object(Bucket=name, Key="gone", Body=b"x", IfMatch=etag)
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+        # nothing resurrected: the latest record is still the marker
+        versions = s3.list_object_versions(Bucket=name)
+        assert len(versions.get("DeleteMarkers", [])) == 1
+        # the pre-marker version stays; nothing was resurrected or re-stored
+        assert len(versions.get("Versions", [])) == 1
+        assert versions["Versions"][0]["IsLatest"] is False
+
+    def test_delete_if_match_on_marked_key_404_no_new_marker(self, s3, marked_bucket):
+        name, etag = marked_bucket
+        with pytest.raises(ClientError) as exc:
+            s3.delete_object(Bucket=name, Key="gone", IfMatch=etag)
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+        versions = s3.list_object_versions(Bucket=name)
+        assert len(versions.get("DeleteMarkers", [])) == 1
+
+    def test_head_if_match_quoted_literal_mismatch_412(self, s3, marked_bucket):
+        # moto HEAD compares LITERALLY (responses.py:2679): the quoted form
+        # does not match the stored raw etag → 412 (unlike GET, which trims
+        # quotes). A fresh unmarked object carries both a live version and
+        # its raw md5 etag.
+        name, _etag_used_for_marker = marked_bucket
+        s3.put_object(Bucket=name, Key="fresh", Body=b"abc")
+        raw_etag = s3.get_object(Bucket=name, Key="fresh")["ETag"].strip('"')
+        with pytest.raises(ClientError) as exc:
+            s3.head_object(Bucket=name, Key="fresh", IfMatch=f'"{raw_etag}"')
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 412
+        # the unquoted literal form matches
+        resp = s3.head_object(Bucket=name, Key="fresh", IfMatch=raw_etag)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_copy_missing_key_with_version_404_no_such_version(self, s3):
+        name = f"bkt-cmv-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=name,
+                Key="dst",
+                CopySource={
+                    "Bucket": name,
+                    "Key": "never-was",
+                    "VersionId": "whatever",
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchVersion"
+        assert exc.value.response["Error"]["Message"] == ("The specified version does not exist.")
+
+    def test_copy_source_with_delete_marker_404(self, s3):
+        name = f"bkt-mc-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_object(Bucket=name, Key="src", Body=b"data")
+        s3.delete_object(Bucket=name, Key="src")
+        with pytest.raises(ClientError) as exc:
+            s3.copy_object(
+                Bucket=name,
+                Key="dst",
+                CopySource={"Bucket": name, "Key": "src"},
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for m in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass

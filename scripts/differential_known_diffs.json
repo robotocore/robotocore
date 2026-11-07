@@ -12,7 +12,7 @@
  "s3.copy_in_place_replace": "follow-up: same checksum slot gap \u2014 moto reports CopyObjectResult.ChecksumCRC32 (see s3.copy_object)",
  "s3.copy_object": "follow-up: same checksum slot gap \u2014 moto reports CopyObjectResult.ChecksumCRC32",
  "s3.delete_objects_unknown_key": "twin-preferred: real AWS creates a delete marker for a versioned delete of a never-written key; moto's _set_delete_marker raises on the missing key and books no marker",
- "s3.get_if_match_wrong": "same-as-moto: both engines 412 PreconditionFailed on a bad If-Match (pinned by compat tests)",
+ "s3.get_if_match_wrong": "same code as moto (412 PreconditionFailed) but moto's error XML carries <Condition>If-Match</Condition> (moto s3/exceptions.py:360-367) which the twin omits \u2014 the extra element is the ledgered shape delta",
  "s3.get_if_none_match_current": "follow-up: same checksum slot gap \u2014 moto's stored checksum rides GET responses (x-amz-checksum-crc32); the twin does not yet compute flex-checksums on PUT or serve them on GET (own future tranche)",
  "s3.list_v1": "twin-preferred: the twin echoes real AWS's Marker member on v1 listings; moto omits it",
  "s3.list_v2_prefix": "follow-up: real AWS (and moto) report ChecksumAlgorithm [CRC32] on objects stored without an explicit checksum \u2014 needs the ObjectVersion checksum slot recorded in crates/s3/src/aws_chunked.rs",
