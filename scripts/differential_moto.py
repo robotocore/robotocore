@@ -174,33 +174,35 @@ def corpus_s3(engine):
         (
             "range_suffix",
             err_wrap(
-                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=-2")[
-                    "Body"
-                ].read().hex()
+                lambda: (
+                    s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=-2")["Body"].read().hex()
+                )
             ),
         ),
         (
             "range_bounded",
             err_wrap(
-                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=0-1")[
-                    "Body"
-                ].read().hex()
+                lambda: (
+                    s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=0-1")["Body"].read().hex()
+                )
             ),
         ),
         (
             "range_open",
             err_wrap(
-                lambda: s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=1-")[
-                    "Body"
-                ].read().hex()
+                lambda: (
+                    s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=1-")["Body"].read().hex()
+                )
             ),
         ),
         (
             "range_multiples_200",
             err_wrap(
-                lambda: s3.get_object(
-                    Bucket=b, Key="a/b.txt", Range="bytes=0-1,3-4"
-                )["Body"].read().hex()
+                lambda: (
+                    s3.get_object(Bucket=b, Key="a/b.txt", Range="bytes=0-1,3-4")["Body"]
+                    .read()
+                    .hex()
+                )
             ),
         ),
         # -- versioned DeleteObjects (moto models.py:2942-3046) ------------
@@ -213,11 +215,7 @@ def corpus_s3(engine):
     out += [
         (
             "delete_objects_markers",
-            err_wrap(
-                lambda: s3.delete_objects(
-                    Bucket=vb, Delete={"Objects": [{"Key": "v.txt"}]}
-                )
-            ),
+            err_wrap(lambda: s3.delete_objects(Bucket=vb, Delete={"Objects": [{"Key": "v.txt"}]})),
         ),
         (
             "get_after_marker",
@@ -232,9 +230,7 @@ def corpus_s3(engine):
             err_wrap(
                 lambda: s3.delete_objects(
                     Bucket=vb,
-                    Delete={
-                        "Objects": [{"Key": "v.txt", "VersionId": v1["VersionId"]}]
-                    },
+                    Delete={"Objects": [{"Key": "v.txt", "VersionId": v1["VersionId"]}]},
                 )
             ),
         ),
@@ -244,11 +240,7 @@ def corpus_s3(engine):
         ),
         (
             "delete_objects_unknown_key",
-            err_wrap(
-                lambda: s3.delete_objects(
-                    Bucket=vb, Delete={"Objects": [{"Key": "ghost"}]}
-                )
-            ),
+            err_wrap(lambda: s3.delete_objects(Bucket=vb, Delete={"Objects": [{"Key": "ghost"}]})),
         ),
         (
             "delete_objects_empty",
@@ -260,12 +252,10 @@ def corpus_s3(engine):
     s3.create_bucket(Bucket=mp)
     up = s3.create_multipart_upload(Bucket=mp, Key="mp.txt")
     uid = up["UploadId"]
-    big = s3.upload_part(
-        Bucket=mp, Key="mp.txt", PartNumber=1, UploadId=uid, Body=b"z" * 5242880
-    )["ETag"]
-    tail = s3.upload_part(
-        Bucket=mp, Key="mp.txt", PartNumber=2, UploadId=uid, Body=b"tail"
-    )["ETag"]
+    big = s3.upload_part(Bucket=mp, Key="mp.txt", PartNumber=1, UploadId=uid, Body=b"z" * 5242880)[
+        "ETag"
+    ]
+    tail = s3.upload_part(Bucket=mp, Key="mp.txt", PartNumber=2, UploadId=uid, Body=b"tail")["ETag"]
     out += [
         (
             "complete_multipart",
@@ -282,9 +272,7 @@ def corpus_s3(engine):
         ),
         (
             "get_multipart_object",
-            err_wrap(
-                lambda: s3.get_object(Bucket=mp, Key="mp.txt")["Body"].read()[:16].hex()
-            ),
+            err_wrap(lambda: s3.get_object(Bucket=mp, Key="mp.txt")["Body"].read()[:16].hex()),
         ),
         (
             "complete_multipart_bad_etag",
@@ -324,9 +312,7 @@ def corpus_s3(engine):
         ),
         (
             "abort_multipart_unknown",
-            err_wrap(
-                lambda: s3.abort_multipart_upload(Bucket=b, Key="pn.txt", UploadId="gone")
-            ),
+            err_wrap(lambda: s3.abort_multipart_upload(Bucket=b, Key="pn.txt", UploadId="gone")),
         ),
         (
             "upload_part_copy_ranged",

@@ -4,7 +4,7 @@
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "4247fd618943f42e2e21158b6b93b3acb88e3d00da161a2ba2690c7a35022ce6"
+    "crates/s3/src/": "ffb3f3be3161f9c109cc08893cb4c27d52084a880c3fdbc67fccae369ede04c0"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

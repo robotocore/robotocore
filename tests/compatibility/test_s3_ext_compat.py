@@ -1531,7 +1531,7 @@ class TestS3MultipartAndDeleteFidelity:
                 s3.delete_object(Bucket=name, Key=m["Key"], VersionId=m["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @pytest.fixture
     def ephemeral_bucket(self, s3):
@@ -1544,7 +1544,7 @@ class TestS3MultipartAndDeleteFidelity:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_object(self, code):
         from botocore.errorfactory import ClientError  # noqa: F401
@@ -1762,9 +1762,7 @@ class TestS3MultipartAndDeleteFidelity:
     def test_list_parts_honors_pagination(self, s3, ephemeral_bucket):
         upload_id = self._start_multipart(s3, ephemeral_bucket)
         self._upload_parts(s3, ephemeral_bucket, upload_id, [16, 17, 18])
-        page = s3.list_parts(
-            Bucket=ephemeral_bucket, Key="mp-obj", UploadId=upload_id, MaxParts=2
-        )
+        page = s3.list_parts(Bucket=ephemeral_bucket, Key="mp-obj", UploadId=upload_id, MaxParts=2)
         assert [p["PartNumber"] for p in page["Parts"]] == [1, 2]
         assert page["IsTruncated"] is True
         assert page["NextPartNumberMarker"] == 2
