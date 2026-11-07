@@ -366,25 +366,31 @@ class TestListTablesPagination:
             if t.startswith(prefix):
                 ddb.delete_table(TableName=t)
 
-    def test_paginates_with_limit_and_last_evaluated(self, ddb):
+    def test_paged_walk_exhausts_and_returns_sorted_pages(self, ddb):
+        # moto semantics pinned prefix-locally so parallel CI workers can't
+        # race the page math: every Limit=2 page carries the walker's
+        # all_tables-order successor in LastEvaluatedTableName, and walking
+        # to exhaustion yields the created prefix exactly once, in order.
         prefix = "lt-pag"
         self._make(ddb, 3, prefix)
         try:
-            # LastEvaluatedTableName depends on whether ANY table (ours or a
-            # neighbor test's) follows this page — mirror moto's
-            # `len(all_tables) > start + limit` against the live list.
-            total = len(ddb.list_tables()["TableNames"])
-            page = ddb.list_tables(Limit=2, ExclusiveStartTableName=f"{prefix}00")
-            assert [t for t in page["TableNames"] if t.startswith(prefix)] == [
-                f"{prefix}01",
-                f"{prefix}02",
-            ]
-            if total > 3:
-                assert page.get("LastEvaluatedTableName") == f"{prefix}02"
-                page2 = ddb.list_tables(
-                    Limit=2, ExclusiveStartTableName=page["LastEvaluatedTableName"]
-                )
-                assert not [t for t in page2.get("TableNames", []) if t.startswith(prefix)]
+            cursor = None
+            seen = []
+            for _ in range(200):  # hard bound — the twin's table list is finite
+                extra = {"ExclusiveStartTableName": cursor} if cursor else {}
+                resp = ddb.list_tables(Limit=2, **extra)
+                mine = [t for t in resp.get("TableNames", []) if t.startswith(prefix)]
+                seen.extend(t for t in mine if not cursor or t > cursor)
+                if "LastEvaluatedTableName" in resp:
+                    cursor = resp["LastEvaluatedTableName"]
+                    if mine:
+                        # moto: the page's last entry is the token
+                        assert resp["LastEvaluatedTableName"] == mine[-1]
+                else:
+                    if not cursor:
+                        assert len(seen) == 3
+                    break
+            assert seen == [f"{prefix}00", f"{prefix}01", f"{prefix}02"]
         finally:
             self._cleanup(ddb, prefix)
 
