@@ -62,6 +62,24 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **SQS validation family: CreateQueue attribute contracts, redrive-policy
+  validation, delete-message grace.** The moto audit's tenth tranche
+  (`docs/semantic-audit-2026-11-06/sqs-s3.md`, findings 2, 3 and 6):
+  `CreateQueue` enforces the FIFO name rule (`InvalidParameterValue`),
+  the MaximumMessageSize bounds (`InvalidAttributeValue` — moto's exact
+  sentence), and moto's sent-keys-only re-create comparison
+  (`QueueAlreadyExists` on any differing sent attribute, identical
+  re-create still idempotent). The `RedrivePolicy` is validated on
+  create and on `SetQueueAttributes` like moto's `_setup_dlq` — JSON or
+  dict shape, `deadLetterTargetArn` and `maxReceiveCount` presence, the
+  DLQ arn resolved against the account's own queues
+  (`AWS.SimpleQueueService.NonExistentQueue`), and the FIFO mismatch
+  (`InvalidParameterCombination`). `DeleteMessage` accepts repeat
+  deletes of an already-deleted handle as moto's graceful no-op (a
+  FIFO-evicted deleted-handles set per queue), and
+  `DeleteMessageBatch` failure rows carry `SenderFault: true` and
+  moto's per-handle wording.
+
 - **DynamoDB Query: the KeyConditionExpression is schema-validated.** The
   moto audit's ninth tranche (`docs/semantic-audit-2026-11-06/
   dynamodb-iam.md`, finding 2's open half): a Query now validates its KCE

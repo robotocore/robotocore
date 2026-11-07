@@ -1,7 +1,7 @@
 //! SQS request handler implementation
 
 use crate::error::SqsError;
-use crate::models::{MoveTask, Queue, SqsMessage, SqsStore};
+use crate::models::{MoveTask, Queue, QueueAttributes, SqsMessage, SqsStore};
 use crate::protocol::{AwsRequest, AwsResponse, SqsHandler};
 use chrono::Utc;
 use md5;
@@ -301,6 +301,131 @@ impl DefaultSqsHandler {
         )]
     }
 
+    /// moto's Queue constructor checks (models.py:288-299): FifoQueue=true
+    /// requires a `.fifo` name and MaximumMessageSize stays inside
+    /// [1024, 1048576] (InvalidAttributeValue). SetQueueAttributes runs the
+    /// same checks — they live in _set_attributes' "Check some conditions"
+    /// block.
+    fn validate_queue_shape_errors(queue_name: &str, attrs: &Value) -> Result<(), SqsError> {
+        let Some(sent) = attrs.as_object() else {
+            return Ok(());
+        };
+        let fifo = sent
+            .get("FifoQueue")
+            .and_then(Value::as_str)
+            .map(|v| v == "true")
+            .unwrap_or_else(|| queue_name.ends_with(".fifo"));
+        if fifo && !queue_name.ends_with(".fifo") {
+            return Err(SqsError::InvalidParameterValue(
+                "Queue name must end in .fifo for FIFO queues".to_string(),
+            ));
+        }
+        if let Some(size) = sent
+            .get("MaximumMessageSize")
+            .and_then(Value::as_str)
+            .and_then(|v| v.parse::<u32>().ok())
+        {
+            if !(1_024..=1_048_576).contains(&size) {
+                // moto's InvalidAttributeValue formats the full sentence.
+                return Err(SqsError::InvalidAttributeValue(
+                    "Invalid value for the parameter MaximumMessageSize.".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// moto's `_setup_dlq` (models.py:372-430): parse the JSON
+    /// (InvalidParameterValue "Redrive policy is not a dict or valid json");
+    /// require deadLetterTargetArn and maxReceiveCount; resolve the arn
+    /// against the account's own queues
+    /// (AWS.SimpleQueueService.NonExistentQueue "Could not find DLQ for
+    /// {arn}"); a FIFO queue pointing at a non-FIFO DLQ is
+    /// InvalidParameterCombination. An empty policy ("", "{}") clears the
+    /// redrive config silently.
+    fn validate_redrive_policy(
+        parent_fifo: bool,
+        attrs: &Value,
+        store: Option<&SqsStore>,
+    ) -> Result<(), SqsError> {
+        let Some(policy_str) = attrs
+            .get("RedrivePolicy")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+        else {
+            return Ok(());
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(policy_str) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(SqsError::InvalidParameterValue(
+                    "Redrive policy is not a dict or valid json".to_string(),
+                ));
+            }
+        };
+        let Some(entries) = parsed.as_object() else {
+            return Err(SqsError::InvalidParameterValue(
+                "Redrive policy is not a dict or valid json".to_string(),
+            ));
+        };
+        if entries.is_empty() {
+            // moto: len==0 books None silently
+            return Ok(());
+        }
+        let Some(arn) = parsed
+            .get("deadLetterTargetArn")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
+            return Err(SqsError::InvalidParameterValue(
+                "Redrive policy does not contain deadLetterTargetArn".to_string(),
+            ));
+        };
+        if parsed.get("maxReceiveCount").is_none() {
+            return Err(SqsError::InvalidParameterValue(
+                "Redrive policy does not contain maxReceiveCount".to_string(),
+            ));
+        }
+        let Some(store) = store else {
+            return Ok(());
+        };
+        let dlq = store
+            .get_queue_by_arn(arn)
+            .ok_or_else(|| SqsError::DlqNonExistent(format!("Could not find DLQ for {arn}")))?;
+        let dlq_fifo = dlq.read().attributes.fifo_queue;
+        if parent_fifo && !dlq_fifo {
+            return Err(SqsError::InvalidParameterCombination(
+                "Fifo queues cannot use non fifo dead letter queues".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// One KEY of a re-create's Attributes map compared between the stored
+    /// queue's attributes and a synthetic probe built from the sent values —
+    /// moto's `queue_attributes.get(key) != new_queue_attributes.get(key)`
+    /// for the keys sent in the re-create (models.py:705-725).
+    fn stored_attr_matches(stored: &QueueAttributes, probe: &QueueAttributes, key: &str) -> bool {
+        match key {
+            "VisibilityTimeout" => stored.visibility_timeout == probe.visibility_timeout,
+            "DelaySeconds" => stored.delay_seconds == probe.delay_seconds,
+            "ReceiveMessageWaitTimeSeconds" => {
+                stored.receive_message_wait_time == probe.receive_message_wait_time
+            }
+            "MaximumMessageSize" => stored.maximum_message_size == probe.maximum_message_size,
+            "MessageRetentionPeriod" => {
+                stored.message_retention_period == probe.message_retention_period
+            }
+            "Policy" => stored.policy == probe.policy,
+            "RedrivePolicy" => stored.redrive_policy == probe.redrive_policy,
+            "FifoQueue" => stored.fifo_queue == probe.fifo_queue,
+            "ContentBasedDeduplication" => {
+                stored.content_based_deduplication == probe.content_based_deduplication
+            }
+            other => stored.extra.get(other) == probe.extra.get(other),
+        }
+    }
+
     fn handle_create_queue(
         &self,
         params: &Value,
@@ -317,7 +442,41 @@ impl DefaultSqsHandler {
 
         Self::validate_queue_name(queue_name)?;
 
+        // A FIFO queue's effective flag is its name suffix OR an explicitly
+        // sent FifoQueue attribute (moto's constructor state).
+        let attributes_value = params.get("Attributes").cloned().unwrap_or(Value::Null);
+        let effective_fifo = queue_name.ends_with(".fifo")
+            || attributes_value
+                .get("FifoQueue")
+                .and_then(Value::as_str)
+                .is_some_and(|v| v == "true");
+
+        // moto's Queue constructor checks (models.py:288-299) + _setup_dlq
+        // (372-430) run before any exists-comparison, against the account's
+        // own queues.
+        Self::validate_queue_shape_errors(queue_name, &attributes_value)?;
+        Self::validate_redrive_policy(effective_fifo, &attributes_value, None)?;
+
         let store = self.get_store(account, region);
+
+        // moto models.py:705-725 — a re-create compares ONLY the SENT
+        // attributes (a fresh Queue's attributes over those keys) against
+        // the stored queue and raises QueueAlreadyExists when any differ.
+        if let Some(existing) = store.get_queue(queue_name) {
+            if let Some(sent) = attributes_value.as_object() {
+                let mut probe = QueueAttributes::default();
+                probe.apply(&attributes_value);
+                let mismatch = sent.iter().any(|(key, _)| {
+                    let q = existing.read();
+                    !Self::stored_attr_matches(&q.attributes, &probe, key)
+                });
+                if mismatch {
+                    return Err(SqsError::QueueAlreadyExists(
+                        "The specified queue already exists.".to_string(),
+                    ));
+                }
+            }
+        }
 
         // Resolve-or-create: the store is insert-if-absent by name, so two
         // racing CreateQueue calls for the same name converge on one shared
@@ -351,6 +510,30 @@ impl DefaultSqsHandler {
         // moto re-applies attributes and tags on idempotent create; boto3's
         // SQS json protocol serializes create-queue tags lower-case, the
         // query protocol uses `Tags`.
+        // moto _set_attributes runs the redrive validation on every apply
+        // whose RedrivePolicy key is sent.
+        // moto _set_attributes runs the constructor checks (fifo name rule
+        // against the STORED name; MMS bounds) and the redrive validation on
+        // every frame where RedrivePolicy is sent; the store lookup uses the
+        // account's own queues. Validation runs BEFORE the apply (moto's
+        // in-place mutation ordering is its own quirk; the clean order keeps
+        // the stored queue consistent on error).
+        let sent_attrs = params.get("Attributes").cloned().unwrap_or(Value::Null);
+        let parent_fifo = {
+            let q = queue_arc.read();
+            let sent_fifo = sent_attrs
+                .get("FifoQueue")
+                .and_then(Value::as_str)
+                .map(|v| v == "true");
+            sent_fifo.unwrap_or(q.attributes.fifo_queue)
+        };
+        Self::validate_queue_shape_errors(queue_name, &sent_attrs)?;
+        Self::validate_redrive_policy(parent_fifo, &sent_attrs, Some(&store))?;
+        {
+            let mut q = queue_arc.write();
+            q.attributes.apply(&sent_attrs);
+            q.last_modified = (Utc::now().timestamp_millis()) as u64;
+        }
         {
             let mut q = queue_arc.write();
             q.attributes
@@ -912,10 +1095,16 @@ impl DefaultSqsHandler {
             if q.delete_message(&receipt_handle).is_ok() {
                 successful.push(json!({ "Id": id }));
             } else {
+                // moto models.py:1069-1087: a failed row carries
+                // SenderFault: true and moto's per-handle wording.
                 failed.push(json!({
                     "Id": id,
+                    "SenderFault": true,
                     "Code": "ReceiptHandleIsInvalid",
-                    "Message": "The specified receipt handle is not valid."
+                    "Message": format!(
+                        "The input receipt handle \"{}\" is not a valid receipt handle.",
+                        receipt_handle
+                    )
                 }));
             }
         }

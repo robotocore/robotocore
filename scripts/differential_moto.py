@@ -561,6 +561,63 @@ def corpus_sqs(engine):
     return out
 
 
+@corpus("sqs_validation")
+def corpus_sqs_validation(engine):  # noqa: ANN201
+    s = engine.client("sqs")
+    q = engine.res_name("vq")
+    out = [
+        (
+            "create_fifo_bad",
+            err_wrap(
+                lambda: s.create_queue(
+                    QueueName=q.replace(".fifo", ""), Attributes={"FifoQueue": "true"}
+                )
+            ),
+        )
+    ]
+    out += [
+        (
+            "create_mms_low",
+            err_wrap(
+                lambda: s.create_queue(QueueName=q + "-m", Attributes={"MaximumMessageSize": "512"})
+            ),
+        ),
+        (
+            "create_rp_badjson",
+            err_wrap(
+                lambda: s.create_queue(
+                    QueueName=q + "-j", Attributes={"RedrivePolicy": "not-json{"}
+                )
+            ),
+        ),
+        (
+            "create_rp_missing_arn",
+            err_wrap(
+                lambda: s.create_queue(
+                    QueueName=q + "-a", Attributes={"RedrivePolicy": '{"maxReceiveCount": 3}'}
+                )
+            ),
+        ),
+        (
+            "create_rp_unknown_dlq",
+            err_wrap(
+                lambda: s.create_queue(
+                    QueueName=q + "-u",
+                    Attributes={
+                        "RedrivePolicy": json.dumps(
+                            {
+                                "deadLetterTargetArn": "arn:aws:sqs:us-east-1:123456789012:missing",
+                                "maxReceiveCount": 3,
+                            }
+                        )
+                    },
+                )
+            ),
+        ),
+    ]
+    return out
+
+
 @corpus("dynamodb")
 def corpus_dynamodb(engine):
     d = engine.client("dynamodb")

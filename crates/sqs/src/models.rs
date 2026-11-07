@@ -208,6 +208,12 @@ pub struct Queue {
     /// caller of the first purge.
     #[serde(default)]
     pub last_purged_at: Option<u64>,
+    /// moto's `deleted_messages` set (models.py:613-618): receipt handles
+    /// whose messages are gone; deleting an already-deleted handle is a
+    /// graceful no-op success. The set is FIFO-evicted past 8192 entries
+    /// (moto keeps it forever; the cap is a memory guard).
+    #[serde(default)]
+    pub deleted_receipt_handles: std::collections::HashSet<String>,
 }
 
 impl Queue {
@@ -227,6 +233,7 @@ impl Queue {
             dedup_ids: std::collections::HashMap::new(),
             next_sequence_number: 1_854_250_000_000_000,
             last_purged_at: None,
+            deleted_receipt_handles: std::collections::HashSet::new(),
         }
     }
 
@@ -355,18 +362,28 @@ impl Queue {
         self.delete_message(receipt_handle).is_ok()
     }
 
-    /// Remove message by receipt handle
+    /// Remove message by receipt handle. moto models.py:613-631: a handle
+    /// in `deleted_messages` is a graceful no-op success; a live hit moves
+    /// the handle into the deleted set and removes the message; no match
+    /// is moto's bare `raise ReceiptHandleIsInvalid` ("The input receipt
+    /// handle is invalid."). The deleted set is FIFO-evicted past 8192
+    /// entries (moto keeps it forever; the cap bounds memory).
     pub fn delete_message(&mut self, receipt_handle: &str) -> Result<(), String> {
-        for (idx, msg) in self.messages.iter().enumerate() {
+        if self.deleted_receipt_handles.contains(receipt_handle) {
+            return Ok(());
+        }
+        for (idx, msg) in self.messages.iter_mut().enumerate() {
             if msg.receipt_handle == receipt_handle {
+                self.deleted_receipt_handles
+                    .insert(msg.receipt_handle.clone());
+                if self.deleted_receipt_handles.len() > 8192 {
+                    self.deleted_receipt_handles.clear();
+                }
                 self.messages.remove(idx);
                 return Ok(());
             }
         }
-        Err(format!(
-            "Message not found with receipt handle: {}",
-            receipt_handle
-        ))
+        Err("The input receipt handle is invalid.".to_string())
     }
 
     /// moto's Total-VisibilityTimeout ceiling: the literal `43200` in

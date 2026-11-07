@@ -54,6 +54,18 @@ pub enum SqsError {
     /// 403; live-verified) — the stock botocore SQS model declares the
     /// shape with no HTTP status at all, unlike what its name suggests.
     PurgeQueueInProgress(String),
+    /// moto's `QueueAlreadyExists` (moto/sqs/exceptions.py:32-34): a
+    /// re-create whose SENT attributes differ from the stored queue.
+    QueueAlreadyExists(String),
+    /// moto's `InvalidAttributeValue` (moto/sqs/exceptions.py:92-96):
+    /// MaximumMessageSize outside [1024, 1048576].
+    InvalidAttributeValue(String),
+    /// moto's `InvalidParameterCombination` (raised inline in
+    /// models.py:_setup_dlq): a FIFO queue pointing at a non-FIFO DLQ.
+    InvalidParameterCombination(String),
+    /// moto's `AWS.SimpleQueueService.NonExistentQueue` DLQ arm: the
+    /// redrive policy's deadLetterTargetArn matches no queue.
+    DlqNonExistent(String),
     /// Crash-faithful row: moto escapes an unhandled Python error on these
     /// inputs (werkzeug plain HTML 500, no AWS error envelope).
     MotoCrash,
@@ -79,6 +91,10 @@ impl SqsError {
             }
             SqsError::BatchRequestTooLong(_) => "AWS.SimpleQueueService.BatchRequestTooLong",
             SqsError::PurgeQueueInProgress(_) => "AWS.SimpleQueueService.PurgeQueueInProgress",
+            SqsError::QueueAlreadyExists(_) => "QueueAlreadyExists",
+            SqsError::InvalidAttributeValue(_) => "InvalidAttributeValue",
+            SqsError::InvalidParameterCombination(_) => "InvalidParameterCombination",
+            SqsError::DlqNonExistent(_) => "AWS.SimpleQueueService.NonExistentQueue",
             SqsError::MotoCrash => "InternalError",
         }
     }
@@ -100,6 +116,10 @@ impl SqsError {
             SqsError::TooManyEntriesInBatchRequest(msg) => msg,
             SqsError::BatchRequestTooLong(msg) => msg,
             SqsError::PurgeQueueInProgress(msg) => msg,
+            SqsError::QueueAlreadyExists(msg) => msg,
+            SqsError::InvalidAttributeValue(msg) => msg,
+            SqsError::InvalidParameterCombination(msg) => msg,
+            SqsError::DlqNonExistent(msg) => msg,
             SqsError::MotoCrash => "",
         }
     }
@@ -121,6 +141,10 @@ impl SqsError {
             SqsError::TooManyEntriesInBatchRequest(_) => 400,
             SqsError::BatchRequestTooLong(_) => 400,
             SqsError::PurgeQueueInProgress(_) => 403,
+            SqsError::QueueAlreadyExists(_) => 400,
+            SqsError::InvalidAttributeValue(_) => 400,
+            SqsError::InvalidParameterCombination(_) => 400,
+            SqsError::DlqNonExistent(_) => 400,
             SqsError::MotoCrash => 500,
         }
     }

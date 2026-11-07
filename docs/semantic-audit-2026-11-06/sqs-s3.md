@@ -24,6 +24,13 @@ SQS
    **FIXED (2026-11-06, verified in source):** `prepare_send` (crates/sqs/src/handler.rs:405-435) now rejects an over-long body against the queue's MaximumMessageSize with moto's "Message must be shorter than {size} bytes." message, rejects DelaySeconds > 900 with moto's "DelaySeconds must be >= 0 and <= 900", and rejects a nonzero per-message DelaySeconds on a FIFO queue with moto's "The request include parameter that is not valid for this queue type."
 
 2. CreateQueue: QueueAlreadyExists, MaximumMessageSize bounds, and FIFO-name rule all missing
+   **FIXED (2026-11-08, verified live)**: CreateQueue now enforces the FIFO name rule
+  (InvalidParameterValue "Queue name must end in .fifo for FIFO queues"), the
+  MaximumMessageSize [1024, 1048576] bounds (InvalidAttributeValue "Invalid value
+  for the parameter MaximumMessageSize."), and the QueueAlreadyExists attribute
+  comparison — moto's sent-keys-only re-create semantics
+  (models.py:288-299, 705-725). SetQueueAttributes runs the same checks.
+
    (a) CreateQueue.
    (b) moto M/sqs/models.py:711-722 — re-creating with differing attributes (for the keys sent) raises QueueAlreadyExists; models.py:294-298 — MaximumMessageSize < 1024 or > 1048576 raises InvalidAttributeValue; models.py:292-293 + 342-348 — FifoQueue=true with a name not ending ".fifo" raises InvalidParameterValue "Queue name must end in .fifo for FIFO queues".
    (c) R/sqs/src/handler.rs:304-375 — always resolves-or-creates idempotently and re-applies attributes (200); `QueueAttributes::apply` (R/sqs/src/models.rs:112-155) parses any u32 with no bounds; FIFO-ness is inferred from the name suffix (handler.rs:342-344) but an explicit `FifoQueue=true` attribute on a non-`.fifo` name is silently accepted (and does make the queue FIFO).
@@ -31,6 +38,14 @@ SQS
    (e) High confidence.
 
 3. RedrivePolicy is stored but never validated (DLQ silently no-ops)
+   **FIXED (2026-11-08, verified live)**: _setup_dlq's full validation chain
+   (models.py:372-430): non-JSON / empty handling, missing
+   deadLetterTargetArn / maxReceiveCount (each with moto's exact
+   InvalidParameterValue wordings), the DLQ-arn existence lookup against
+   the account's own queues (AWS.SimpleQueueService.NonExistentQueue
+   "Could not find DLQ for {arn}"), and the FIFO/ non-FIFO DLQ mismatch
+   (InvalidParameterCombination). SetQueueAttributes validates too.
+
    (a) SetQueueAttributes/CreateQueue (RedrivePolicy) and redrive behavior.
    (b) moto M/sqs/models.py:372-424 — `_setup_dlq` raises InvalidParameterValue for non-JSON, missing deadLetterTargetArn, or missing maxReceiveCount; "AWS.SimpleQueueService.NonExistentQueue / Could not find DLQ for ..." when the target queue doesn't exist; InvalidParameterCombination "Fifo queues cannot use non fifo dead letter queues".
    (c) R/sqs/src/handler.rs:1585-1589 — the raw string is stored via `QueueAttributes::apply` (models.rs:145) with no checks; `redrive_target_arn`/`redrive_max_receive_count` (models.rs:234-257) silently return None on missing fields, so a policy pointing at a nonexistent queue or missing maxReceiveCount results in a queue with no dead-letter delivery and a 200 response. The receive-time redrive itself (handler.rs:1062-1155) matches moto's semantics closely, but only when the policy happens to be well-formed.
@@ -56,6 +71,14 @@ SQS
    **FIXED (2026-11-06, verified on main during the ledger-freshness pass):** ReceiveMessage filters system and message attributes to the requested names (exact + prefix patterns per moto's rule) and computes MD5OfMessageAttributes over the filtered set (crates/sqs/src/handler.rs:181, 633-644, 1591-1600).
 
 6. DeleteMessage does not accept old receipt handles or repeat deletes; DeleteMessageBatch Failed rows are shaped differently
+   **FIXED (2026-11-08, verified live)**: DeleteMessage accepts already-deleted
+   handles as moto's graceful no-op (moto's deleted_messages set is mirrored as
+   a FIFO-evicted set per queue — the twin never rotates handles, so "any
+   historical handle" is already the single stored handle), and the batch rows
+   carry SenderFault: true + moto's per-handle wording
+   'The input receipt handle "{h}" is not a valid receipt handle.'
+   (moto responses.py:1069-1087).
+
    (a) DeleteMessage / DeleteMessageBatch.
    (b) moto M/sqs/models.py:613-631 — a delete matches ANY historical handle (`had_receipt_handle` includes `_old_receipt_handles`, models.py:203-210) and `deleted_messages` makes re-deleting the same handle a graceful no-op success; models.py:1069-1087 — a batch row failure emits `SenderFault: true`, Code `ReceiptHandleIsInvalid`, Message `'The input receipt handle "{handle}" is not a valid receipt handle.'`.
    (c) R/sqs/src/models.rs:359-370 — `delete_message` matches only the CURRENT `receipt_handle`; an old handle or a repeat delete returns Err → 400 ReceiptHandleIsInvalid (handler.rs:1263-1267). Batch failed rows (handler.rs:883-888) omit `SenderFault` entirely and use the message "The specified receipt handle is not valid.".
