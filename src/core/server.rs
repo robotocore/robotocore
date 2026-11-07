@@ -729,6 +729,46 @@ impl ServiceHandler for CloudWatchServiceHandler {
                 raw_bytes: Some(resp.body),
             });
         }
+        // Classic query protocol (POST `Action=…` form bodies — the
+        // terraform AWS provider's Go SDK speaks it; botocore moved to
+        // Smithy RPC v2 CBOR, which the arm above serves): the response
+        // must be the query XML envelope, not the JSON body the handler
+        // renders for the CBOR/JSON dialects. Real CloudWatch serves both.
+        let content_type = req
+            .headers
+            .get("content-type")
+            .map(|v| v.to_ascii_lowercase())
+            .unwrap_or_default();
+        let query_form =
+            content_type.contains("form-urlencoded") || req.query_string.contains("Action=");
+        if query_form {
+            let resp = self.inner.handle(r);
+            let body: serde_json::Value =
+                serde_json::from_str(&resp.body).unwrap_or(serde_json::Value::Null);
+            let (body, status) = if resp.status >= 400 {
+                match cloudwatch::protocol::json_error_to_query_xml(&body) {
+                    Some(xml) => (xml, resp.status),
+                    None => (resp.body, resp.status),
+                }
+            } else {
+                (
+                    cloudwatch::protocol::json_to_query_xml(&req.operation, &body),
+                    resp.status,
+                )
+            };
+            let mut h = std::collections::HashMap::new();
+            for (k, v) in resp.headers {
+                h.insert(k, v);
+            }
+            h.insert("Content-Type".to_string(), "text/xml".to_string());
+            return Ok(ParsedResponse {
+                status: StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                headers: h,
+                body: serde_json::Value::Null,
+                raw: Some(body),
+                raw_bytes: None,
+            });
+        }
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers {

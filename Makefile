@@ -26,12 +26,15 @@ rust-fmt: ## rustfmt check
 # sequentially, after the concurrent shard, never inside one.
 compat-test: ## Compatibility tests (auto-starts the rust server)
 	bash scripts/start_parity_servers.sh
-	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
+	uv run pytest tests/compatibility/ tests/metamorphic/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
 	uv run pytest tests/compatibility/ -q --tb=short -m enforce_iam_toggle
 
 compat-test-hot: ## Compatibility tests (assumes server already running)
-	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
+	uv run pytest tests/compatibility/ tests/metamorphic/ -n$(N) --dist=loadfile -q --tb=short -m 'not enforce_iam_toggle'
 	uv run pytest tests/compatibility/ -q --tb=short -m enforce_iam_toggle
+
+drift: ## Terraform drift oracle: apply every stack, plan must show no changes
+	uv run pytest tests/iac/terraform/test_drift.py -q --tb=short -m drift_oracle
 
 parity: ## Full rust-only parity run against the golden baseline
 	$(MAKE) probe-freshness

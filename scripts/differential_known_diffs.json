@@ -1,0 +1,13 @@
+{
+  "dynamodb.create_table": "twin-preferred: the twin reports TableId/TableClassSummary/TableSizeBytes (real AWS members) that moto omits from CreateTable",
+  "dynamodb.delete_table": "twin-preferred: full DELETING description with the real-AWS members moto omits",
+  "dynamodb.describe_table": "twin-preferred: same richer table description as create_table",
+  "dynamodb.query_wrong_types": "twin-preferred: real AWS answers 400 ValidationException ('Condition parameter type does not match schema type'); moto crashes with a 500 on the same input",
+  "dynamodb.update_item": "moto-only member: moto includes ConsumedCapacity without ReturnConsumedCapacity being requested; real AWS omits it and so does the twin",
+  "iam_sts.list_access_keys": "twin-preferred: real AWS always reports IsTruncated on ListAccessKeys; moto omits it",
+  "kms_secrets_ssm.encrypt": "twin-preferred: the twin reports EncryptionAlgorithm SYMMETRIC_DEFAULT (a real-AWS response member) that moto omits",
+  "s3.copy_object": "follow-up: same checksum slot gap \u2014 moto reports CopyObjectResult.ChecksumCRC32",
+  "s3.list_v1": "twin-preferred: the twin echoes real AWS's Marker member on v1 listings; moto omits it",
+  "s3.list_v2_prefix": "follow-up: real AWS (and moto) report ChecksumAlgorithm [CRC32] on objects stored without an explicit checksum \u2014 needs the ObjectVersion checksum slot recorded in crates/s3/src/aws_chunked.rs",
+  "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys"
+}

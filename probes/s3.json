@@ -1,6 +1,11 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-06T20:22:07.057002+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/s3.rs": "absent",
+    "rotocore/src/services/s3/": "absent",
+    "crates/s3/src/": "9ad4707067dccae4fca9cce957656ff411c0747f116a43648e6b49a9d3285b9c"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 108,
@@ -560,10 +565,5 @@
       "status": "working",
       "message": "likely implemented (PreconditionFailed: At least one of the pre-conditions you specified did not hol)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/s3.rs": "absent",
-    "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "390519151e5cfc944c553fc55e9bbe6c102b4b1394311fe094ab555a2b508300"
-  }
+  ]
 }

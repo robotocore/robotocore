@@ -86,7 +86,7 @@ jobs:
         run: >
           ENDPOINT_URL=http://localhost:4566
           AWS_ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/parity/ tests/compatibility/
+          uv run pytest tests/parity/ tests/compatibility/ tests/metamorphic/
           -n8 --dist=loadfile -v --tb=short
           -m 'not enforce_iam_toggle'
           --junitxml=results-nightly-parity.xml

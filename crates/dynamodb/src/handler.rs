@@ -415,13 +415,19 @@ impl DynamoDbHandler {
             }
         }
         match state.delete_table(&table_name) {
-            Some(table) => AwsResponse::json(
-                200,
-                json!({ "TableDescription": {
-                    "TableName": table.name,
-                    "TableStatus": "DELETING",
-                }}),
-            ),
+            Some(table) => {
+                // Real AWS (and moto's table.delete()) returns the FULL table
+                // description with status DELETING — the twin used to trim
+                // it to a bare {TableName, TableStatus} stub.
+                let mut resp = Self::describe_table_response(req, &table, 200, "TableDescription");
+                let mut body: Value =
+                    serde_json::from_str(&resp.body).unwrap_or_else(|_| json!({}));
+                if let Some(desc) = body.get_mut("TableDescription") {
+                    desc["TableStatus"] = json!("DELETING");
+                }
+                resp.body = body.to_string();
+                resp
+            }
             None => AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
@@ -616,6 +622,9 @@ impl DynamoDbHandler {
         let gsis = table.global_secondary_indexes.read().clone();
         let lsis = table.local_secondary_indexes.read().clone();
         let provisioned = json!({
+            // Real AWS always reports the decrease counter (0 unless a
+            // decrease settled today); moto mirrors it — the twin omitted it.
+            "NumberOfDecreasesToday": 0,
             "ReadCapacityUnits": *table.provisioned_rcu.read(),
             "WriteCapacityUnits": *table.provisioned_wcu.read(),
         });
@@ -650,6 +659,7 @@ impl DynamoDbHandler {
                         // table) describes a zero block, mirroring moto's
                         // zeroed throughput default.
                         index["ProvisionedThroughput"] = json!({
+                            "NumberOfDecreasesToday": 0,
                             "ReadCapacityUnits": i.provisioned_rcu.unwrap_or(0),
                             "WriteCapacityUnits": i.provisioned_wcu.unwrap_or(0),
                         });
@@ -683,7 +693,12 @@ impl DynamoDbHandler {
             "TableArn": *table.table_arn.read(),
             "KeySchema": key_schema_json,
             "AttributeDefinitions": attr_defs_json,
-            "CreationDateTime": format_created_at(table.created_at),
+            // Real AWS renders CreationDateTime as a JSON NUMBER (epoch
+            // seconds, e.g. 1.729399077E9); the twin's datetime string made
+            // the terraform AWS provider's decoder fail ("expected Date to
+            // be a JSON Number, got string instead") on every CreateTable/
+            // DescribeTable response.
+            "CreationDateTime": table.created_at as f64,
             "ItemCount": item_count,
             "TableSizeBytes": 0,
             "ProvisionedThroughput": provisioned,
@@ -1709,6 +1724,45 @@ impl DynamoDbHandler {
                 expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
             {
                 return AwsResponse::error(400, "ValidationException", &format!("{member}: {e}"));
+            }
+        }
+        // Real AWS types the key condition against the schema up front: an N
+        // sort key queried with S bounds is 400 ValidationException ("Condition
+        // parameter type does not match schema type") — the twin used to
+        // evaluate per item and silently answer an empty page (moto crashes
+        // with a 500 on the same input; real AWS's wording is the record).
+        {
+            // Key attribute names: base-table schema + the queried index's.
+            let mut key_attrs: Vec<String> = Vec::new();
+            if let Some(k) = table.hash_key() {
+                key_attrs.push(k.attribute_name.clone());
+            }
+            if let Some(k) = table.range_key() {
+                key_attrs.push(k.attribute_name.clone());
+            }
+            if let Some(idx) = index_of(table, param_str(&req.params, "IndexName").unwrap_or("")) {
+                key_attrs.extend(idx.key_schema.iter().map(|k| k.attribute_name.clone()));
+            }
+            // Types live on the schema's attribute definitions.
+            let key_types: std::collections::HashMap<String, String> = table
+                .attribute_definitions
+                .read()
+                .iter()
+                .filter(|a| key_attrs.contains(&a.attribute_name))
+                .map(|a| (a.attribute_name.clone(), a.attribute_type.clone()))
+                .collect();
+            if !key_cond.trim().is_empty() {
+                if let Some(attr) =
+                    expr_engine::key_condition_type_mismatch(key_cond, &names, &values, &key_types)
+                {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        &format!(
+                            "One or more parameter values were invalid: Condition parameter type does not match schema type for attribute {attr}"
+                        ),
+                    );
+                }
             }
         }
         let projection = expr_str(req.params.get("ProjectionExpression")).unwrap_or("");
@@ -6363,12 +6417,12 @@ mod tests {
         // The index echoes its own spec, not the table's units...
         assert_eq!(
             table["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
-            json!({"ReadCapacityUnits": 7, "WriteCapacityUnits": 9})
+            json!({"NumberOfDecreasesToday": 0, "ReadCapacityUnits": 7, "WriteCapacityUnits": 9})
         );
         // ... and the table keeps its own.
         assert_eq!(
             table["ProvisionedThroughput"],
-            json!({"ReadCapacityUnits": 3, "WriteCapacityUnits": 5})
+            json!({"NumberOfDecreasesToday": 0, "ReadCapacityUnits": 3, "WriteCapacityUnits": 5})
         );
         // UpdateTable-created indexes likewise echo their own spec.
         let resp = handler.handle(make_req(
@@ -6387,7 +6441,7 @@ mod tests {
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(
             body["TableDescription"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
-            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+            json!({"NumberOfDecreasesToday": 0, "ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
         );
         let body = handler.handle(make_req(
             "DescribeTable",
@@ -6396,7 +6450,7 @@ mod tests {
         let body: Value = serde_json::from_str(&body.body).unwrap();
         assert_eq!(
             body["Table"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
-            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+            json!({"NumberOfDecreasesToday": 0, "ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
         );
 
         // An on-demand GSI (no spec throughput) describes moto's zero block.
@@ -6425,7 +6479,7 @@ mod tests {
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(
             body["Table"]["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
-            json!({"ReadCapacityUnits": 0, "WriteCapacityUnits": 0})
+            json!({"NumberOfDecreasesToday": 0, "ReadCapacityUnits": 0, "WriteCapacityUnits": 0})
         );
     }
 

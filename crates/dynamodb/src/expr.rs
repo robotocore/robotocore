@@ -1015,6 +1015,97 @@ pub fn eval_condition(
     Ok(eval_cond(&cond, item))
 }
 
+/// Real AWS rejects a key condition whose value operand's type differs
+/// from the key's schema type (400 ValidationException, "Condition
+/// parameter type does not match schema type" — querying an N sort key
+/// with S bounds; the twin used to evaluate per item and answer an empty
+/// page). Walks the parsed condition; the first comparison involving a
+/// key attribute with a differently-typed value operand names it. A parse
+/// failure returns None (eval_condition reports that its own way).
+pub fn key_condition_type_mismatch(
+    expr: &str,
+    names: &Names,
+    values: &Values,
+    key_types: &std::collections::HashMap<String, String>,
+) -> Option<String> {
+    let toks = lex(expr).ok()?;
+    let mut p = Parser {
+        toks,
+        pos: 0,
+        names,
+        values,
+    };
+    let cond = p.parse_or().ok()?;
+
+    fn value_type(v: &Value) -> Option<String> {
+        v.as_object().and_then(|o| o.keys().next()).cloned()
+    }
+
+    let mut found: Option<String> = None;
+    fn check_pair(
+        l: &Operand,
+        r: &Operand,
+        names: &Names,
+        key_types: &std::collections::HashMap<String, String>,
+        found: &mut Option<String>,
+    ) {
+        if found.is_some() {
+            return;
+        }
+        // value-vs-key comparisons in either operand position
+        for (path_op, val_op) in [(l, r), (r, l)] {
+            if let Operand::Path(segs) = path_op {
+                let attr = match segs.first() {
+                    Some(seg) if seg.starts_with('#') => {
+                        names.get(seg).cloned().unwrap_or_default()
+                    }
+                    Some(seg) => seg.clone(),
+                    None => continue,
+                };
+                let Some(schema_t) = key_types.get(&attr) else {
+                    continue;
+                };
+                if let Operand::Val(v) = val_op {
+                    if let Some(t) = value_type(v) {
+                        if t != *schema_t {
+                            *found = Some(attr.clone());
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fn walk(
+        c: &Cond,
+        names: &Names,
+        key_types: &std::collections::HashMap<String, String>,
+        found: &mut Option<String>,
+    ) {
+        if found.is_some() {
+            return;
+        }
+        match c {
+            Cond::And(a, b) | Cond::Or(a, b) => {
+                walk(a, names, key_types, found);
+                walk(b, names, key_types, found);
+            }
+            Cond::Not(a) => walk(a, names, key_types, found),
+            Cond::Cmp(_, l, r) => {
+                check_pair(l, r, names, key_types, found);
+            }
+            Cond::Between(m, lo, hi) => {
+                check_pair(m, lo, names, key_types, found);
+                check_pair(m, hi, names, key_types, found);
+            }
+            Cond::BeginsWith(p, v) => check_pair(p, v, names, key_types, found),
+            _ => {}
+        }
+    }
+    walk(&cond, names, key_types, &mut found);
+    found
+}
+
 // ---------------------------------------------------------------------------
 // Update expressions
 // ---------------------------------------------------------------------------

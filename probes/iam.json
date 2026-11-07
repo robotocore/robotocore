@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-06T06:51:13.651109+00:00",
+  "generated_at": "2026-11-06T19:42:43.305335+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "92d615e3598a1e7e2df9633fe69d1d5e36dedb1b7a626406812bd44af507d4e4"
+    "crates/iam/src/": "a718f3a2e608ee5f422efcd9056c5a4dd49b8585c10a6402a6b9ebb9c8bd7836"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -248,7 +248,7 @@
     {
       "operation": "DeleteUserPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteVirtualMFADevice",

@@ -35,6 +35,30 @@ under *Changelog discipline*.
   file as a gate; it runs SEQUENTIALLY, never inside a shared-server
   shard — a mid-run ON window would implicitly deny every other worker's
   default-account requests (`enforce_iam_toggle` marker).
+- **Two expectation-free semantic oracles, a fuzz rig, an assertion
+  auditor and a terraform drift check** — the twin is no longer only
+  compared against recorded expectations of itself. (1)
+  `tests/metamorphic/`: relation-based tests — put=exact round-trip over
+  a body corpus, ranged GET = slice of the full GET (random + suffix
+  ranges), v1/v2/versions listing agreement, pagination = full listing,
+  and full-script cross-account replay equivalence under a response
+  canonicalizer. (2) `scripts/differential_moto.py`: runs identical
+  corpora against the twin and an in-process moto 5.x server and diffs
+  canonicalized responses; recorded divergences live in
+  `scripts/differential_known_diffs.json` with reasons, anything new
+  exits 1. (3) Hypothesis stateful machines for SQS (random
+  send/receive/delete: no double delivery, no resurrection) and S3
+  (listing always equals history). (4)
+  `scripts/audit_assertions.py`: inverse mutation — perturbs expected
+  literals in sampled tests and flags any that still pass. (5)
+  `make drift`: terraform applies every IaC stack to the twin and the
+  plan must show no drift — the provider's refresh logic is the oracle.
+  Each oracle is wired into the compat shard, the nightly or its own
+  make target; findings found by their first runs are fixed below.
+- **A branch-by-branch semantic audit against moto 5.x for SQS, S3,
+  DynamoDB and IAM** is checked in under `docs/semantic-audit-2026-11-06/`
+  (37 file:line-precise divergences; the fixed ones are struck as
+  fixed-in-this-branch, the rest are the open fidelity backlog).
 
 ### Fixed
 
@@ -46,6 +70,50 @@ under *Changelog discipline*.
   `TestComparisonOperators` pins all six operators (`=`, `<>`, `<`, `<=`,
   `>`, `>=`) with values above, below and on the boundary; it catches the
   mutation.
+
+- **S3 listings ignored `encoding-type=url`** — boto3 sends it by
+  default and url-decodes keys it reads back, so any key containing
+  `%`, `+` or a space round-tripped to a different key. ListObjects
+  v1/v2 now percent-encode Key/Prefix/Marker members and echo
+  `<EncodingType>url</EncodingType>` when requested.
+- **SQS ReceiveMessage always included the system `Attributes` map and
+  `MessageAttributes`** — real AWS (and moto) return them only when
+  `AttributeNames`/`MessageAttributeNames` ask, filtered to the
+  requested names, with `MD5OfMessageAttributes` computed over exactly
+  the filtered set.
+- **DynamoDB `DeleteTable` answered a bare `{TableName, TableStatus}`
+  stub**; real AWS (and moto) return the full table description with
+  status `DELETING`.
+- **DynamoDB `Query` with a wrongly-typed key value answered a silently
+  empty page** (moto: 500 crash); real AWS types the key condition
+  against the schema up front — now 400 `ValidationException` ("Condition
+  parameter type does not match schema type").
+- **IAM `DeleteUserPolicy` on a missing user or policy answered 200**;
+  real AWS (and moto) raise `NoSuchEntity` (404).
+- **SQS `SendMessage` accepted any body size and any DelaySeconds** —
+  over-MaximumMessageSize bodies and per-message delays above 900 are
+  rejected now (moto's exact wordings), and a nonzero per-message delay
+  on a FIFO queue is rejected.
+- **SQS `GetQueueAttributes` ignored `AttributeNames`** — it always
+  returned every attribute and never rejected unknown names; it now
+  projects the requested subset, answers empty when nothing is
+  requested and raises `InvalidAttributeName` for unknown names.
+- **DynamoDB table descriptions omitted
+  `ProvisionedThroughput.NumberOfDecreasesToday`** and **SQS queue
+  attributes omitted `SqsManagedSseEnabled`** — both real-AWS members
+  the terraform AWS provider reads on refresh.
+- **DynamoDB `CreationDateTime` rendered as a datetime string** — real
+  AWS sends a JSON number (epoch seconds); the terraform provider's
+  decoder failed on it ("expected Date to be a JSON Number").
+- **SNS topics without an explicit policy answered no `Policy`
+  attribute** — real AWS always carries an auto-generated default topic
+  policy; the terraform provider unmarshals it unconditionally and died
+  with "parsing policy: unexpected end of JSON input".
+- **S3 GET/HEAD emitted the tag-count header as `x-amz-tag-count`** — a
+  header name no SDK recognizes; real AWS's `x-amz-tagging-count` now.
+- **S3 multi-range Range specs (`bytes=0-1,3-4`) produced a wrong 206
+  partial body** (the old parse read end "1,3-4" and served a slice) —
+  real AWS ignores the member and answers 200 with the full body.
 
 - **The nightly parity run collects the parked `legacy-py-provider` suites
   again (71 failures per night since 2026-10-30).** The Oct 27 quarantine

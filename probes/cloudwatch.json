@@ -1,10 +1,10 @@
 {
   "service": "cloudwatch",
-  "generated_at": "2026-11-06T03:17:43.809450+00:00",
+  "generated_at": "2026-11-06T20:22:03.990288+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/cloudwatch.rs": "absent",
     "rotocore/src/services/cloudwatch/": "absent",
-    "crates/cloudwatch/src/": "7cf61d7994121de133bd71474c848f365282be48c37c4f26a459b729ff52dbf3"
+    "crates/cloudwatch/src/": "ac1a39135a859ff453c9c4253b130c9cda81655eccfa99c180a4f1b6041a282e"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

@@ -839,10 +839,24 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(user) = state.get_user(&username) {
-            user.policies.write().retain(|p| *p != policy_name);
-            user.policy_documents.write().remove(&policy_name);
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        // Real AWS: deleting a policy the user does not have is NoSuchEntity
+        // (moto models.py raise NoSuchEntity in delete_user_policy too).
+        if !user.policies.read().contains(&policy_name) {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user policy with name {policy_name} cannot be found."),
+            );
         }
+        user.policies.write().retain(|p| *p != policy_name);
+        user.policy_documents.write().remove(&policy_name);
         AwsResponse::xml(200, "DeleteUserPolicy", String::new())
     }
 
