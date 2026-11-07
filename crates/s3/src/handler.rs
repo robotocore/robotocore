@@ -325,6 +325,85 @@ enum RangeOutcome {
     Satisfiable(std::ops::Range<usize>),
 }
 
+/// Outcome of the If-* conditional request headers.
+enum Precondition {
+    Proceed,
+    /// ETag equals the current one / If-Modified-Since older: 304.
+    NotModified,
+    /// If-Match / If-Unmodified-Since violated: 412 PreconditionFailed.
+    Failed(AwsResponse),
+}
+
+/// moto's `_get_key` conditional evaluation (responses.py:2188-2219): the
+/// If-Unmodified-Since and If-Match pairs are hard 412s (`At least one of
+/// the pre-conditions you specified did not hold`), the If-Modified-Since /
+/// If-None-Match pair flags a 304. Dates parse as RFC 2822; an unparsable
+/// date behaves like an absent header (moto's parser would 500 on garbage;
+/// the malformed-date 4xx contract belongs to a later tranche).
+fn evaluate_preconditions(
+    etag: Option<&str>,
+    last_modified: u64,
+    headers: &std::collections::HashMap<String, String>,
+    literal_etag: bool,
+) -> Precondition {
+    fn precondition_failed() -> Precondition {
+        Precondition::Failed(AwsResponse::error(
+            412,
+            "PreconditionFailed",
+            "At least one of the pre-conditions you specified did not hold",
+        ))
+    }
+    if let Some(v) = headers.get("if-unmodified-since") {
+        let ts = chrono::DateTime::parse_from_rfc2822(v)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc).timestamp());
+        if ts.is_some_and(|ts| (last_modified as i64) > ts) {
+            return precondition_failed();
+        }
+    }
+    if let Some(v) = headers.get("if-match") {
+        match etag {
+            None => return precondition_failed(),
+            Some(etag) => {
+                // moto GET compares against the raw AND quoted forms
+                // (responses.py:2210); HEAD compares LITERALLY
+                // (responses.py:2679/2686 — a quoted validator 412s).
+                let hit = if literal_etag {
+                    v == etag
+                } else {
+                    v.trim_matches('"') == etag
+                };
+                if !hit {
+                    return precondition_failed();
+                }
+            }
+        }
+    }
+    let modified_since = headers
+        .get("if-modified-since")
+        .and_then(|v| {
+            chrono::DateTime::parse_from_rfc2822(v)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc).timestamp())
+        })
+        .is_some_and(|ts| (last_modified as i64) <= ts);
+    let none_match = headers.get("if-none-match").is_some_and(|v| {
+        etag.is_some_and(|etag| {
+            // literal mode = moto's HEAD, against the QUOTED storage form
+            if literal_etag {
+                v == &format!("\"{etag}\"")
+            } else {
+                v.trim_matches('"') == etag
+            }
+        })
+    });
+    if modified_since || none_match {
+        Precondition::NotModified
+    } else {
+        Precondition::Proceed
+    }
+}
+
 fn parse_range(spec: &str, size: usize) -> RangeOutcome {
     let Some(body) = spec.strip_prefix("bytes=") else {
         return RangeOutcome::Ignore;
@@ -1620,6 +1699,47 @@ impl S3Handler {
             Err(e) => return e,
         };
 
+        // Conditional-overwrite preconditions (moto responses.py:2286-2296):
+        // If-Match against the current object (MissingKey when absent),
+        // If-None-Match == '*' rejects overwriting an existing one. moto
+        // implements only those two on PUT; If-Modified-Since-style headers
+        // are PUT-irrelevant.
+        if let Some(v) = req.headers.get("if-match") {
+            // moto's precondition reads backend.get_object — for a
+            // delete-marked key that is None → MissingKey (the newest
+            // RECORD decides liveness). The old twin compared the newest
+            // version and could resurrect a marker-deleted key.
+            let current = bucket
+                .objects
+                .read()
+                .get(&key)
+                .and_then(|e| e.is_live().then(|| e.versions.first().cloned()))
+                .flatten();
+            match current {
+                None => {
+                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                }
+                Some(prev) => {
+                    if v.trim_matches('"') != prev.etag {
+                        return AwsResponse::error(
+                            412,
+                            "PreconditionFailed",
+                            "At least one of the pre-conditions you specified did not hold",
+                        );
+                    }
+                }
+            }
+        }
+        if req.headers.get("if-none-match").is_some_and(|v| v == "*")
+            && bucket.objects.read().get(&key).is_some_and(|e| e.is_live())
+        {
+            return AwsResponse::error(
+                412,
+                "PreconditionFailed",
+                "At least one of the pre-conditions you specified did not hold",
+            );
+        }
+
         // PUT with x-amz-copy-source is CopyObject (or UploadPartCopy with uploadId).
         if let Some(src) = req.headers.get("x-amz-copy-source").cloned() {
             return if req.query_params.contains_key("uploadId") {
@@ -2440,21 +2560,50 @@ impl S3Handler {
                             .iter()
                             .find(|v| v.version_id == *vid)
                             .cloned(),
-                        None => entry.versions.first().cloned(),
+                        None => {
+                            if !entry.is_live() {
+                                // moto get_object returns None for a
+                                // delete-marked key → MissingKey (a copy
+                                // must not resurrect the key).
+                                return AwsResponse::error(
+                                    404,
+                                    "NoSuchKey",
+                                    "The specified key does not exist",
+                                );
+                            }
+                            entry.versions.first().cloned()
+                        }
                     };
                     match found {
                         Some(v) => v,
                         None => {
+                            // moto responses.py:2429-2431: a missing source
+                            // with an explicit versionId is NoSuchVersion,
+                            // not NoSuchKey.
                             return AwsResponse::error(
                                 404,
-                                "NoSuchKey",
-                                "The specified key does not exist",
-                            )
+                                "NoSuchVersion",
+                                "The specified version does not exist.",
+                            );
                         }
                     }
                 }
                 None => {
-                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                    if src_version_id.is_some() {
+                        // moto responses.py:2390-2431: a truthy source
+                        // versionId raises MissingVersion even when the key
+                        // never existed.
+                        return AwsResponse::error(
+                            404,
+                            "NoSuchVersion",
+                            "The specified version does not exist.",
+                        );
+                    }
+                    return AwsResponse::error(
+                        404,
+                        "NoSuchKey",
+                        "The specified key does not exist",
+                    );
                 }
             }
         };
@@ -2490,6 +2639,36 @@ impl S3Handler {
             .cloned()
             .unwrap_or_else(|| source.storage_class.clone());
 
+        // moto models.py:3066-3083: copying an object onto itself with no
+        // changing parameter raises CopyObjectMustChangeSomething — real
+        // AWS's InvalidRequest contract. A versioned bucket with an
+        // explicit source version is the documented exception, and a
+        // REPLACE directive / storage-class / redirect header count as
+        // changing parameters.
+        let same_target = src_bucket.name == dest.name && src_key == dest_key;
+        let storage_changed = req.headers.contains_key("x-amz-storage-class");
+        let redirect_changed = req.headers.contains_key("x-amz-website-redirect-location");
+        let versioned_with_version = src_bucket.is_versioned() && src_version_id.is_some();
+        // moto's any(...) also allows the in-place copy when the destination
+        // bucket has default encryption (models.py:3073-3083); a non-AES256
+        // source SSE is the remaining unmodeled exemption.
+        let dest_has_default_encryption = dest.encryption_xml.read().is_some();
+        if same_target
+            && !replace
+            && !storage_changed
+            && !redirect_changed
+            && !versioned_with_version
+            && !dest_has_default_encryption
+        {
+            return AwsResponse::error(
+                400,
+                "InvalidRequest",
+                "This copy request is illegal because it is trying to copy an object to \
+                 itself without changing the object's metadata, storage class, website \
+                 redirect location or encryption attributes.",
+            );
+        }
+
         let (_version_id, etag) = Self::store_bytes(
             dest,
             dest_key,
@@ -2509,7 +2688,7 @@ impl S3Handler {
             &etag,
         );
 
-        AwsResponse::xml(
+        let mut resp = AwsResponse::xml(
             200,
             format!(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CopyObjectResult xmlns=\"{ns}\">\n  <LastModified>{dt}</LastModified>\n  <ETag>&quot;{et}&quot;</ETag>\n</CopyObjectResult>",
@@ -2517,7 +2696,16 @@ impl S3Handler {
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
                 et = etag
             ),
-        )
+        );
+        // moto responses.py:2446-2447: the source's version id rides the
+        // response whenever it is not the null version.
+        if source.version_id != NULL_VERSION_ID {
+            resp.headers.push((
+                "x-amz-copy-source-version-id".to_string(),
+                source.version_id.clone(),
+            ));
+        }
+        resp
     }
 
     /// GET/HEAD on a delete-marker version id: 405 MethodNotAllowed (the AWS
@@ -2656,6 +2844,30 @@ impl S3Handler {
             found
         };
 
+        // Conditional requests (moto responses.py:2188-2219): 412 on
+        // violated If-Match / If-Unmodified-Since, 304 on matching
+        // If-None-Match / stale If-Modified-Since.
+        match evaluate_preconditions(Some(&obj.etag), obj.last_modified, &req.headers, false) {
+            Precondition::Failed(e) => return e,
+            Precondition::NotModified => {
+                // moto's 304 carries the validators (review wire G6/G7)
+                let mut resp = AwsResponse {
+                    status: 304,
+                    headers: vec![
+                        ("ETag".to_string(), format!("\"{}\"", obj.etag)),
+                        ("Last-Modified".to_string(), httpdate(obj.last_modified)),
+                    ],
+                    body: vec![],
+                };
+                if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
+                    resp.headers
+                        .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
+                }
+                return resp;
+            }
+            Precondition::Proceed => {}
+        }
+
         // Range handling
         match range_header.as_deref().map(|r| parse_range(r, obj.size)) {
             Some(RangeOutcome::Unsatisfiable) => {
@@ -2774,6 +2986,30 @@ impl S3Handler {
             }
         };
 
+        // Conditional requests first, moto's _get_key order but with HEAD's
+        // LITERAL etag comparison (responses.py:2679/2686 — quoted
+        // validators 412/200 literally).
+        match evaluate_preconditions(Some(&obj.etag), obj.last_modified, &req.headers, true) {
+            Precondition::Failed(mut e) => {
+                // a HEAD carries no body (moto's body-less 412; the old
+                // twin advertised a phantom content-length)
+                e.body.clear();
+                return e;
+            }
+            Precondition::NotModified => {
+                return AwsResponse {
+                    status: 304,
+                    headers: vec![
+                        ("ETag".to_string(), format!("\"{}\"", obj.etag)),
+                        ("Last-Modified".to_string(), httpdate(obj.last_modified)),
+                        ("Accept-Ranges".to_string(), "bytes".to_string()),
+                    ],
+                    body: vec![],
+                };
+            }
+            Precondition::Proceed => {}
+        }
+
         // moto _handle_range_header (responses.py:1785-1836) honors Range
         // on HEAD too: unsatisfiable → bare 416 with an XML content-type
         // and no body (a HEAD carries none); satisfiable → 206 with the
@@ -2860,6 +3096,31 @@ impl S3Handler {
             Err(e) => return e,
         };
 
+        // moto responses.py:3083-3090: If-Match gates the delete on the
+        // LIVE object's ETag (MissingKey when the key is absent — a
+        // delete-marked key counts as absent; no new marker gets booked).
+        if let Some(v) = req.headers.get("if-match") {
+            let current = bucket
+                .objects
+                .read()
+                .get(&key)
+                .and_then(|e| e.is_live().then(|| e.versions.first().cloned()))
+                .flatten();
+            match current {
+                None => {
+                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                }
+                Some(prev) => {
+                    if v.trim_matches('"') != prev.etag {
+                        return AwsResponse::error(
+                            412,
+                            "PreconditionFailed",
+                            "At least one of the pre-conditions you specified did not hold",
+                        );
+                    }
+                }
+            }
+        }
         let requested_version = req.query_params.get("versionId").cloned();
         let mut marker_created = false;
         let mut version_id_out = None;

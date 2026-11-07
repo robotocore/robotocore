@@ -62,6 +62,22 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3 conditional requests and the CopyObject contract.** The moto audit's
+  sixth tranche (`docs/semantic-audit-2026-11-06/sqs-s3.md` findings 9 and
+  10): GET/HEAD now evaluate If-Match, If-None-Match, If-Modified-Since and
+  If-Unmodified-Since in moto's order — violated If-Match/If-Unmodified-
+  Since answer 412 `PreconditionFailed` ("At least one of the pre-conditions
+  you specified did not hold"), satisfied If-None-Match/stale
+  If-Modified-Since answer 304; PUT honors If-Match (against the current
+  object, `MissingKey` when absent) and `If-None-Match: *` rejects
+  overwriting an existing object; DELETE honors If-Match. CopyObject: an
+  in-place copy with no changing parameter answers 400 `InvalidRequest`
+  (real AWS's full legality message — moto's CopyObjectMustChangeSomething),
+  a missing source version answers 404 `NoSuchVersion` instead of
+  `NoSuchKey`, and the response carries `x-amz-copy-source-version-id` for
+  non-null source versions. 17 new compat tests; 9 differential corpus
+  steps pin the shapes.
+
 - **DynamoDB item semantics: key validation, expression operand typing, set
   equality, GSI membership.** The moto-semantic audit's fifth tranche
   (`docs/semantic-audit-2026-11-06/dynamodb-iam.md` findings 1, 4, 5, 6, 7,

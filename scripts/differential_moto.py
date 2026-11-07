@@ -162,6 +162,65 @@ def corpus_s3(engine):
         ("get_missing", err_wrap(lambda: s3.get_object(Bucket=b, Key="a/c.txt"))),
         ("head_missing", err_wrap(lambda: s3.head_object(Bucket=b, Key="a/c.txt"))),
         ("missing_bucket_get", err_wrap(lambda: s3.get_object(Bucket=b + "-none", Key="x"))),
+        # -- conditional requests (moto responses.py:2188-2219, 2286-2296) --
+        (
+            "get_if_match_wrong",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="a/b.txt", IfMatch='"deadbeef"')),
+        ),
+        (
+            "get_if_modified_since_future",
+            err_wrap(
+                lambda: s3.get_object(
+                    Bucket=b, Key="a/b.txt", IfModifiedSince="Wed, 01 Jan 2031 00:00:00 GMT"
+                )
+            ),
+        ),
+        (
+            "get_if_none_match_current",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="a/b.txt", IfNoneMatch='"deadbeef"')),
+        ),
+        (
+            "put_if_none_match_star",
+            err_wrap(lambda: s3.put_object(Bucket=b, Key="a/b.txt", Body=b"x", IfNoneMatch="*")),
+        ),
+        (
+            "delete_if_match_wrong",
+            err_wrap(lambda: s3.delete_object(Bucket=b, Key="a/b.txt", IfMatch='"deadbeef"')),
+        ),
+        # -- CopyObject contract (moto models.py:3066-3083) -----------------
+        (
+            "copy_in_place",
+            err_wrap(
+                lambda: s3.copy_object(
+                    Bucket=b, Key="a/b.txt", CopySource={"Bucket": b, "Key": "a/b.txt"}
+                )
+            ),
+        ),
+        (
+            "copy_in_place_replace",
+            err_wrap(
+                lambda: s3.copy_object(
+                    Bucket=b,
+                    Key="a/b.txt",
+                    CopySource={"Bucket": b, "Key": "a/b.txt"},
+                    MetadataDirective="REPLACE",
+                )
+            ),
+        ),
+        (
+            "copy_missing_version",
+            err_wrap(
+                lambda: s3.copy_object(
+                    Bucket=b,
+                    Key="dst.txt",
+                    CopySource={
+                        "Bucket": b,
+                        "Key": "a/b.txt",
+                        "VersionId": "never-existed",
+                    },
+                )
+            ),
+        ),
         # -- range semantics (moto responses.py:1785-1836) ----------------
         (
             "range_unsatisfiable",
