@@ -67,12 +67,15 @@ S3
    (d) Real AWS creates delete markers on versioned buckets and honors per-object VersionIds. Rust diverges from both — this silently destroys all object versions.
    (e) High confidence.
 
+   **FIXED in part (2026-11-07, verified in source):** versioned batch deletes now mirror single DeleteObject — a versioned bucket books a delete marker per key (a never-written key books one too, per real AWS; moto does not — `s3.delete_objects_unknown_key` is ledgered twin-preferred), an explicit VersionId removes only that version, the Deleted rows carry VersionId / DeleteMarker / DeleteMarkerVersionId, an empty object list is MalformedXML, and unknown keys stay tolerant. The remaining open half: object-lock AccessDenied errors (the twin does not enforce object locks).
 8. CompleteMultipartUpload ignores the request body and skips all part validation
    (a) CompleteMultipartUpload.
    (b) moto M/s3/models.py:473-511 (`FakeMultipart.complete`): validates every listed part exists and its ETag matches (InvalidPart), that part numbers ascend (InvalidPartOrder, responses.py:3109-3116), that no non-final part is < S3_UPLOAD_PART_MIN_SIZE 5 MiB (EntityTooSmall, models.py:494-495), and that at least one part is listed (MalformedXML, models.py:502-503); only the listed parts, in listed order, compose the object.
    (c) R/s3/src/handler.rs:3753-3845 — the request body is never parsed; it concatenates ALL uploaded parts sorted by part number, verifies no ETags, and answers 400 InvalidPart "At least one part must be uploaded" when none exist (moto: MalformedXML). ETag composite math itself matches (models.rs:311-318).
    (d) Real AWS validates parts exactly like moto here (InvalidPart/InvalidPartOrder/EntityTooSmall). Rust diverges.
    (e) High confidence.
+
+   **FIXED (2026-11-07, verified in source):** the request body is parsed for the listed `<Part>` entries; every listed part must exist and match its ETag (InvalidPart, moto's message), part numbers must ascend with no duplicates (InvalidPartOrder), every listed part except the last must be >= 5 MiB (EntityTooSmall), and only the listed parts in listed order compose the object. An empty list now answers MalformedXML (the old twin answered InvalidPart "At least one part must be uploaded"). Verified live against moto via the differential corpus; `s3.complete_multipart` is ledgered moto-only for the `<VersionId>null</VersionId>` member moto emits on unversioned buckets (real AWS omits VersionId).
 
 9. Conditional requests (If-Match / If-None-Match / If-Modified-Since / If-Unmodified-Since) are unimplemented on GET/HEAD/PUT
    (a) GetObject, HeadObject, PutObject, DeleteObject.
@@ -95,6 +98,8 @@ S3
     (d) Real AWS enforces partNumber 1..10000, applies the copy range, and answers NoSuchUpload (404) for unknown upload ids. Rust diverges.
     (e) High confidence.
 
+    **FIXED (2026-11-07, verified in source):** partNumber > 10000 answers 400 InvalidArgument ("Part number must be an integer between 1 and 10000, inclusive" — moto's InvalidMaxPartNumberArgument text) and partNumber < 1 answers 404 NoSuchUpload (moto's set_part branch) on UploadPart and UploadPartCopy; UploadPartCopy applies `x-amz-copy-source-range` as the python-clamped slice (missing/unparsable -> whole object; start > end -> python-empty slice, moto's semantics); AbortMultipartUpload answers 404 NoSuchUpload for an unknown uploadId; ListParts honors max-parts and part-number-marker with IsTruncated/NextPartNumberMarker.
+
 12. Range handling: no 416 InvalidRange, and multi-range specs produce a wrong 206
     (a) GetObject/HeadObject with a Range header.
     (b) moto M/s3/responses.py:1785-1835 — begin ≥ size (or `bytes=-0`) raises InvalidRange (416 with actual size in the message); a multi-range spec (`bytes=0-1,3-4`) or unparsable spec falls back to 200 with the full body.
@@ -102,7 +107,7 @@ S3
     (d) Real AWS answers 416 InvalidRange for an unsatisfiable range. Rust diverges (and the multi-range case is actively wrong data).
     (e) Medium-high confidence.
 
-    **FIXED in part (2026-11-06, verified in source):** the multi-range half is fixed — `parse_range` (crates/s3/src/handler.rs:290-296) now returns None for any comma-containing spec, answering 200 with the full body. The other half of this finding remains open: an unsatisfiable range (start ≥ size) still yields 200 with the full body instead of 416 InvalidRange.
+    **FIXED (2026-11-07, verified in source):** `parse_range` returns a three-way outcome mirroring moto's `_handle_range_header`: multi-range/unparsable specs answer 200 with the full body; `bytes=-0` and begin >= size answer 416 InvalidRange ("The requested range is not satisfiable"); and begin > end with begin in bounds answers 200 full-body (moto's `begin > min(end, last)` branch). GET and HEAD both drive the parser now (HEAD answers the bare 416 + sliced Content-Length shape moto's HEAD branch produces). Verified against moto via the differential corpus (`s3.range_*`) and HEAD-range compat tests.
 
 13. Object tagging: versionId ignored, no validation, wrong tag-count header name, no 404 on GET of a missing key
     (a) PutObjectTagging / GetObjectTagging / DeleteObjectTagging (+ GetObject tag-count header).
@@ -126,5 +131,11 @@ S3
     (c) R/s3/src/handler.rs:1391-1462 — the body is read only to detect a Directory bucket type; no location-constraint validation, and a duplicate create always answers 200 idempotently in every region; 3538-3553 — only exact "Enabled"/"Suspended" set state, anything else silently becomes "never enabled" with a 200 (moto: 404; and moto would echo arbitrary casings).
     (d) Real AWS: enforces the location constraint, answers BucketAlreadyOwnedByYou (409) in non-us-east-1, and rejects an invalid versioning status (MalformedXML-ish 400) — moto's 404 and case-sensitivity are its own quirks. Rust diverges from both.
     (e) Medium confidence (real-AWS exact codes not re-checked in botocore models).
+
+Follow-ups opened by the 2026-11-07 adversarial review of the multipart/DeleteObjects tranche (pre-existing, unchanged by it):
+
+- Bulk `delete_objects` fires no `s3:ObjectRemoved:Delete*` notifications (single `delete_object` does fire; moto fires per-entry at models.py:2956-2964/2994-3000).
+- Completing an already-completed uploadId answers 404 NoSuchUpload; moto answers 200 idempotently (responses.py:3183-3190).
+- Garbage-in divergence ledger candidates (twin answers the real-AWS shape where moto 500s): a `<Part>` with a missing/non-numeric PartNumber or missing ETag makes moto IndexError/AttributeError (responses.py:3113-3116) where the twin answers 400 InvalidPartOrder/InvalidPart; a `Range` header without the `bytes=` prefix makes moto's rsplit unpack raise an uncaught 500 (responses.py:1793) where the twin answers 200 with the full body.
 
 Non-findings worth recording (checked, match): SQS visibility/dedup/redrive ordering and the moto-crash mirrors are faithful; S3 multipart composite ETag math (models.rs:311-318) matches moto's md5-of-md5s; ListObjects v1/v2 delimiter grouping, KeyCount, and continuation-token semantics match moto (Rust's v1 NextMarker-only-with-delimiter actually matches real AWS better than moto); the PurgeQueue 60s throttle is on by default in moto 5.2.5 too (settings.py:87-91). Rust's FIFO duplicate-send response (original MessageId/SequenceNumber) diverges from moto's new-MessageId behavior but matches real AWS — not counted as a finding.

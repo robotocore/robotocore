@@ -18050,7 +18050,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (InvalidParameterValue)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -18061,7 +18061,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (InvalidParameterValue)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -18237,7 +18237,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidParameterCombination: Value and StatisticValues cannot be used together)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21193,7 +21193,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21204,7 +21204,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21391,7 +21391,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21462,7 +21462,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21583,7 +21583,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21616,7 +21616,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21759,7 +21759,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21891,7 +21891,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -21968,7 +21968,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -22023,7 +22023,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -22078,7 +22078,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-1760)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -29080,7 +29080,7 @@
     "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": true
+     "unit": false
     }
    },
    "DescribeRecipe": {
@@ -29113,7 +29113,7 @@
     "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": true
+     "unit": false
     }
    },
    "ListDatasets": {
@@ -29162,7 +29162,7 @@
     "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": true
+     "unit": false
     }
    },
    "ListRecipeVersions": {
@@ -29195,7 +29195,7 @@
     "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": true
+     "unit": false
     }
    },
    "ListSchedules": {
@@ -29206,7 +29206,7 @@
     "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": true
+     "unit": false
     }
    },
    "ListTagsForResource": {
@@ -33570,7 +33570,7 @@
   "total": 11
  },
  "dynamodb": {
-  "covered": 54,
+  "covered": 56,
   "ops": {
    "BatchExecuteStatement": {
     "absence": null,
@@ -34060,7 +34060,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -34069,10 +34069,10 @@
    },
    "TransactWriteItems": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -34157,10 +34157,10 @@
    },
    "UpdateTable": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -34386,7 +34386,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-a01fb908' does not exist)",
+    "probe_message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-e8c3d65b' does not exist)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -35354,7 +35354,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidKeyPair.Duplicate: The key pair 'probe-test-value' already exists)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -35365,7 +35365,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidLaunchTemplateName.AlreadyExistsException: A launch template named 'probe-test-value' already exists.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -37114,7 +37114,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceNotFound: The id '10.0.0.0/16' does not exist)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -43341,7 +43341,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (TargetNotFoundException: Could not find probe-target-id-id)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -43418,7 +43418,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ClientException: Unable to deregister task definition probe-test-value.)",
+    "probe_message": "likely implemented (ClientException: Revision is missing.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -43506,7 +43506,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ClientException: Unable to describe task definition probe-test-value.)",
+    "probe_message": "likely implemented (ClientException: Unable to describe task definition.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -43715,7 +43715,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (TargetNotFoundException: Could not find probe-target-id-id)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -46748,7 +46748,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (DuplicateTargetGroupName: A target group with the specified name already exists.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -46759,7 +46759,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (DuplicateTrustStoreName: The specified trust store name is already in use.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -49541,7 +49541,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -49767,7 +49767,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_message": "implemented via required-only (InvalidArgumentException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56347,7 +56347,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56358,7 +56358,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56369,7 +56369,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56457,7 +56457,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented via required-only (EntityAlreadyExists)",
+    "probe_message": "OK (required-only fill)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56468,7 +56468,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (EntityAlreadyExists: A policy called probe-test-value already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56545,7 +56545,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (EntityAlreadyExists: MFADevice entity at the same path and name already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56556,7 +56556,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56567,7 +56567,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56589,7 +56589,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56732,7 +56732,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56798,7 +56798,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56820,7 +56820,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56831,7 +56831,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56842,7 +56842,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -56963,7 +56963,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57436,7 +57436,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57667,7 +57667,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationError)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57678,7 +57678,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57700,7 +57700,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57722,7 +57722,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57755,7 +57755,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57887,7 +57887,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57898,7 +57898,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57931,7 +57931,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57975,7 +57975,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -57986,7 +57986,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -58019,7 +58019,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchEntity)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -64712,7 +64712,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NotFoundException)",
+    "probe_message": "implemented (ValidationException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -64756,7 +64756,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidCiphertextException: )",
+    "probe_message": "implemented (NotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -64767,7 +64767,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -65130,7 +65130,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NotFoundException)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -65207,7 +65207,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NotFoundException)",
+    "probe_message": "implemented (ValidationException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -68068,7 +68068,7 @@
   "total": 107
  },
  "logs": {
-  "covered": 106,
+  "covered": 108,
   "ops": {
    "AssociateKmsKey": {
     "absence": null,
@@ -68743,10 +68743,10 @@
    },
    "GetLogObject": {
     "absence": null,
-    "bucket": "unreachable",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)",
-    "probe_status": "timeout",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -69117,10 +69117,10 @@
    },
    "StartLiveTail": {
     "absence": null,
-    "bucket": "unreachable",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)",
-    "probe_status": "timeout",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -77110,7 +77110,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77143,7 +77143,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77209,7 +77209,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77308,7 +77308,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77528,7 +77528,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77605,7 +77605,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77671,7 +77671,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77825,7 +77825,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77902,7 +77902,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77924,7 +77924,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77946,7 +77946,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: )",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -79527,386 +79527,6 @@
    }
   },
   "total": 22
- },
- "panorama": {
-  "covered": 32,
-  "ops": {
-   "CreateApplicationInstance": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ValidationException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "CreateJobForDevices": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ValidationException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "CreateNodeFromTemplateJob": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "CreatePackage": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "CreatePackageImportJob": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DeleteDevice": {
-    "absence": null,
-    "bucket": "absent_crash_faithful",
-    "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DeletePackage": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DeregisterPackageVersion": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeApplicationInstance": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeApplicationInstanceDetails": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeDevice": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ValidationException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeDeviceJob": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeNode": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribeNodeFromTemplateJob": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribePackage": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribePackageImportJob": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "DescribePackageVersion": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListApplicationInstanceDependencies": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListApplicationInstanceNodeInstances": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListApplicationInstances": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListDevices": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListDevicesJobs": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListNodeFromTemplateJobs": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListNodes": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListPackageImportJobs": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListPackages": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ListTagsForResource": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "ProvisionDevice": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "RegisterPackageVersion": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "RemoveApplicationInstance": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "SignalApplicationInstanceNodeInstances": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "TagResource": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "UntagResource": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "UpdateDeviceMetadata": {
-    "absence": null,
-    "bucket": "absent_crash_faithful",
-    "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   }
-  },
-  "total": 34
  },
  "personalize": {
   "covered": 71,
@@ -100361,7 +99981,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (InvalidParameterException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -107395,7 +107015,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)",
+    "probe_message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108066,7 +107686,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)",
+    "probe_message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108451,7 +108071,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (DoesNotExistException: probe-baseline-id-id does not exist)",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-baseline-id-id does not exist)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108748,7 +108368,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)",
+    "probe_message": "likely implemented (DoesNotExistException: OpsMetadata arn:aws:ssm:us-east-1:123456789012:thing/probe-t)",
     "probe_status": "working",
     "screens": {
      "probe": true,

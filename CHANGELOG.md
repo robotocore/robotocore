@@ -62,6 +62,35 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3 destruction and multipart fidelity: versioned `DeleteObjects`, part
+  validation, `UploadPartCopy` ranges and 416 ranges.** The moto-semantic
+  audit's fourth tranche, driven through the differential and the compat
+  shard (moto 5.2.5 is the reference):
+  `DeleteObjects` ignored versioning — it cleared every version and
+  marker of each listed key unconditionally, destroying object history;
+  it now mirrors single `DeleteObject` per entry (a versioned bucket
+  books a delete marker, an explicit `VersionId` removes only that
+  version, rows carry `VersionId`/`DeleteMarker`/`DeleteMarkerVersionId`,
+  an empty entry list is `MalformedXML`, a never-written key books a
+  marker like real AWS — moto does not, ledgered twin-preferred).
+  `CompleteMultipartUpload` now parses the listed `<Part>` entries and
+  validates like moto: existence + ETag match (`InvalidPart`), ascending,
+  duplicate-free numbers (`InvalidPartOrder`), ≥5 MiB for every non-final
+  part (`EntityTooSmall`), empty list → `MalformedXML`, and only the
+  listed parts in listed order compose the object (previously
+  everything uploaded, sorted by number, silently merged). `UploadPart`
+  rejects `partNumber > 10000` (400 `InvalidArgument`) and `< 1` (404
+  `NoSuchUpload`, moto's `set_part` branch); `UploadPartCopy` applies
+  `x-amz-copy-source-range` as the python-clamped slice and recomputes
+  the part ETag over the copied bytes; `AbortMultipartUpload` answers
+  404 `NoSuchUpload` for an unknown `uploadId`; `ListParts` honors
+  `max-parts`/`part-number-marker` with `IsTruncated`/
+  `NextPartNumberMarker`. `GetObject` answers 416 `InvalidRange` for
+  `bytes=-0` and `begin ≥ size` (moto's `_handle_range_header`) and
+  200-full-body for `begin > end`. The S3 audit findings 7, 8, 11 and 12
+  are struck in `docs/semantic-audit-2026-11-06/`; 17 new compat tests
+  in `TestS3MultipartAndDeleteFidelity`.
+
 - **DynamoDB's comparison operators are pinned by the compat suite.** A
   mutation test that dropped the less-than arm from `<=` (making
   `attribute <= value` reject smaller values) survived all 198 DynamoDB
