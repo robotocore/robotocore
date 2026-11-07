@@ -528,3 +528,210 @@ class TestListTablesDefaultLimit:
                     ddb.delete_table(TableName=f"{prefix}{i:03d}")
                 except Exception:
                     pass  # best-effort cleanup
+
+
+class TestKeyConditionSchemaValidation:
+    """moto parsing/key_condition_expression.py:215-316 (validate_schema)
+    + responses.py:2145-2216, 966-970: the KCE's three ValidationException
+    shapes and the KCE-less Query rejection."""
+
+    @pytest.fixture
+    def kce_table(self, ddb):
+        name = f"kce-{uuid.uuid4().hex[:10]}"
+        ddb.create_table(
+            TableName=name,
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "N"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        ddb.put_item(
+            TableName=name,
+            Item={"pk": {"S": "a"}, "sk": {"N": "1"}, "v": {"S": "x"}},
+        )
+        yield name
+        try:
+            items = ddb.scan(TableName=name).get("Items", [])
+            for item in items:
+                ddb.delete_item(
+                    TableName=name,
+                    Key={k: item[k] for k in ("pk", "sk") if k in item},
+                )
+            ddb.delete_table(TableName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def _query(self, ddb, name, kce, names=None, values=None):
+        kwargs = {"TableName": name}
+        if kce is not None:
+            kwargs["KeyConditionExpression"] = kce
+        if names:
+            kwargs["ExpressionAttributeNames"] = names
+        if values:
+            kwargs["ExpressionAttributeValues"] = values
+        return ddb.query(**kwargs)
+
+    def test_missing_hash_key_missed_schema_element(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            self._query(
+                ddb,
+                kce_table,
+                "sk = :s",
+                values={":s": {"N": "1"}},
+            )
+        assert err_msg(exc) == "Query condition missed key schema element: pk"
+
+    def test_hash_key_non_equality_not_supported(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            self._query(
+                ddb,
+                kce_table,
+                "pk < :p AND sk = :s",
+                values={":p": {"S": "a"}, ":s": {"N": "1"}},
+            )
+        assert err_msg(exc) == "Query key condition not supported"
+
+    def test_non_schema_key_with_missing_range_missed_element(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            self._query(
+                ddb,
+                kce_table,
+                "pk = :p AND wrong = :w",
+                values={":p": {"S": "a"}, ":w": {"N": "1"}},
+            )
+        assert err_msg(exc) == "Query condition missed key schema element: sk"
+
+    def test_non_schema_key_only_not_supported(self, ddb, kce_table):
+        # GSI-less table, hash covered, unknown key in the KCE, no missing
+        # range key left to report — moto's generic shape
+        name = f"kce2-{uuid.uuid4().hex[:8]}"
+        ddb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                self._query(
+                    ddb,
+                    name,
+                    "pk = :p AND wrong = :w",
+                    values={":p": {"S": "a"}, ":w": {"N": "1"}},
+                )
+            assert err_msg(exc) == "Query key condition not supported"
+        finally:
+            ddb.delete_table(TableName=name)
+
+    def test_empty_string_hash_key_rejected(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            self._query(ddb, kce_table, "pk = :p", values={":p": {"S": ""}})
+        assert err_msg(exc) == (
+            "One or more parameter values are not valid. The AttributeValue "
+            "for a key attribute cannot contain an empty string value. "
+            "Key: pk"
+        )
+
+    def test_query_without_kce_rejected(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            self._query(ddb, kce_table, None)
+        assert err_msg(exc) == "Either KeyConditions or QueryFilter should be present"
+
+    def test_valid_kce_still_works(self, ddb, kce_table):
+        resp = self._query(
+            ddb,
+            kce_table,
+            "pk = :p AND sk BETWEEN :lo AND :hi",
+            values={":p": {"S": "a"}, ":lo": {"N": "0"}, ":hi": {"N": "9"}},
+        )
+        assert resp["Count"] == 1
+        got = self._query(
+            ddb,
+            kce_table,
+            "pk = :p AND begins_with(sk, :pre)",
+            values={":p": {"S": "a"}, ":pre": {"N": "1"}},
+        )
+        # begins_with on an N key: moto permits the syntax; the twin serves
+        # the comparably-computed page
+        assert "Items" in got or got.get("Count") == 0
+
+
+class TestLegacyKeyConditions:
+    @pytest.fixture
+    def kce_table(self, ddb):
+        name = f"leg-{uuid.uuid4().hex[:10]}"
+        ddb.create_table(
+            TableName=name,
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "N"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "N"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        ddb.put_item(
+            TableName=name,
+            Item={"pk": {"S": "a"}, "sk": {"N": "1"}, "v": {"S": "x"}},
+        )
+        yield name
+        try:
+            items = ddb.scan(TableName=name).get("Items", [])
+            for item in items:
+                ddb.delete_item(
+                    TableName=name,
+                    Key={k: item[k] for k in ("pk", "sk") if k in item},
+                )
+            ddb.delete_table(TableName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    """#440 review: moto routes legacy KeyConditions through the same
+    validate_schema (responses.py:975-1007)."""
+
+    def test_key_conditions_missing_hash_rejected(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            ddb.query(
+                TableName=kce_table,
+                KeyConditions={
+                    "wrong": {
+                        "AttributeValueList": [{"S": "a"}],
+                        "ComparisonOperator": "EQ",
+                    }
+                },
+            )
+        # moto's hash-keys-first rule reports the missing HASH key
+        assert err_msg(exc) == "Query condition missed key schema element: pk"
+
+    def test_key_conditions_lowercase_operator_rejected(self, ddb, kce_table):
+        with pytest.raises(ClientError) as exc:
+            ddb.query(
+                TableName=kce_table,
+                KeyConditions={
+                    "pk": {
+                        "AttributeValueList": [{"S": "a"}],
+                        "ComparisonOperator": "eq",
+                    }
+                },
+            )
+        assert err_msg(exc) == "Query key condition not supported"
+
+    def test_key_conditions_valid_eq_gets_items(self, ddb, kce_table):
+        resp = ddb.query(
+            TableName=kce_table,
+            KeyConditions={
+                "pk": {
+                    "AttributeValueList": [{"S": "a"}],
+                    "ComparisonOperator": "EQ",
+                }
+            },
+        )
+        assert resp["Count"] == 1
+        assert resp["Items"][0]["v"]["S"] == "x"

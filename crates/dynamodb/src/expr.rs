@@ -1056,6 +1056,94 @@ pub fn eval_condition(
 /// page). Walks the parsed condition; the first comparison involving a
 /// key attribute with a differently-typed value operand names it. A parse
 /// failure returns None (eval_condition reports that its own way).
+/// The `{attr, op, value}` pairs a parsed key condition yields, in document
+/// order — moto's `parse_expression` ingredients that its validate_schema
+/// consumes (key_condition_expression.py:215-316).
+pub fn key_condition_attrs(
+    expr: &str,
+    names: &Names,
+    values: &Values,
+) -> Option<Vec<(String, String, Value)>> {
+    let toks = lex(expr).ok()?;
+    let mut p = Parser {
+        toks,
+        pos: 0,
+        names,
+        values,
+    };
+    let cond = p.parse_or().ok()?;
+    let mut pairs: Vec<(String, String, Value)> = Vec::new();
+
+    fn operand_attr(op: &Operand, names: &Names) -> Option<String> {
+        match op {
+            Operand::Path(segs) => match segs.first() {
+                Some(seg) if seg.starts_with('#') => names.get(seg).cloned(),
+                Some(seg) => Some(seg.clone()),
+                None => None,
+            },
+            _ => None,
+        }
+    }
+    fn operand_value(op: &Operand) -> Option<Value> {
+        match op {
+            Operand::Val(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    fn cmp_str(op: &CmpOp) -> &'static str {
+        match op {
+            CmpOp::Eq => "=",
+            CmpOp::Lt => "<",
+            CmpOp::Le => "<=",
+            CmpOp::Gt => ">",
+            CmpOp::Ge => ">=",
+            CmpOp::Ne => "<>",
+        }
+    }
+    fn walk(c: &Cond, pairs: &mut Vec<(String, String, Value)>, names: &Names) {
+        match c {
+            Cond::And(a, b) | Cond::Or(a, b) => {
+                walk(a, pairs, names);
+                walk(b, pairs, names);
+            }
+            Cond::Cmp(op, l, r) => {
+                let attr = match operand_attr(l, names) {
+                    Some(a) => Some(a),
+                    None => operand_attr(r, names),
+                };
+                if let Some(attr) = attr {
+                    let value = operand_value(l)
+                        .or_else(|| operand_value(r))
+                        .unwrap_or(Value::Null);
+                    pairs.push((attr, cmp_str(op).to_string(), value));
+                }
+            }
+            Cond::Between(m, lo, hi) => {
+                if let Some(attr) = operand_attr(m, names) {
+                    let lower = operand_value(lo).unwrap_or(Value::Null);
+                    let upper = operand_value(hi).unwrap_or(Value::Null);
+                    pairs.push((attr, "BETWEEN".to_string(), json!([lower, upper])));
+                }
+            }
+            Cond::BeginsWith(p, v) => {
+                let attr = match operand_attr(p, names) {
+                    Some(a) => Some(a),
+                    None => operand_attr(v, names),
+                };
+                if let Some(attr) = attr {
+                    let value = operand_value(p)
+                        .or_else(|| operand_value(v))
+                        .unwrap_or(Value::Null);
+                    pairs.push((attr, "begins_with".to_string(), value));
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(&cond, &mut pairs, names);
+    Some(pairs)
+}
+
 pub fn key_condition_type_mismatch(
     expr: &str,
     names: &Names,
