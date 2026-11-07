@@ -1526,6 +1526,7 @@ impl S3Handler {
         bucket: &Bucket,
         key: &str,
         version_id: Option<&str>,
+        method: &str,
     ) -> Result<usize, AwsResponse> {
         let objects = bucket.objects.read();
         let Some(entry) = objects.get(key) else {
@@ -1546,8 +1547,18 @@ impl S3Handler {
         match version_id {
             Some(vid) => {
                 if let Some(m) = entry.markers.iter().find(|m| m.version_id == vid) {
+                    if method == "GET" {
+                        // moto's GET path resolves without
+                        // return_delete_marker (responses.py:2104-2108) — a
+                        // marker versionId is simply NoSuchVersion.
+                        return Err(AwsResponse::error(
+                            404,
+                            "NoSuchVersion",
+                            "The specified version does not exist.",
+                        ));
+                    }
                     return Err(Self::delete_marker_version_error(
-                        "PUT",
+                        method,
                         &m.version_id,
                         m.last_modified,
                     ));
@@ -1566,6 +1577,27 @@ impl S3Handler {
             }
             None => {
                 if !entry.is_live() {
+                    // moto GET-tagging of a marked key: get_object → None →
+                    // MissingKey; PUT-tagging resolves the MARKER via
+                    // return_delete_marker → MethodNotAllowed(method=PUT)
+                    // (responses.py:2496-2501). moto's DELETE-tagging
+                    // dereferences a None key and 500s — the typed 404 is
+                    // the twin's posture (ledgered).
+                    if method == "PUT" {
+                        let marker = entry.markers.first();
+                        return match marker {
+                            Some(m) => Err(Self::delete_marker_version_error(
+                                method,
+                                &m.version_id,
+                                m.last_modified,
+                            )),
+                            None => Err(AwsResponse::error(
+                                404,
+                                "NoSuchKey",
+                                "The specified key does not exist",
+                            )),
+                        };
+                    }
                     return Err(AwsResponse::error(
                         404,
                         "NoSuchKey",
@@ -2733,6 +2765,26 @@ impl S3Handler {
             .get("x-amz-storage-class")
             .cloned()
             .unwrap_or_else(|| source.storage_class.clone());
+        // moto CopyObject validates the requested storage class against the
+        // same whitelist (it inherits the source's class otherwise).
+        const COPY_STORAGE_CLASSES: [&str; 9] = [
+            "STANDARD",
+            "REDUCED_REDUNDANCY",
+            "STANDARD_IA",
+            "ONEZONE_IA",
+            "INTELLIGENT_TIERING",
+            "GLACIER_IR",
+            "EXPRESS_ONEZONE",
+            "GLACIER",
+            "DEEP_ARCHIVE",
+        ];
+        if !COPY_STORAGE_CLASSES.contains(&storage_class.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidStorageClass",
+                "The storage class you specified is not valid",
+            );
+        }
 
         // moto models.py:3066-3083: copying an object onto itself with no
         // changing parameter raises CopyObjectMustChangeSomething — real
@@ -3048,6 +3100,14 @@ impl S3Handler {
                 obj.tags.len().to_string(),
             ));
         }
+        if let Some(restore) = &obj.restore {
+            resp.headers
+                .push(("x-amz-restore".to_string(), restore.clone()));
+        }
+        if obj.storage_class != "STANDARD" {
+            resp.headers
+                .push(("x-amz-storage-class".to_string(), obj.storage_class.clone()));
+        }
         if obj.version_id != NULL_VERSION_ID {
             resp.headers
                 .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
@@ -3216,6 +3276,13 @@ impl S3Handler {
                 "x-amz-tagging-count".to_string(),
                 obj.tags.len().to_string(),
             ));
+        }
+        if let Some(restore) = &obj.restore {
+            headers.push(("x-amz-restore".to_string(), restore.clone()));
+        }
+        if obj.storage_class != "STANDARD" {
+            let _ = &bucket;
+            headers.push(("x-amz-storage-class".to_string(), obj.storage_class.clone()));
         }
         if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
             headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));
@@ -3970,6 +4037,7 @@ impl S3Handler {
             &bucket,
             &key,
             req.query_params.get("versionId").map(|s| s.as_str()),
+            "PUT",
         )
         .err()
         {
@@ -4011,6 +4079,7 @@ impl S3Handler {
             &bucket,
             &key,
             req.query_params.get("versionId").map(|s| s.as_str()),
+            "GET",
         )
         .err()
         {
@@ -4056,6 +4125,7 @@ impl S3Handler {
             &bucket,
             &key,
             req.query_params.get("versionId").map(|s| s.as_str()),
+            "DELETE",
         )
         .err()
         {
@@ -4222,7 +4292,35 @@ impl S3Handler {
             .cloned()
             .unwrap_or_else(|| "binary/octet-stream".to_string());
 
-        let upload = crate::models::MultipartUpload::new(key.clone(), content_type);
+        let mp_storage_class = req
+            .headers
+            .get("x-amz-storage-class")
+            .cloned()
+            .unwrap_or_else(|| "STANDARD".to_string());
+        // moto CreateMultipartUpload validates the storage class against the
+        // same whitelist (utils.py:42-52) and the completed object inherits
+        // it.
+        const MP_STORAGE_CLASSES: [&str; 9] = [
+            "STANDARD",
+            "REDUCED_REDUNDANCY",
+            "STANDARD_IA",
+            "ONEZONE_IA",
+            "INTELLIGENT_TIERING",
+            "GLACIER_IR",
+            "EXPRESS_ONEZONE",
+            "GLACIER",
+            "DEEP_ARCHIVE",
+        ];
+        if !MP_STORAGE_CLASSES.contains(&mp_storage_class.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidStorageClass",
+                "The storage class you specified is not valid",
+            );
+        }
+
+        let mut upload = crate::models::MultipartUpload::new(key.clone(), content_type);
+        upload.storage_class = mp_storage_class;
         let upload_id = upload.upload_id.clone();
         bucket
             .multipart_uploads
@@ -4439,10 +4537,18 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
-        let (content_type, stored) = {
+        let (content_type, mp_storage_class, stored) = {
             let uploads = bucket.multipart_uploads.read();
             match uploads.get(&upload_id) {
-                Some(u) => (u.content_type.clone(), u.parts.read().clone()),
+                Some(u) => (
+                    u.content_type.clone(),
+                    if u.storage_class.is_empty() {
+                        "STANDARD".to_string()
+                    } else {
+                        u.storage_class.clone()
+                    },
+                    u.parts.read().clone(),
+                ),
                 None => {
                     return AwsResponse::error(
                         404,
@@ -4528,7 +4634,7 @@ impl S3Handler {
             content_type,
             Self::user_metadata(req),
             HashMap::new(),
-            "STANDARD".to_string(),
+            mp_storage_class,
         );
         // Override the stored etag with the AWS multipart composite format.
         if let Some(entry) = bucket.objects.write().get_mut(&key) {
@@ -4756,10 +4862,22 @@ impl S3Handler {
                 }
             }
         };
+        let already_restored = {
+            let objects = bucket.objects.read();
+            objects
+                .get(&key)
+                .and_then(|e| e.versions.first())
+                .and_then(|v| v.restore.clone())
+                .is_some_and(|r| r.contains("ongoing-request=\"false\""))
+        };
         if storage_class == "GLACIER" || storage_class == "DEEP_ARCHIVE" {
             // moto models.py restore_object sets the x-amz-restore marker
             // (an OngoingRequest=false completed restore) that unblocks
-            // normal reads.
+            // normal reads; moto answers 200 on a re-restore
+            // (responses.py:3223-3226's had_expiry_date path).
+            if already_restored {
+                return AwsResponse::no_content(200);
+            }
             {
                 let mut objects = bucket.objects.write();
                 if let Some(entry) = objects.get_mut(&key) {

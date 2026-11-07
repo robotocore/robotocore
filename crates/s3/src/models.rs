@@ -130,6 +130,10 @@ pub struct MultipartUpload {
     pub parts: parking_lot::RwLock<std::collections::BTreeMap<u32, MultipartPart>>,
     pub content_type: String,
     pub metadata: HashMap<String, String>,
+    /// Storage class captured at CreateMultipartUpload (moto validates it
+    /// there and the completed object inherits it).
+    #[serde(default)]
+    pub storage_class: String,
 }
 
 impl MultipartUpload {
@@ -140,6 +144,7 @@ impl MultipartUpload {
             initiated: Utc::now().timestamp() as u64,
             parts: parking_lot::RwLock::new(std::collections::BTreeMap::new()),
             content_type,
+            storage_class: "STANDARD".to_string(),
             metadata: HashMap::new(),
         }
     }

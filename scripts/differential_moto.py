@@ -260,6 +260,41 @@ def corpus_s3(engine):
             ),
         ),
         (
+            "get_glacier_unrestored",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="frozen.txt")),
+        ),
+        (
+            "head_glacier_unrestored",
+            err_wrap(lambda: s3.head_object(Bucket=b, Key="frozen.txt")),
+        ),
+        (
+            "restore_then_get",
+            err_wrap(
+                lambda: s3.restore_object(
+                    Bucket=b,
+                    Key="frozen.txt",
+                    RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+                )
+            ),
+        ),
+        (
+            # moto drops the copied class to STANDARD (dest readable);
+            # the twin keeps GLACIER per real-AWS inheritance -> the dest
+            # GET distinguishes the two
+            "get_archived_copy",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="warm.txt")),
+        ),
+        (
+            "delete_tagging_missing_version",
+            err_wrap(
+                lambda: s3.delete_object_tagging(Bucket=b, Key="a/b.txt", VersionId="never-here")
+            ),
+        ),
+        (
+            "get_after_restore",
+            err_wrap(lambda: s3.get_object(Bucket=b, Key="frozen.txt")["ContentLength"]),
+        ),
+        (
             # put of an archived source key inside copy:
             "copy_archived_source",
             err_wrap(
