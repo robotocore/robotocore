@@ -238,6 +238,39 @@ class TestUpdateExpressionSemantics:
             )
         assert "may not be empty" in err_msg(exc)
 
+    def test_delete_on_string_attr_is_moto_wording(self, ddb, table):
+        # moto DeleteExecutor (executors.py:139-143): IncorrectOperandType
+        # with the human type name, wrapped in Invalid UpdateExpression.
+        self.seed(ddb, table)
+        with pytest.raises(ClientError) as exc:
+            ddb.update_item(
+                TableName=table,
+                Key={"pk": {"S": "a"}, "sk": {"N": "1"}},
+                UpdateExpression="DELETE name :v",
+                ExpressionAttributeValues={":v": {"SS": ["a"]}},
+            )
+        assert err_msg(exc) == (
+            "Invalid UpdateExpression: Incorrect operand type for operator or "
+            "function; operator or function: operator: DELETE, operand type: STRING"
+        )
+
+    def test_delete_set_kind_mismatch_rejected(self, ddb, table):
+        self.seed(ddb, table)
+        ddb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "a"}, "sk": {"N": "1"}},
+            UpdateExpression="SET sset = :v",
+            ExpressionAttributeValues={":v": {"SS": ["a"]}},
+        )
+        with pytest.raises(ClientError) as exc:
+            ddb.update_item(
+                TableName=table,
+                Key={"pk": {"S": "a"}, "sk": {"N": "1"}},
+                UpdateExpression="DELETE sset :v",
+                ExpressionAttributeValues={":v": {"NS": ["1"]}},
+            )
+        assert err_msg(exc).endswith("incorrect data type")
+
     def test_set_equality_is_order_and_format_insensitive(self, ddb, table):
         self.seed(ddb, table)
         ddb.update_item(

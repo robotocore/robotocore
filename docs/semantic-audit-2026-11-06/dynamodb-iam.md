@@ -103,9 +103,11 @@ DYNAMODB
    **FIXED in part (2026-11-07, verified in source):** whole-value set equality in
    conditions/filters is now unordered and numeric-equal (set_eq); ADD/DELETE
    element dedup prefers real AWS's numeric semantics for NS (moto's list
-   membership is string-sensitive — the audit's (b)/(d) overstated moto's dedup;
-   a live moto probe returns ['1','1.0','2'] — ledgered as twin-preferred when a
-   differential step covers the op).
+   membership is string-sensitive on storage — a live moto probe stores
+   ['1','1.0','2'] and its DELETE exposes the 1.0 member — while its read path
+   canonicalizes NS through cast_value Decimal sets, so wire reads show
+   ['1','2']; the audit's (b)/(d) overstated moto's dedup. Ledgered
+   twin-preferred when a differential step covers the op).
 
 9. ConsumedCapacity is never returned on single-item/read operations.
    (a) PutItem, GetItem, DeleteItem, UpdateItem, Query, Scan, BatchGetItem.

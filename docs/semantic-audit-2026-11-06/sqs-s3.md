@@ -44,7 +44,7 @@ SQS
    (d) Real AWS: filters by the requested names and rejects unknown ones. Rust diverges.
    (e) High confidence.
 
-   **FIXED (2026-11-06, verified on main during the ledger-freshness pass):** GetQueueAttributes projects the requested subset, answers empty when nothing is requested, and raises InvalidAttributeName with moto's "Unknown Attribute {n}." for unknown names (crates/sqs/src/handler.rs:1554-1586).
+   **FIXED (2026-11-06, verified on main during the ledger-freshness pass; wording corrected 2026-11-07 by adversarial wire review):** GetQueueAttributes projects the requested subset and raises InvalidAttributeName with moto's "Unknown Attribute {n}." for unknown names (crates/sqs/src/handler.rs:1554-1586); with AttributeNames omitted or empty it returns the full default map (SQS's own documented default), unlike moto which drops the member entirely.
 
 5. ReceiveMessage does not filter message attributes by MessageAttributeNames
    (a) ReceiveMessage.

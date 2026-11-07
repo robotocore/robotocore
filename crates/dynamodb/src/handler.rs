@@ -1100,7 +1100,11 @@ fn format_created_at(ts: u64) -> String {
 /// and key-type checks (models/table.py:627-654). Only the table keys are
 /// type-checked.
 #[allow(clippy::too_many_lines)]
-fn put_shape_error(table: &Table, attrs: &Map<String, Value>) -> Option<AwsResponse> {
+fn put_shape_error(
+    table: &Table,
+    attrs: &Map<String, Value>,
+    custom_empty_key: Option<&str>,
+) -> Option<AwsResponse> {
     // moto: `next(iter(val.keys())) in ["S","B"] and next(iter(val.values())) == ""`
     fn type_of(v: &Value) -> Option<&str> {
         v.as_object()
@@ -1147,14 +1151,17 @@ fn put_shape_error(table: &Table, attrs: &Map<String, Value>) -> Option<AwsRespo
     for key in &table.key_schema {
         let name = key.attribute_name.as_str();
         if attrs.get(name).is_some_and(is_empty_str) {
-            return Some(AwsResponse::error(
-                400,
-                "ValidationException",
-                &format!(
-                    "One or more parameter values were invalid: An AttributeValue may not \
-                     contain an empty string. Key: {name}"
+            // moto's custom_error_msg slot: BatchWriteItem and the transact
+            // Update-Key arm pass their own wording (responses.py:748-751,
+            // 1511-1516); puts keep the default.
+            let message = match custom_empty_key {
+                Some(template) => template.replace("{}", name),
+                None => format!(
+                    "One or more parameter values were invalid: An AttributeValue \
+                     may not contain an empty string. Key: {name}"
                 ),
-            ));
+            };
+            return Some(AwsResponse::error(400, "ValidationException", &message));
         }
     }
 
@@ -1546,7 +1553,7 @@ impl DynamoDbHandler {
         // moto's response-layer shape validations run before the key checks
         // (responses.py:680-691), then table.put_item's missing/type checks
         // (models/table.py:627-654) before any condition evaluation.
-        if let Some(e) = put_shape_error(&table, &attrs) {
+        if let Some(e) = put_shape_error(&table, &attrs, None) {
             return e;
         }
         let key = match item_key(&table, &attrs) {
@@ -2504,6 +2511,21 @@ impl DynamoDbHandler {
                     if let Some(item_json) = write.pointer("/PutRequest/Item").cloned() {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
+                        // moto's batch response layer (responses.py:745-751)
+                        // validates the put shape with its own empty-key
+                        // wording; the type/missing checks ride the backend
+                        // put.
+                        if let Some(e) = put_shape_error(
+                            table,
+                            &attrs,
+                            Some(
+                                "One or more parameter values are not valid. The \
+                                 AttributeValue for a key attribute cannot contain an \
+                                 empty string value. Key: {}",
+                            ),
+                        ) {
+                            return e;
+                        }
                         let Some(key) = item_key(table, &attrs) else {
                             return keyed_lookup_error(table, &attrs);
                         };
@@ -2788,6 +2810,12 @@ impl DynamoDbHandler {
                     let item_json = op.get("Item").cloned().unwrap_or(Value::Null);
                     let attrs: Map<String, Value> =
                         item_json.as_object().cloned().unwrap_or_default();
+                    // moto's transact response layer validates the Put shape
+                    // with the standard empty-key texts (responses.py:1499-1513);
+                    // key types ride the backend put.
+                    if let Some(e) = put_shape_error(&table, &attrs, None) {
+                        return e;
+                    }
                     let Some(key) = item_key(&table, &attrs) else {
                         return AwsResponse::error(
                             400,
@@ -2882,24 +2910,51 @@ impl DynamoDbHandler {
                             // cancels the whole transaction (this row's own
                             // payload included) instead of leaving earlier
                             // rows committed. Phase 2 then only overwrites.
+                            // moto's transact Update arm validates the Key
+                            // shape with the batch custom text
+                            // (responses.py:1509-1516) and its
+                            // validate_attributes_used rejects unresolved
+                            // `#name`s in the row's UpdateExpression.
+                            if let Some(e) = put_shape_error(
+                                &table,
+                                &key_attrs,
+                                Some(
+                                    "One or more parameter values are not valid. The \
+                                     AttributeValue for a key attribute cannot contain an \
+                                     empty string value. Key: {}",
+                                ),
+                            ) {
+                                return e;
+                            }
+                            let update = expr_str(op.get("UpdateExpression")).unwrap_or("");
+                            if !update.trim().is_empty() {
+                                if let Some(tok) = unbound_name_token(update, &op_names(op)) {
+                                    return AwsResponse::error(
+                                        400,
+                                        "ValidationException",
+                                        &format!(
+                                            "An expression attribute name used in the document \
+                                             path is not defined; attribute name: {tok}"
+                                        ),
+                                    );
+                                }
+                            }
                             let mut new_attrs: Map<String, Value> = match &pre {
                                 Some(m) => m.clone().into_iter().collect(),
                                 None => key_attrs.clone(),
                             };
-                            if let Some(update) = expr_str(op.get("UpdateExpression")) {
-                                if !update.trim().is_empty() {
-                                    if let Err(e) = expr_engine::apply_update(
-                                        &mut new_attrs,
-                                        update,
-                                        &op_names(op),
-                                        &op_values(op),
-                                    ) {
-                                        return AwsResponse::error(
-                                            400,
-                                            "ValidationException",
-                                            e.as_str(),
-                                        );
-                                    }
+                            if !update.trim().is_empty() {
+                                if let Err(e) = expr_engine::apply_update(
+                                    &mut new_attrs,
+                                    update,
+                                    &op_names(op),
+                                    &op_values(op),
+                                ) {
+                                    return AwsResponse::error(
+                                        400,
+                                        "ValidationException",
+                                        e.as_str(),
+                                    );
                                 }
                             }
                             // moto's transactional Update re-raises the size

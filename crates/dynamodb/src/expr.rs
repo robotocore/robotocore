@@ -1730,7 +1730,27 @@ fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<DeleteOutcome
     };
     let tag = type_of(&cur).unwrap_or("SS");
     if !matches!(tag, "SS" | "NS" | "BS") {
-        return Err("DELETE requires a set attribute".to_string());
+        // moto DeleteExecutor (executors.py:139-143) raises
+        // IncorrectOperandType with the human type name.
+        let human = match tag {
+            "S" => "STRING",
+            "N" => "NUMBER",
+            "B" => "BINARY",
+            "M" => "MAP",
+            "L" => "LIST",
+            "BOOL" => "BOOLEAN",
+            "NULL" => "NULL",
+            other => other,
+        };
+        return Err(format!(
+            "Invalid UpdateExpression: Incorrect operand type for operator or function; \
+             operator or function: operator: DELETE, operand type: {human}"
+        ));
+    }
+    if type_of(val) != Some(tag) {
+        // moto: DELETE of a different set kind raises IncorrectDataType
+        // (executors.py:159-160).
+        return Err(ADD_TYPE_MSG.to_string());
     }
     let mut out = cur
         .as_object()
