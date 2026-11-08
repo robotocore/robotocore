@@ -62,6 +62,19 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda: tag calls on an event-source-mapping ARN resolve the
+  mapping, not a function.** moto's `_get_resource_by_arn`
+  (awslambda/models.py:2447-2462) routes the `event-source-mapping`
+  ARN family to the ESM store by uuid; the twin fed the whole ARN
+  through the function resolver and 404'd "Function not found", which
+  aborted the terraform provider's event_pipeline drift refresh (its
+  apply grafts tags via TagResource/ListTags on the mapping). Mappings
+  now carry per-mapping tags (create stores the wire `Tags` per moto
+  models.py:1348; update carries the map through), and
+  ListTags/TagResource/UntagResource dispatch on the ARN member;
+  unknown uuid = moto's RESTError 404. Pins:
+  TestEventSourceMappingTags (Routing, Unknown404, TagUntagRoundTrip,
+  UpdatePreservesTags, FunctionPathRegression).
 - **Kinesis DescribeStreamSummary renders EncryptionType.** The
   terraform kinesis refresh reads DescribeStreamSummary and the twin's
   summary omitted the member entirely; moto and real AWS always carry
