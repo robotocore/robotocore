@@ -62,6 +62,11 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **SNS DisplayName echo.** GetTopicAttributes echoes DisplayName EMPTY
+  when the topic has no display name (moto/real-AWS parity; live-probed)
+  — the twin's fallback to the topic NAME made the terraform refresh
+  flag a perpetual `-display_name -> null` plan on the monitoring drift
+  stack (now PASSES end-to-end).
 - **Lambda runner discovers the repo venv python + honest import
   errors.** 28 cross-service lambda-invocation tests failed with
   Runtime.ImportModuleError naming the HANDLER module: the runner's
