@@ -1723,8 +1723,11 @@ impl S3Handler {
             }
         }
         // moto: bucket_region = the constraint when present, else the
-        // default region (responses.py:1115-1117).
-        let bucket_region = location_constraint.as_deref().unwrap_or("us-east-1");
+        // default region (responses.py:1115-1117). An EMPTY element
+        // counts as absent (xmltodict yields None → None), so a raw-wire
+        // `<LocationConstraint></>` does not stamp an empty region.
+        let bucket_region =
+            (location_constraint.as_deref().filter(|s| !s.is_empty())).unwrap_or("us-east-1");
         if let Some(bucket) = state.get_bucket(&bucket_name) {
             // moto's owned-recreate semantics (responses.py:1131-1147):
             // idempotent only when BOTH the bucket and the request live in
@@ -4296,21 +4299,28 @@ impl S3Handler {
         // — no match answers a bare 404 with an empty body (verified live:
         // botocore renders Code '404' / 'Not Found'), and ANY matched
         // charset (junk casing, "Disabled", "Wibble") stores verbatim.
-        let status = match body.find("<Status>") {
-            Some(start) => {
-                let rest = &body[start + "<Status>".len()..];
-                match rest.find("</Status>") {
-                    Some(end)
-                        if !rest[..end].is_empty()
-                            && rest[..end].chars().all(|c| c.is_ascii_alphabetic()) =>
-                    {
-                        Some(rest[..end].to_string())
-                    }
-                    _ => None,
+        // re.search SKIPS candidates that do not match the pattern, so a
+        // first empty/garbage `<Status>` body defers to a later valid one
+        // (live-verified; a body with no valid status at all 404s).
+        let mut search_from = 0;
+        let mut status: Option<String> = None;
+        while let Some(start) = body[search_from..].find("<Status>") {
+            let abs = search_from + start;
+            let rest = &body[abs + "<Status>".len()..];
+            match rest.find("</Status>") {
+                Some(end)
+                    if !rest[..end].is_empty()
+                        && rest[..end].chars().all(|c| c.is_ascii_alphabetic()) =>
+                {
+                    status = Some(rest[..end].to_string());
+                    break;
                 }
+                Some(end) => {
+                    search_from = abs + "<Status>".len() + end + "</Status>".len();
+                }
+                None => break,
             }
-            None => None,
-        };
+        }
         let Some(raw) = status else {
             // moto answers 404 with an EMPTY body (responses.py:1010-1011).
             return AwsResponse {
