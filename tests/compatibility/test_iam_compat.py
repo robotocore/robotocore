@@ -6693,3 +6693,84 @@ class TestIamPolicyArnWording:
         iam_c.delete_policy_version(PolicyArn=arn, VersionId="v1")
         versions = iam_c.list_policy_versions(PolicyArn=arn)["Versions"]
         assert sorted(v["VersionId"] for v in versions) == ["v2", "v3"]
+
+
+class TestIamWording23Remainder:
+    """finding 23's remaining wording rows: instance profiles carry moto's
+    short sentence, server certificates the trailing period, login
+    profiles resolve the user FIRST (all live-probed against moto
+    5.2.5)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_instance_profile_short_sentence(self, iam_c):
+        for label, fn in [
+            ("get", lambda: iam_c.get_instance_profile(InstanceProfileName="ghost-rem-ip")),
+            (
+                "delete",
+                lambda: iam_c.delete_instance_profile(InstanceProfileName="ghost-rem-ip"),
+            ),
+        ]:
+            with pytest.raises(ClientError) as exc:
+                fn()
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity", label
+            assert exc.value.response["Error"]["Message"] == (
+                "Instance profile ghost-rem-ip not found"
+            ), label
+
+    def test_server_certificate_trailing_period(self, iam_c):
+        with pytest.raises(ClientError) as exc:
+            iam_c.get_server_certificate(ServerCertificateName="ghost-rem-cert")
+        assert exc.value.response["Error"]["Message"] == (
+            "The Server Certificate with name ghost-rem-cert cannot be found."
+        )
+
+    def test_login_profile_user_first(self, iam_c):
+        for label, fn in [
+            ("get", lambda: iam_c.get_login_profile(UserName="ghost-rem-u")),
+            ("delete", lambda: iam_c.delete_login_profile(UserName="ghost-rem-u")),
+            (
+                "update",
+                lambda: iam_c.update_login_profile(UserName="ghost-rem-u", Password="x123456789!"),
+            ),
+            (
+                "create",
+                lambda: iam_c.create_login_profile(UserName="ghost-rem-u", Password="x123456789!"),
+            ),
+        ]:
+            with pytest.raises(ClientError) as exc:
+                fn()
+            assert exc.value.response["Error"]["Message"] == (
+                "The user with name ghost-rem-u cannot be found."
+            ), label
+
+    def test_login_profile_missing_profile_arm(self, iam_c):
+        name = f"lp-rem-{uuid.uuid4().hex[:8]}"
+        iam_c.create_user(UserName=name)
+        try:
+            for label, fn in [
+                ("get", lambda: iam_c.get_login_profile(UserName=name)),
+                ("delete", lambda: iam_c.delete_login_profile(UserName=name)),
+            ]:
+                with pytest.raises(ClientError) as exc:
+                    fn()
+                assert exc.value.response["Error"]["Message"] == (
+                    f"Login profile for {name} not found"
+                ), label
+            # The duplicate create answers moto's EntityAlreadyExists
+            # "User {n} already has password" (409, review round 2).
+            iam_c.create_login_profile(UserName=name, Password="x123456789!")
+            with pytest.raises(ClientError) as exc:
+                iam_c.create_login_profile(UserName=name, Password="x123456789!")
+            assert exc.value.response["Error"]["Code"] == "EntityAlreadyExists"
+            assert exc.value.response["Error"]["Message"] == f"User {name} already has password"
+        finally:
+            iam_c.delete_user(UserName=name)

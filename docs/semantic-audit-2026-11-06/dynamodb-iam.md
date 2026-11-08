@@ -375,11 +375,24 @@ IAM
     twin already matched every row; pins added, finding 22 is now
     FULLY fixed (modulo the DeleteConflict status note).
 
-    **Still open**: instance profiles ("Instance profile {n} not
-    found"), server-certificate trailing period, login-profile user
-    resolution first, list_entities_for_policy's strictness (opposite
-    direction: moto 200 empty), and the inline-policy get_-family
+    **Still open**: list_entities_for_policy's strictness (opposite
+    direction: moto 200 empty) and the inline-policy get_-family
     (c2) rows.
+
+    **Remaining wording rows FIXED (2026-11-08, verified live)**:
+    instance-profile ghosts carry the short sentence ("Instance profile
+    {n} not found" — get/delete verified; the other arms already were);
+    server-certificate raises append the trailing period ("The Server
+    Certificate with name {n} cannot be found.", models.py:2543 —
+    live-probed); login profiles resolve the USER FIRST on
+    get/delete/update/create (create already did — all four arms
+    live-probed), keeping "Login profile for {n} not found" as
+    moto's only-when-the-user-exists profile arm; and the DUPLICATE
+    create answers moto's exact EntityAlreadyExists "User {n} already
+    has password" (409) where the twin carried its own long sentence
+    (live-probed; review caught the unrecorded oracle). update_server_
+    certificate/tag_server_certificate have no moto oracle (moto does
+    not implement them — 501), recorded as-is.
     (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.
     (b) moto: get/delete_policy + get/create/set_default/list/delete policy version raise "Policy {arn} not found" (vs the twin's "The policy with ARN {arn} cannot be found." — list_policy_tags already carries moto's text); get/tag_instance_profile raise "Instance profile {n} not found" (vs "… cannot be found"); get/update/tag_server_certificate append a trailing period ("The Server Certificate with name {n} cannot be found.", models.py:2543); get/delete_login_profile resolve the user FIRST ("The user with name {n} cannot be found.") before the profile check; list_entities_for_policy returns 200 empty for a nonexistent policy where the twin is stricter (404 NoSuchEntity).
     (c) UpdateGroup semantics: moto errors when the rename target already exists BEFORE resolving the group (EntityAlreadyExists wins over NoSuchEntity, models.py:2627-2647) and silently ignores a NewPath-only update when NewGroupName is absent; the twin resolves the group first and applies the path change.
