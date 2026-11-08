@@ -438,6 +438,15 @@ under *Changelog discipline*.
   unverified and the checksum is not yet recorded on the stored object —
   `ObjectVersion` has no checksum slot; stored as a follow-up in
   `crates/s3/src/aws_chunked.rs`.
+- **S3 accepts valid `x-amz-checksum-crc32` trailers.** The trailer check
+  compared the declared value with the base64 of the CRC32's little-endian
+  bytes, so every correct trailer got 400 `InvalidRequest` ("Value for
+  x-amz-checksum-crc32 header is invalid.") and a byte-reversed one was
+  accepted. It now uses the big-endian bytes, as S3 and the SDKs do
+  (`hello world` is `DUoRhQ==`). Affected the AWS SDK for .NET's default
+  `PutObject` and every `UploadPart` over plain HTTP, and SDKs streaming
+  uploads with a CRC32 trailer. boto3 sends a trailer only over https, so the
+  boto3-driven suites never exercised it.
 - **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
   under the metric's namespace and name but looked up by query `Id`, so every
   `MetricStat` query came back with empty `Values` and `Timestamps`, and metric
