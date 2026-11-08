@@ -238,6 +238,11 @@ pub struct GlobalTable {
 /// formula per getmoto/moto#10176.
 pub const MAX_ITEM_SIZE: u64 = 400 * 1024;
 
+/// Per-page result-size cap for Query/Scan: moto stops a page when the next
+/// raw item would push the accrued size past 1,000,000 bytes
+/// (models/table.py:930-935 query, 1111 scan, `RESULT_SIZE_LIMIT = 1000000`).
+pub const RESULT_SIZE_LIMIT: u64 = 1_000_000;
+
 /// Number of significant digits in a DynamoDB Number literal, per the AWS
 /// item-size rules: digit characters only (the leading minus sign and the
 /// decimal point are never counted), leading and trailing zeroes trimmed,

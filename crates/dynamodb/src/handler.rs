@@ -1678,6 +1678,10 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn put_item(&self, req: &AwsRequest) -> AwsResponse {
+        // Same decorator enum gate as query (moto responses.py:59-62).
+        if let Some(e) = consumed_capacity_enum_error(req) {
+            return e;
+        }
         let (state, table_r) = self.resolve_table(req);
         let table = match table_r {
             Ok(t) => t,
@@ -1740,10 +1744,15 @@ impl DynamoDbHandler {
                 resp["Attributes"] = map_to_value(&old_item.attributes);
             }
         }
+        decorate_consumed_capacity(req, &mut resp, None, 1.0);
         AwsResponse::json(200, resp)
     }
 
     fn get_item(&self, req: &AwsRequest) -> AwsResponse {
+        // Same decorator enum gate as query (moto responses.py:59-62).
+        if let Some(e) = consumed_capacity_enum_error(req) {
+            return e;
+        }
         let (_state, table_r) = self.resolve_table(req);
         let table = match table_r {
             Ok(t) => t,
@@ -1764,7 +1773,11 @@ impl DynamoDbHandler {
         };
 
         let Some(item) = table.items.read().get(&key).cloned() else {
-            return AwsResponse::json(200, json!({}));
+            let mut resp = json!({});
+            // A miss still consumes the read (moto renders capacity on any
+            // successful GetItem, hit or miss).
+            decorate_consumed_capacity(req, &mut resp, None, 0.5);
+            return AwsResponse::json(200, resp);
         };
         let item_json = Value::Object(item.attributes.clone().into_iter().collect());
         // moto responses.py:245-281: GetItem rejects an invalid
@@ -1777,10 +1790,16 @@ impl DynamoDbHandler {
                 return AwsResponse::error(400, "ValidationException", &msg);
             }
         };
-        AwsResponse::json(200, json!({ "Item": projected }))
+        let mut resp = json!({ "Item": projected });
+        decorate_consumed_capacity(req, &mut resp, None, 0.5);
+        AwsResponse::json(200, resp)
     }
 
     fn delete_item(&self, req: &AwsRequest) -> AwsResponse {
+        // Same decorator enum gate as query (moto responses.py:59-62).
+        if let Some(e) = consumed_capacity_enum_error(req) {
+            return e;
+        }
         let (_state, table_r) = self.resolve_table(req);
         let table = match table_r {
             Ok(t) => t,
@@ -1826,6 +1845,7 @@ impl DynamoDbHandler {
                 resp["Attributes"] = map_to_value(&old_item.attributes);
             }
         }
+        decorate_consumed_capacity(req, &mut resp, None, 1.0);
         AwsResponse::json(200, resp)
     }
 
@@ -1961,6 +1981,13 @@ impl DynamoDbHandler {
             }
             _ => {}
         }
+        // moto responses.py:1316 — UpdateItem renders ConsumedCapacity
+        // unconditionally at 0.5, ReturnConsumedCapacity notwithstanding
+        // (quirk kept verbatim, verified live 2026-11-08).
+        resp["ConsumedCapacity"] = json!({
+            "TableName": param_str(&req.params, "TableName").unwrap_or(""),
+            "CapacityUnits": 0.5
+        });
         AwsResponse::json(200, resp)
     }
 
@@ -1969,6 +1996,12 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn query(&self, req: &AwsRequest) -> AwsResponse {
+        // moto responses.py:59-62: the include_consumed_capacity decorator
+        // validates the enum before the handler body — raw-wire requests
+        // bypass botocore's own enum check and must see moto's error.
+        if let Some(e) = consumed_capacity_enum_error(req) {
+            return e;
+        }
         let (_state, table_r) = self.resolve_table(req);
         let table = match table_r {
             Ok(t) => t,
@@ -2051,6 +2084,10 @@ impl DynamoDbHandler {
     }
 
     fn scan(&self, req: &AwsRequest) -> AwsResponse {
+        // Same decorator enum gate as query (moto responses.py:59-62).
+        if let Some(e) = consumed_capacity_enum_error(req) {
+            return e;
+        }
         let (_state, table_r) = self.resolve_table(req);
         let table = match table_r {
             Ok(t) => t,
@@ -2424,6 +2461,7 @@ impl DynamoDbHandler {
         }
         let mut out: Vec<Value> = Vec::new();
         let mut scanned = 0usize;
+        let mut result_size: u64 = 0;
         let mut last_key: Option<Map<String, Value>> = None;
         let mut truncated = false;
         for (item, m) in &candidates {
@@ -2431,6 +2469,18 @@ impl DynamoDbHandler {
                 truncated = true;
                 break;
             }
+            // moto table.py:930-935 (query) / 1111 (scan): the page also
+            // breaks when the NEXT raw item would pass RESULT_SIZE_LIMIT.
+            // Accrual counts the raw pre-filter item (result.size()); the
+            // oversize candidate is neither counted (ScannedCount stops
+            // before it) nor appended, and LastEvaluatedKey stays on the
+            // last included result.
+            let size = crate::models::item_size(m);
+            if result_size + size > crate::models::RESULT_SIZE_LIMIT {
+                truncated = true;
+                break;
+            }
+            result_size += size;
             scanned += 1;
             last_key = Some(m.clone());
             if !filter.trim().is_empty() {
@@ -2480,11 +2530,65 @@ impl DynamoDbHandler {
                 body["LastEvaluatedKey"] = map_to_value(&kh_to_attrmap(&limited));
             }
         }
+        // moto responses.py:68-87 — the include_consumed_capacity decorator
+        // wraps query/scan at CapacityUnits 1.0 (an IndexName rides under a
+        // LocalSecondaryIndexes label even for a GSI, quirk kept verbatim).
+        decorate_consumed_capacity(req, &mut body, param_str(&req.params, "IndexName"), 1.0);
         AwsResponse::json(200, body)
     }
 }
 
 // --- free helpers used above ---
+
+/// moto responses.py:59-62: the include_consumed_capacity decorator
+/// validates `ReturnConsumedCapacity` before the handler body; on the raw
+/// wire an out-of-enum value surfaces moto's exact ValidationException.
+fn consumed_capacity_enum_error(req: &AwsRequest) -> Option<AwsResponse> {
+    let v = param_str(&req.params, "ReturnConsumedCapacity")?;
+    if v == "NONE" || v == "TOTAL" || v == "INDEXES" {
+        return None;
+    }
+    Some(AwsResponse::error(
+        400,
+        "ValidationException",
+        &format!(
+            "1 validation error detected: Value '{v}' at 'returnConsumedCapacity' failed \
+             to satisfy constraint: Member must satisfy enum value set: [INDEXES, TOTAL, \
+             NONE]"
+        ),
+    ))
+}
+
+/// moto responses.py:68-87 include_consumed_capacity, decorated over
+/// PutItem/DeleteItem (1.0) and GetItem (0.5): TOTAL renders
+/// {TableName, CapacityUnits}; INDEXES adds a Table member plus — moto's
+/// quirk, kept verbatim — any IndexName (GSI or LSI alike) under a
+/// LocalSecondaryIndexes label; NONE renders nothing.
+fn decorate_consumed_capacity(
+    req: &AwsRequest,
+    body: &mut Value,
+    index_name: Option<&str>,
+    val: f64,
+) {
+    let rcc = param_str(&req.params, "ReturnConsumedCapacity").unwrap_or("NONE");
+    let table_name = param_str(&req.params, "TableName").unwrap_or("");
+    if rcc == "TOTAL" {
+        body["ConsumedCapacity"] = json!({
+            "TableName": table_name,
+            "CapacityUnits": val,
+        });
+    } else if rcc == "INDEXES" {
+        body["ConsumedCapacity"] = json!({
+            "TableName": table_name,
+            "CapacityUnits": val,
+            "Table": {"CapacityUnits": val},
+        });
+        if let Some(idx) = index_name.filter(|i| !i.is_empty()) {
+            body["ConsumedCapacity"]["LocalSecondaryIndexes"] =
+                json!({ idx: {"CapacityUnits": val} });
+        }
+    }
+}
 
 #[allow(clippy::type_complexity)]
 fn value_to_map(v: &Value) -> Map<String, Value> {
