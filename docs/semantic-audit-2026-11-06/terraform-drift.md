@@ -147,9 +147,11 @@ Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
 2. **The SecurityGroupRules view canonicalizes the all protocol to
    FromPort/ToPort -1** even for the port-less seeded default
    (live-probed) — the twin rendered the keys ABSENT. describe_sgr now
-   emits -1/-1 for protocol -1, and the describe gained moto's
-   ip-protocol filter arm. Pin: TestSecurityGroupRowGroupingAndSgrView
-   second test.
+   emits -1/-1 for protocol -1. Known diff recorded: moto's sgr view
+   has NO ip-protocol filter (group-id/security-group-rule-id/tags
+   only; an unknown filter KeyErrors); the wave-2 draft briefly added
+   one and the review caught it — dropped. Pin:
+   TestSecurityGroupRowGroupingAndSgrView second test.
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.

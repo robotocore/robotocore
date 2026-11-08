@@ -1050,16 +1050,6 @@ fn sg_rule_filters_fail(
             .map(|i| sg_rule_id(&sg.id, false, i))
             .chain((0..sg.egress.len()).map(|i| sg_rule_id(&sg.id, true, i)))
             .collect(),
-        // moto supports DescribeSecurityGroupRules's ip-protocol filter
-        // (SecurityGroupRules filtering by the rule protocol).
-        "ip-protocol" => sg
-            .permissions
-            .iter()
-            .chain(sg.egress.iter())
-            .map(|p| p.protocol.clone())
-            .collect::<std::collections::BTreeSet<String>>()
-            .into_iter()
-            .collect(),
         other => tag_candidates(&sg.tags, other),
     })
 }

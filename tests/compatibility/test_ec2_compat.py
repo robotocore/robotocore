@@ -12041,7 +12041,9 @@ class TestSecurityGroupRowGroupingAndSgrView:
     (two -1 cidr authorizations render as a single
     IpPermissionsEgress entry with both CidrIps) and canonicalizes the
     all protocol to FromPort/ToPort -1 in the SecurityGroupRules view
-    even for the port-less seeded default (both live-probed)."""
+    even for the port-less seeded default (both live-probed). no
+    ip-protocol filter exists on moto's sgr view — do not add one."""
+
 
     @pytest.fixture
     def ec2(self):
@@ -12094,11 +12096,10 @@ class TestSecurityGroupRowGroupingAndSgrView:
         name = f"seeded-sgr-{uuid.uuid4().hex[:8]}"
         gid = ec2.create_security_group(GroupName=name, Description="sgr view")["GroupId"]
         try:
+            # moto's SecurityGroupRules filters carry only group-id /
+            # security-group-rule-id (and tags) — no ip-protocol arm.
             rules = ec2.describe_security_group_rules(
-                Filters=[
-                    {"Name": "group-id", "Values": [gid]},
-                    {"Name": "ip-protocol", "Values": ["-1"]},
-                ]
+                Filters=[{"Name": "group-id", "Values": [gid]}]
             )["SecurityGroupRules"]
             rows = [r for r in rules if r["IsEgress"]]
             assert rows, "default rule present in the sgr view"

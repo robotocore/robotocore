@@ -67,8 +67,7 @@ under *Changelog discipline*.
   the SG describe folds same-(protocol, ports) permissions into one row
   with concatenated ranges like moto, and DescribeSecurityGroupRules
   canonicalizes the all protocol to FromPort/ToPort -1 (the port-less
-  seeded default row rendered the keys absent) plus the
-  ip-protocol filter arm.
+  seeded default row rendered the keys absent).
 - **EC2 terraform-provider wire chain (drift wave 2).** Four root causes
   from the TF_LOG wire session
   (`docs/semantic-audit-2026-11-06/terraform-drift.md`), each
