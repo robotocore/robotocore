@@ -1467,3 +1467,34 @@ class TestKinesisSubscribeToShardGapOp:
             "ResourceNotFoundException",
             "LimitExceededException",
         )
+
+
+class TestDescribeStreamSummaryShape:
+    """The terraform kinesis refresh reads DescribeStreamSummary —
+    EncryptionType must render (moto/real AWS always carry it, default
+    NONE); raw describe_stream and the summary share the model value."""
+
+    @pytest.fixture
+    def kinesis(self):
+        return make_client("kinesis")
+
+    def test_summary_and_describe_share_encryption_type(self, kinesis):
+        import uuid
+
+        name = f"encsum-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        # wait for ACTIVE
+        for _ in range(20):
+            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            if desc["StreamStatus"] == "ACTIVE":
+                break
+            import time
+
+            time.sleep(0.5)
+        try:
+            summary = kinesis.describe_stream_summary(StreamName=name)["StreamDescriptionSummary"]
+            full = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            assert summary["EncryptionType"] == "NONE"
+            assert full["EncryptionType"] == "NONE"
+        finally:
+            kinesis.delete_stream(StreamName=name)
