@@ -5920,6 +5920,46 @@ class TestIamWordingReview:
         )
 
 
+class TestIamGroupWordingReview:
+    """#443 review gaps: GetGroup's ghost arm, AddUserToGroup ordering and
+    DeleteGroupPolicy's short policy sentence (moto models.py:2581,
+    2818-2822, 1325-1327)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_get_group_ghost_message(self, iam_c):
+        with pytest.raises(ClientError) as exc:
+            iam_c.get_group(GroupName="ghost-wording-g")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+        assert exc.value.response["Error"]["Message"] == "Group ghost-wording-g not found"
+
+    def test_add_user_user_first(self, iam_c):
+        # a bogus USER beats a bogus GROUP (moto resolves the user first)
+        with pytest.raises(ClientError) as exc:
+            iam_c.add_user_to_group(
+                GroupName="ghost-wording-g", UserName="ghost-wording-u")
+        assert exc.value.response["Error"]["Message"] == (
+            "The user with name ghost-wording-u cannot be found.")
+
+    def test_delete_group_policy_short_sentence(self, iam_c):
+        name = f"grp-wording-{uuid.uuid4().hex[:8]}"
+        iam_c.create_group(GroupName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                iam_c.delete_group_policy(GroupName=name, PolicyName="bogus-pol-wording")
+            assert exc.value.response["Error"]["Message"] == "Policy bogus-pol-wording not found"
+        finally:
+            iam_c.delete_group(GroupName=name)
+
+
 class TestIamListEntityResolution:
     """#443 tranche: finding 21 — every List* on a tagged/policied entity
     resolves the entity first (moto models.py:2840-2842, 2191, 2836...)."""

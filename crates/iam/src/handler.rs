@@ -1753,7 +1753,10 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The group policy with name {policy_name} cannot be found."),
+                // moto's Group.delete_policy raise (models.py:1325-1327):
+                // the short "Policy {name} not found", not the long form
+                // the twin's get_-family carries (ledgered finding 23).
+                &format!("Policy {policy_name} not found"),
             );
         }
         group.inline_policies.write().retain(|p| *p != policy_name);
