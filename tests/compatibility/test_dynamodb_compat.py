@@ -3673,3 +3673,84 @@ class TestConsumedCapacity:
         cc = resp["ConsumedCapacity"]
         assert cc["Table"] == {"CapacityUnits": 1.0}
         assert cc["LocalSecondaryIndexes"] == {"gsi-keys-only": {"CapacityUnits": 1.0}}
+
+
+# a note: the twin paginates list_tables in real-AWS ascending-name order
+# (differential ledger twin-preferred vs moto's insertion walk); moto's
+# row shows LEK on the page-LEN table and None on the tail page, both
+# orders faithful. The pin walks the full pagination contract without
+# assuming either engine's order.
+
+
+class TestListTablesPaginationWalk:
+    """Full pagination contract: Limit pages, ExclusiveStartTableName
+    resume, LEK identical to the page's last row, tail page LEK-free."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        from tests.compatibility.conftest import make_client
+
+        return make_client("dynamodb")
+
+    def test_pagination_walk_contract(self, dynamodb):
+        import uuid
+
+        prefix = f"ltpgwalk-{uuid.uuid4().hex[:8]}"
+        names = []
+        for i in range(7):
+            n = f"{prefix}-{i:02d}"
+            names.append(n)
+            dynamodb.create_table(
+                TableName=n,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+        try:
+            page1 = dynamodb.list_tables(Limit=3)
+            assert len(page1["TableNames"]) == 3
+            assert page1["LastEvaluatedTableName"] == page1["TableNames"][-1]
+            table_names = list(page1["TableNames"])
+            lek = page1.get("LastEvaluatedTableName")
+            guard = 0
+            while lek is not None and guard < 10:
+                page = dynamodb.list_tables(Limit=3, ExclusiveStartTableName=lek)
+                table_names.extend(page["TableNames"])
+                if "LastEvaluatedTableName" in page:
+                    assert page["LastEvaluatedTableName"] == page["TableNames"][-1]
+                lek = page.get("LastEvaluatedTableName")
+                guard += 1
+            assert lek is None, "tail page carries no LEK"
+            # The twin carries accumulated session state (earlier corpus
+            # tables); scope to this pin's prefix.
+            ours = [n for n in table_names if n.startswith(prefix)]
+            assert len(set(ours)) == len(ours) == 7
+            assert ours == sorted(ours)
+            assert sorted(names) == ours
+        finally:
+            for n in names:
+                dynamodb.delete_table(TableName=n)
+
+    def test_exclusive_start_starts_after_the_key(self, dynamodb):
+        import uuid
+
+        prefix = f"ltpgstart-{uuid.uuid4().hex[:8]}"
+        names = []
+        for i in range(5):
+            n = f"{prefix}-{i:02d}"
+            names.append(n)
+            dynamodb.create_table(
+                TableName=n,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+        try:
+            start = f"{prefix}-01"
+            page = dynamodb.list_tables(ExclusiveStartTableName=start)
+            got = [n for n in page["TableNames"] if n.startswith(prefix)]
+            # resume strictly after the start key
+            assert got == [f"{prefix}-{i:02d}" for i in range(2, 5)], got
+        finally:
+            for n in names:
+                dynamodb.delete_table(TableName=n)
