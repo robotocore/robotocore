@@ -1,9 +1,9 @@
 {
   "service": "ec2",
-  "generated_at": "2026-11-08T18:52:51.006818+00:00",
+  "generated_at": "2026-11-08T19:09:36.689583+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/ec2.rs": "absent",
-    "rotocore/src/services/ec2/": "8d7f6f53a09fa425fe1d4613c34a171808dca7f5202526fd079d2db125cf6021",
+    "rotocore/src/services/ec2/": "882fbc595d0ef734af4a7d305f41182b6c357fad865f04fe039b95da8bbe9c7a",
     "crates/ec2/src/": "absent"
   },
   "endpoint": "http://localhost:4566",
@@ -48,7 +48,7 @@
     {
       "operation": "AcceptVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-68d0012e' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-48dfad18' does not exist)"
     },
     {
       "operation": "AcceptVpcPeeringConnection",
