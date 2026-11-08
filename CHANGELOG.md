@@ -62,6 +62,13 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **EC2 security-group row grouping + SecurityGroupRules view.** Two
+  wire divergences from the wave-2 pinning pass (both live-probed):
+  the SG describe folds same-(protocol, ports) permissions into one row
+  with concatenated ranges like moto, and DescribeSecurityGroupRules
+  canonicalizes the all protocol to FromPort/ToPort -1 (the port-less
+  seeded default row rendered the keys absent) plus the
+  ip-protocol filter arm.
 - **EC2 terraform-provider wire chain (drift wave 2).** Four root causes
   from the TF_LOG wire session
   (`docs/semantic-audit-2026-11-06/terraform-drift.md`), each

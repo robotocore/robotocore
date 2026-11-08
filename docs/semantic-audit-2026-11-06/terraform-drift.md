@@ -133,6 +133,23 @@ resources (lambda, kinesis, etc. — per-stack leads queued).
   collided with the seeded -1/0.0.0.0/0 rule and answered
   InvalidPermission.Duplicate on both engines; the shipped pin uses a
   distinct cidr).
+
+## SG-row grouping + SecurityGroupRules view (2026-11-08, probed)
+
+Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
+
+1. **moto folds same-(protocol, ports) permissions into ONE wire row** —
+   two -1 cidr authorizations render as a single IpPermissionsEgress
+   entry carrying ALL the CidrIps; the twin kept N rows. The SG describe
+   render now folds rows in display_rows (the stored per-rule rows stay
+   split so the sgr ids stay stable). Pin:
+   TestSecurityGroupRowGroupingAndSgrView.
+2. **The SecurityGroupRules view canonicalizes the all protocol to
+   FromPort/ToPort -1** even for the port-less seeded default
+   (live-probed) — the twin rendered the keys ABSENT. describe_sgr now
+   emits -1/-1 for protocol -1, and the describe gained moto's
+   ip-protocol filter arm. Pin: TestSecurityGroupRowGroupingAndSgrView
+   second test.
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.

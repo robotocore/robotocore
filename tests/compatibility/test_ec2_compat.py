@@ -12034,3 +12034,74 @@ class TestModifyKeepsAllProtocolPortsDossier:
             assert "FromPort" not in created[0] and "ToPort" not in created[0]
         finally:
             ec2.delete_security_group(GroupId=gid)
+
+
+class TestSecurityGroupRowGroupingAndSgrView:
+    """moto folds same-(protocol, ports) permissions into ONE wire row
+    (two -1 cidr authorizations render as a single
+    IpPermissionsEgress entry with both CidrIps) and canonicalizes the
+    all protocol to FromPort/ToPort -1 in the SecurityGroupRules view
+    even for the port-less seeded default (both live-probed)."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_same_ports_rows_group(self, ec2):
+        import uuid
+
+        name = f"group-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="grouping")["GroupId"]
+        try:
+            ec2.authorize_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": -1,
+                        "ToPort": -1,
+                        "IpRanges": [{"CidrIp": "10.0.0.0/8"}],
+                    }
+                ],
+            )
+            ec2.authorize_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": -1,
+                        "ToPort": -1,
+                        "IpRanges": [{"CidrIp": "172.16.0.0/12"}],
+                    }
+                ],
+            )
+            sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
+            m1 = [p for p in sgd["IpPermissionsEgress"] if p["IpProtocol"] == "-1"]
+            assert len(m1) == 1, f"moto folds the rows: {sgd['IpPermissionsEgress']}"
+            cidrs = {r["CidrIp"] for r in m1[0]["IpRanges"]}
+            assert cidrs == {"0.0.0.0/0", "10.0.0.0/8", "172.16.0.0/12"}
+            rules = ec2.describe_security_group_rules(
+                Filters=[{"Name": "group-id", "Values": [gid]}]
+            )["SecurityGroupRules"]
+            for row in [r for r in rules if r["IsEgress"]]:
+                assert row["FromPort"] == -1 and row["ToPort"] == -1
+        finally:
+            ec2.delete_security_group(GroupId=gid)
+
+    def test_seeded_default_sgr_row_shows_all_protocol_ports(self, ec2):
+        import uuid
+
+        name = f"seeded-sgr-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="sgr view")["GroupId"]
+        try:
+            rules = ec2.describe_security_group_rules(
+                Filters=[
+                    {"Name": "group-id", "Values": [gid]},
+                    {"Name": "ip-protocol", "Values": ["-1"]},
+                ]
+            )["SecurityGroupRules"]
+            rows = [r for r in rules if r["IsEgress"]]
+            assert rows, "default rule present in the sgr view"
+            assert rows[0]["FromPort"] == -1 and rows[0]["ToPort"] == -1
+        finally:
+            ec2.delete_security_group(GroupId=gid)

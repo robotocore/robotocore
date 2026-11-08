@@ -178,6 +178,29 @@ fn require_sg<'a>(
     }
 }
 
+/// moto groups same-(protocol, ports) permissions into ONE wire row with
+/// concatenated ranges (probed live: two -1 cidr authorizations render as
+/// a single IpPermissionsEgress entry carrying both CidrIps). The stored
+/// rows stay split (per-rule ids stable); the SG describe render folds
+/// them.
+fn display_rows(perms: &[IpPermission]) -> Vec<IpPermission> {
+    let mut out: Vec<IpPermission> = Vec::new();
+    for p in perms {
+        match out.iter_mut().find(|q| {
+            q.protocol == p.protocol && q.from_port == p.from_port && q.to_port == p.to_port
+        }) {
+            Some(q) => {
+                q.ip_ranges.extend(p.ip_ranges.clone());
+                q.ipv6_ranges.extend(p.ipv6_ranges.clone());
+                q.prefix_list_ids.extend(p.prefix_list_ids.clone());
+                q.user_id_group_pairs.extend(p.user_id_group_pairs.clone());
+            }
+            None => out.push(p.clone()),
+        }
+    }
+    out
+}
+
 fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
     let mut out = String::from("<item><ipProtocol>");
     out.push_str(&xml_escape(&perm.protocol));
@@ -243,11 +266,11 @@ fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
 
 fn sg_item(account: u64, sg: &SecurityGroup) -> String {
     let mut perms = String::new();
-    for p in &sg.permissions {
+    for p in &display_rows(&sg.permissions) {
         perms.push_str(&ip_permission_item(&account.to_string(), p));
     }
     let mut egress = String::new();
-    for p in &sg.egress {
+    for p in &display_rows(&sg.egress) {
         egress.push_str(&ip_permission_item(&account.to_string(), p));
     }
     let arn = format!(
@@ -957,7 +980,16 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(&perm.protocol),
                             xml_escape(cidr)
                         );
-                        if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
+                        // moto canonicalizes the "all" protocol to
+                        // -1/-1 in the SecurityGroupRules view even when
+                        // the record is port-less (the seeded default
+                        // row renders -1/-1, live-probed).
+                        let ports = if perm.protocol == "-1" {
+                            Some((-1i64, -1i64))
+                        } else {
+                            perm.from_port.zip(perm.to_port)
+                        };
+                        if let Some((f, t)) = ports {
                             let _ =
                                 write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         }
@@ -978,7 +1010,16 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(g),
                             xml_escape(owner)
                         );
-                        if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
+                        // moto canonicalizes the "all" protocol to
+                        // -1/-1 in the SecurityGroupRules view even when
+                        // the record is port-less (the seeded default
+                        // row renders -1/-1, live-probed).
+                        let ports = if perm.protocol == "-1" {
+                            Some((-1i64, -1i64))
+                        } else {
+                            perm.from_port.zip(perm.to_port)
+                        };
+                        if let Some((f, t)) = ports {
                             let _ =
                                 write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         }
@@ -1008,6 +1049,16 @@ fn sg_rule_filters_fail(
         "security-group-rule-id" => (0..sg.permissions.len())
             .map(|i| sg_rule_id(&sg.id, false, i))
             .chain((0..sg.egress.len()).map(|i| sg_rule_id(&sg.id, true, i)))
+            .collect(),
+        // moto supports DescribeSecurityGroupRules's ip-protocol filter
+        // (SecurityGroupRules filtering by the rule protocol).
+        "ip-protocol" => sg
+            .permissions
+            .iter()
+            .chain(sg.egress.iter())
+            .map(|p| p.protocol.clone())
+            .collect::<std::collections::BTreeSet<String>>()
+            .into_iter()
             .collect(),
         other => tag_candidates(&sg.tags, other),
     })
