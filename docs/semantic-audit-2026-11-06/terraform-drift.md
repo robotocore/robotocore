@@ -43,21 +43,25 @@ The AWS provider's refresh logic is the oracle — it names the exact field.
 
 Run: `make drift` (after the twin is up).
 
-## Rerun (2026-11-08, tranche 16) — 7 failed / 2 passed, triage
+## Rerun (2026-11-08, tranche 16) — 7 stacks fail / 1 of 8 passes, triage
 
 `make drift` after the #443-#445 wave: vpc_network + cicd_pipeline +
 monitoring + auth_stack + data_lake + event_pipeline + rest_api fail;
-the 2 passing stacks carry no SG/alarm/cognito surface. The corpus
-confirms the SAME open classes as above, with one new lead:
+`static_website` is the one passing STACK (the pytest row totals 7
+failed / 2 passed because the corpus is 8 stacks + the
+`test_stacks_exist` meta-guard). The corpus confirms the SAME open
+classes as above, updated by the review's wire evidence:
 
-- **The vpc_network failure is a phase-order gap, not a rule-match bug**:
-  the provider's refresh requires the DEFAULT all-egress rule to exist
-  so its inline-egress plan can revoke it; the twin's fresh SGs never
-  materialize that default rule, so `RevokeSecurityGroupEgress` answers
-  `InvalidPermission.NotFound` and terraform aborts. Next oracle: a
-  TF_LOG Go-SDK wire session against a minimal SG stack (create with no
-  inline blocks) diffed against boto3 on the same sg-id — timeboxed 2h
-  per the design.
+- **The vpc_network failure is rule-SHAPE drift, not a missing rule**:
+  a fresh twin SG DOES materialize the default all-egress rule, but it
+  carries an empty `IpRanges: []` where moto and real AWS record
+  `[{CidrIp: 0.0.0.0/0}]` — so the provider's revoke of the
+  `(IpProtocol=-1, no-ip-range)` rule answers `InvalidPermission.NotFound`
+  (400 on the twin, 200 OK on moto, live-probed on identical
+  sg-create). Fix candidate: seed the twin's default egress rule with
+  real AWS's shape; next oracle for confirmation: a TF_LOG Go-SDK wire
+  session against a minimal SG stack diffed against boto3 on the same
+  sg-id — timeboxed 2h per the design.
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.

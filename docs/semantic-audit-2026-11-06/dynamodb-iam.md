@@ -365,8 +365,9 @@ IAM
     all eight policy-arn ghost raises (get/delete policy,
     get/list/delete policy version, create_policy_version,
     set_default_policy_version, list_entities_for_policy) now raise
-    moto's short "Policy {arn} not found" (live-probed on all seven
-    client-visible arms; the wording pins pin it). Also recorded live:
+    moto's short "Policy {arn} not found" (live-probed arm-by-arm; the
+    wording pins pin it — note list_entities_for_policy still diverges
+    the other way, see "Still open" below). Also recorded live:
     DeletePolicyVersion has NO version-id regex gate in moto
     (models.py:2415-2429 strikes finding 22's "absent validation" — a
     ghost version answers the generic "Policy not found", JunkDb ids

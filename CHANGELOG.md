@@ -71,10 +71,12 @@ under *Changelog discipline*.
   with the DeleteConflict 409 for the default version — every row
   live-probed.
 - **Terraform drift rerun.** Tranche 16
-  (`docs/semantic-audit-2026-11-06/terraform-drift.md`): the vpc failure
-  traced to a phase-order gap — the twin never materializes the default
-  all-egress rule the provider's revoke requires; the Go-SDK-side
-  TF_LOG wire session remains the cheapest oracle for it and the
+  (`docs/semantic-audit-2026-11-06/terraform-drift.md`): 7 of 8 stacks
+  still fail; the vpc failure traced to rule-SHAPE drift — the twin's
+  default all-egress rule carries an empty IpRanges where real AWS
+  records `[{CidrIp: 0.0.0.0/0}]`, so the provider-style revoke answers
+  InvalidPermission.NotFound; the Go-SDK-side TF_LOG wire session
+  remains the confirmation oracle for it and the
   Kinesis/Cognito UnrecognizedClientException row.
 - **S3 bucket-level PUT validation.** Finding 15 of the moto audit
   (`docs/semantic-audit-2026-11-06/sqs-s3.md`): CreateBucket runs moto's
