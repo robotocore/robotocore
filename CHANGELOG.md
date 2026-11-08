@@ -62,6 +62,21 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM delete-semantics and boundary contracts.** The moto audit's
+  eleventh tranche (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`,
+  findings 17–20): `DeleteRolePolicy` resolves the role and the policy
+  (`NoSuchEntity` on both absences — the blind arm of the otherwise
+  checked user/group siblings); `DeleteRole` with the role still in any
+  instance profile raises moto's `DeleteConflict` conflict before the
+  policy checks and no longer strips the role from profiles the caller
+  never touched; `DeleteInstanceProfile` with attached roles raises
+  `DeleteConflict` instead of orphaning them; permissions-boundary
+  operations (`Put`/`DeleteUser`/`RolePermissionsBoundary`) resolve the
+  entity (`NoSuchEntity`) and validate the boundary arn shape (moto's
+  "Value (...) ... is invalid"), and `CreateRole` now validates and
+  stores the `PermissionsBoundary` parameter it used to drop. 5 new
+  compat tests.
+
 - **SQS validation family: CreateQueue attribute contracts, redrive-policy
   validation, delete-message grace.** The moto audit's tenth tranche
   (`docs/semantic-audit-2026-11-06/sqs-s3.md`, findings 2, 3 and 6):

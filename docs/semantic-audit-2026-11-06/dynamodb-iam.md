@@ -209,6 +209,11 @@ IAM
     (e) A.
 
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
+   **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role
+   ("The role with name {n} cannot be found.") and the policy ("The role
+   policy with name {p} cannot be found.") — NoSuchEntity 404 on both absences,
+   aligning with the user/group siblings.
+
     (a) DeleteRolePolicy.
     (b) moto resolves the role (`Role {name} not found`) and then `Role.delete_policy` raises NotFound "The role policy with name {p} cannot be found." (models.py:2235-2238 → 914-922), wire code NoSuchEntity.
     (c) robotocore answers 200 unconditionally — a missing role and a missing policy name both no-op (handler.rs:1230-1239). The DeleteUserPolicy/DeleteGroupPolicy siblings do check; this is the one blind arm.
@@ -216,6 +221,12 @@ IAM
     (e) A.
 
 18. DeleteRole succeeds while the role is still in an instance profile.
+   **FIXED (2026-11-08, verified live)**: the instance-profile membership
+   conflict now precedes the policy checks (moto models.py:2199-2206's exact
+   shape — "Cannot delete entity, must remove roles from instance profile
+   first." DeleteConflict 409) and the role is no longer stripped from profiles
+   the caller never touched.
+
     (a) DeleteRole.
     (b) moto raises DeleteConflictException "Cannot delete entity, must remove roles from instance profile first." when any instance profile references the role (models.py:2199-2206), before the policy checks.
     (c) robotocore performs no instance-profile check and instead silently strips the role from every profile, then deletes (handler.rs:965-994).
@@ -223,6 +234,10 @@ IAM
     (e) A.
 
 19. DeleteInstanceProfile succeeds while roles are attached.
+   **FIXED (2026-11-08, verified live)**: DeleteInstanceProfile with roles
+   attached raises moto's DeleteConflictException before its own removal
+   (models.py:2456-2464).
+
     (a) DeleteInstanceProfile.
     (b) moto raises DeleteConflictException "Cannot delete entity, must remove roles from instance profile first." when `instance_profile.roles` is non-empty (models.py:2456-2464).
     (c) robotocore's IamState::delete_instance_profile removes the profile and all side maps unconditionally (models.rs:577-584; handler.rs:3394-3405) — an attached role is silently orphaned.
@@ -230,6 +245,12 @@ IAM
     (e) A.
 
 20. Permissions-boundary operations are silent no-ops on unknown entities and skip ARN validation.
+   **FIXED (2026-11-08, verified live)**: put/delete boundary operations resolve
+   the user/role (NoSuchEntity) and validate the boundary arn shape (moto's
+   "Value ({arn}) for parameter PermissionsBoundary is invalid." —
+   models.py:1956-1971); create_role validates and stores the parameter it
+   used to drop (finding 20's create half).
+
     (a) PutUserPermissionsBoundary, PutRolePermissionsBoundary, DeleteUser/RolePermissionsBoundary.
     (b) moto validates the boundary ARN shape up front (RESTError InvalidParameterValue "Value ({arn}) for parameter PermissionsBoundary is invalid.", models.py:1956-1963, and the same check in create_role:2159-2162) and resolves the user/role (NoSuchEntity otherwise, 1956-1971).
     (c) robotocore's put_boundary/delete_boundary answer 200 without checking that the user/role exists and without any ARN validation (handler.rs:4547-4578); create_role likewise accepts any PermissionsBoundary string... (create_role handler.rs:913-950 has no boundary handling at all — the CreateRole PermissionsBoundary parameter is dropped, so a boundary requested at role creation is lost).
