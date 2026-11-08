@@ -178,6 +178,29 @@ fn require_sg<'a>(
     }
 }
 
+/// moto groups same-(protocol, ports) permissions into ONE wire row with
+/// concatenated ranges (probed live: two -1 cidr authorizations render as
+/// a single IpPermissionsEgress entry carrying both CidrIps). The stored
+/// rows stay split (per-rule ids stable); the SG describe render folds
+/// them.
+fn display_rows(perms: &[IpPermission]) -> Vec<IpPermission> {
+    let mut out: Vec<IpPermission> = Vec::new();
+    for p in perms {
+        match out.iter_mut().find(|q| {
+            q.protocol == p.protocol && q.from_port == p.from_port && q.to_port == p.to_port
+        }) {
+            Some(q) => {
+                q.ip_ranges.extend(p.ip_ranges.clone());
+                q.ipv6_ranges.extend(p.ipv6_ranges.clone());
+                q.prefix_list_ids.extend(p.prefix_list_ids.clone());
+                q.user_id_group_pairs.extend(p.user_id_group_pairs.clone());
+            }
+            None => out.push(p.clone()),
+        }
+    }
+    out
+}
+
 fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
     let mut out = String::from("<item><ipProtocol>");
     out.push_str(&xml_escape(&perm.protocol));
@@ -243,11 +266,11 @@ fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
 
 fn sg_item(account: u64, sg: &SecurityGroup) -> String {
     let mut perms = String::new();
-    for p in &sg.permissions {
+    for p in &display_rows(&sg.permissions) {
         perms.push_str(&ip_permission_item(&account.to_string(), p));
     }
     let mut egress = String::new();
-    for p in &sg.egress {
+    for p in &display_rows(&sg.egress) {
         egress.push_str(&ip_permission_item(&account.to_string(), p));
     }
     let arn = format!(
@@ -957,10 +980,14 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(&perm.protocol),
                             xml_escape(cidr)
                         );
-                        if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
-                            let _ =
-                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
-                        }
+                        // moto's sgr normalization is "port-less → -1"
+                        // (its describe_security_group_rules renders
+                        // from_port.unwrap_or(-1)): the seeded default
+                        // shows -1/-1 while a rule that STORED ports (the
+                        // modify path keeps -1/-1 as real ports) still
+                        // renders them (live-probed).
+                        let (f, t) = (perm.from_port.unwrap_or(-1), perm.to_port.unwrap_or(-1));
+                        let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         if !descr.is_empty() {
                             let _ =
                                 write!(body, "<description>{}</description>", xml_escape(descr));
@@ -978,10 +1005,14 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(g),
                             xml_escape(owner)
                         );
-                        if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
-                            let _ =
-                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
-                        }
+                        // moto's sgr normalization is "port-less → -1"
+                        // (its describe_security_group_rules renders
+                        // from_port.unwrap_or(-1)): the seeded default
+                        // shows -1/-1 while a rule that STORED ports (the
+                        // modify path keeps -1/-1 as real ports) still
+                        // renders them (live-probed).
+                        let (f, t) = (perm.from_port.unwrap_or(-1), perm.to_port.unwrap_or(-1));
+                        let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         body.push_str("</item>");
                     }
                 }
