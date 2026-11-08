@@ -331,8 +331,14 @@ fn create_security_group(req: &Request, params: &P) -> Response {
             owner_id: req.account.to_string(),
             ..Default::default()
         };
+        // real AWS (and moto's add_default_egress_rule) seed every fresh
+        // SG with the all-egress rule CARRYING its 0.0.0.0/0 CidrIp — a
+        // bare protocol:-1 with empty IpRanges fails the provider's
+        // revoke key-match (InvalidPermission.NotFound; terraform drift
+        // rerun, terraform-drift.md 2026-11-08).
         sg.egress = vec![IpPermission {
             protocol: "-1".into(),
+            ip_ranges: vec![("0.0.0.0/0".to_string(), String::new())],
             ..Default::default()
         }];
         let tags = super::handlers::wire_tags(params);
