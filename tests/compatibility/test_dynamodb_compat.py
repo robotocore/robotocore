@@ -3471,3 +3471,205 @@ class TestDynamoDBKinesisStreamingGapOps:
         """UpdateTableReplicaAutoScaling returns table description."""
         resp = dynamodb.update_table_replica_auto_scaling(TableName=table_name)
         assert "TableAutoScalingDescription" in resp
+
+
+# ---------------------------------------------------------------------------
+# 1 MB result-size pagination (finding 3) + ConsumedCapacity (finding 9-part)
+# moto: models/table.py:906-966 (query), 1045-1146 (scan),
+# RESULT_SIZE_LIMIT = 1_000_000; responses.py:47-90 include_consumed_capacity
+# ---------------------------------------------------------------------------
+
+
+def _put_padded(dynamodb, table, i, pad=150000):
+    """One ~150 KB item: six fit under moto's 1,000,000-byte result cap."""
+    dynamodb.put_item(
+        TableName=table,
+        Item={
+            "pk": {"S": "big"},
+            "sk": {"S": f"r{i:02d}"},
+            "pad": {"S": "x" * pad},
+        },
+    )
+
+
+class TestQueryScanSizeLimit:
+    """Query/Scan stop on the 1 MB raw-result limit, accruing pre-filter."""
+
+    @pytest.fixture
+    def padded_table(self, dynamodb, composite_table):
+        for i in range(10):
+            _put_padded(dynamodb, composite_table, i)
+        return composite_table
+
+    def test_query_size_limit_cut(self, dynamodb, padded_table):
+        """Query stops before the 7th item pushes past 1 MB."""
+        resp = dynamodb.query(
+            TableName=padded_table,
+            KeyConditionExpression="pk = :v AND sk BETWEEN :a AND :b",
+            ExpressionAttributeValues={
+                ":v": {"S": "big"},
+                ":a": {"S": "r00"},
+                ":b": {"S": "r09"},
+            },
+        )
+        assert resp["Count"] == 6
+        assert resp["ScannedCount"] == 6
+        assert resp["LastEvaluatedKey"] == {"pk": {"S": "big"}, "sk": {"S": "r05"}}
+
+    def test_query_size_limit_resumes(self, dynamodb, padded_table):
+        """The remainder page carries no further LastEvaluatedKey."""
+        kce = "pk = :v AND sk BETWEEN :a AND :b"
+        eav = {":v": {"S": "big"}, ":a": {"S": "r00"}, ":b": {"S": "r09"}}
+        first = dynamodb.query(
+            TableName=padded_table,
+            KeyConditionExpression=kce,
+            ExpressionAttributeValues=eav,
+        )
+        rest = dynamodb.query(
+            TableName=padded_table,
+            KeyConditionExpression=kce,
+            ExpressionAttributeValues=eav,
+            ExclusiveStartKey=first["LastEvaluatedKey"],
+        )
+        assert rest["Count"] == 4
+        assert "LastEvaluatedKey" not in rest
+
+    def test_query_size_limit_counts_prefilter_items(self, dynamodb, padded_table):
+        """Filtered-out items still consume result size (accrual pre-filter)."""
+        resp = dynamodb.query(
+            TableName=padded_table,
+            KeyConditionExpression="pk = :v",
+            ExpressionAttributeValues={":v": {"S": "big"}},
+            FilterExpression="attribute_not_exists(#p)",
+            ExpressionAttributeNames={"#p": "pad"},
+        )
+        assert resp["Count"] == 0
+        assert resp["ScannedCount"] == 6
+        assert resp["LastEvaluatedKey"] == {"pk": {"S": "big"}, "sk": {"S": "r05"}}
+
+    def test_scan_size_limit_without_items(self, dynamodb, padded_table):
+        """COUNT scans still paginate on the size limit."""
+        resp = dynamodb.scan(TableName=padded_table, Select="COUNT")
+        assert resp["Count"] == 6
+        assert resp["ScannedCount"] == 6
+        assert "Items" not in resp
+        assert resp["LastEvaluatedKey"] == {"pk": {"S": "big"}, "sk": {"S": "r05"}}
+
+    def test_scan_size_limit_cut(self, dynamodb, padded_table):
+        resp = dynamodb.scan(TableName=padded_table)
+        assert len(resp["Items"]) == 6
+        assert resp["ScannedCount"] == 6
+        assert resp["LastEvaluatedKey"] == {"pk": {"S": "big"}, "sk": {"S": "r05"}}
+
+
+class TestConsumedCapacity:
+    """ReturnConsumedCapacity rendering mirrors moto's decorator."""
+
+    def test_get_item_absent_by_default(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "a"}})
+        resp = dynamodb.get_item(TableName=table, Key={"pk": {"S": "a"}})
+        assert "ConsumedCapacity" not in resp
+
+    def test_get_item_total_half_unit(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "a"}})
+        for rcc in ["NONE", None]:
+            kwargs = {"TableName": table, "Key": {"pk": {"S": "a"}}}
+            if rcc:
+                kwargs["ReturnConsumedCapacity"] = rcc
+            resp = dynamodb.get_item(**kwargs)
+            assert "ConsumedCapacity" not in resp
+        resp = dynamodb.get_item(
+            TableName=table,
+            Key={"pk": {"S": "a"}},
+            ReturnConsumedCapacity="TOTAL",
+        )
+        assert float(resp["ConsumedCapacity"]["CapacityUnits"]) == 0.5
+        assert resp["ConsumedCapacity"]["TableName"] == table
+
+    def test_get_item_indexes_table_member(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "a"}})
+        resp = dynamodb.get_item(
+            TableName=table,
+            Key={"pk": {"S": "a"}},
+            ReturnConsumedCapacity="INDEXES",
+        )
+        cc = resp["ConsumedCapacity"]
+        assert float(cc["CapacityUnits"]) == 0.5
+        assert cc["Table"] == {"CapacityUnits": 0.5}
+
+    def test_put_item_units(self, dynamodb, table):
+        resp = dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "p"}},
+            ReturnConsumedCapacity="TOTAL",
+        )
+        assert float(resp["ConsumedCapacity"]["CapacityUnits"]) == 1.0
+        resp = dynamodb.put_item(
+            TableName=table, Item={"pk": {"S": "p"}}, ReturnItemCollectionMetrics="SIZE"
+        )
+        assert "ConsumedCapacity" not in resp
+
+    def test_delete_item_units(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "d"}})
+        resp = dynamodb.delete_item(
+            TableName=table, Key={"pk": {"S": "d"}}, ReturnConsumedCapacity="TOTAL"
+        )
+        assert float(resp["ConsumedCapacity"]["CapacityUnits"]) == 1.0
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "d"}})
+        resp = dynamodb.delete_item(TableName=table, Key={"pk": {"S": "d"}})
+        assert "ConsumedCapacity" not in resp
+
+    def test_update_item_renders_even_when_none(self, dynamodb, table):
+        """moto quirk (responses.py:1316): UpdateItem always renders 0.5."""
+        for rcc in [None, "NONE", "TOTAL", "INDEXES"]:
+            kwargs = {
+                "TableName": table,
+                "Key": {"pk": {"S": "u"}},
+                "UpdateExpression": "SET z = :z",
+                "ExpressionAttributeValues": {":z": {"S": "z"}},
+            }
+            if rcc:
+                kwargs["ReturnConsumedCapacity"] = rcc
+            resp = dynamodb.update_item(**kwargs)
+            assert resp["ConsumedCapacity"] == {
+                "TableName": table,
+                "CapacityUnits": 0.5,
+            }
+
+    def test_query_units(self, dynamodb, composite_table):
+        dynamodb.put_item(TableName=composite_table, Item={"pk": {"S": "q"}, "sk": {"S": "s"}})
+        resp = dynamodb.query(
+            TableName=composite_table,
+            KeyConditionExpression="pk = :v",
+            ExpressionAttributeValues={":v": {"S": "q"}},
+            ReturnConsumedCapacity="TOTAL",
+        )
+        assert float(resp["ConsumedCapacity"]["CapacityUnits"]) == 1.0
+        resp = dynamodb.query(
+            TableName=composite_table,
+            KeyConditionExpression="pk = :v",
+            ExpressionAttributeValues={":v": {"S": "q"}},
+        )
+        assert "ConsumedCapacity" not in resp
+
+    def test_scan_units(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "q"}})
+        resp = dynamodb.scan(TableName=table, ReturnConsumedCapacity="TOTAL")
+        assert float(resp["ConsumedCapacity"]["CapacityUnits"]) == 1.0
+
+    def test_gsi_indexes_mislabeled_under_lsi(self, dynamodb, gsi_keys_only_table):
+        """moto quirk (responses.py:80-84): any IndexName lands under
+        LocalSecondaryIndexes, GSI or LSI alike."""
+        dynamodb.put_item(
+            TableName=gsi_keys_only_table, Item={"pk": {"S": "a"}, "gsi_pk": {"S": "g"}}
+        )
+        resp = dynamodb.query(
+            TableName=gsi_keys_only_table,
+            IndexName="gsi-keys-only",
+            KeyConditionExpression="gsi_pk = :v",
+            ExpressionAttributeValues={":v": {"S": "g"}},
+            ReturnConsumedCapacity="INDEXES",
+        )
+        cc = resp["ConsumedCapacity"]
+        assert cc["Table"] == {"CapacityUnits": 1.0}
+        assert cc["LocalSecondaryIndexes"] == {"gsi-keys-only": {"CapacityUnits": 1.0}}

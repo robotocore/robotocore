@@ -62,6 +62,37 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM policy-document validation.** Finding 16 of the moto audit
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): a port of moto's
+  IAMPolicyDocumentValidator (crates/iam/src/policy_validation.rs) runs on
+  CreatePolicy/CreatePolicyVersion (before the name/arn lookups, per
+  moto's order), PutUserPolicy/PutRolePolicy/PutGroupPolicy (after the
+  entity resolution) and UpdateAssumeRolePolicy's trust flavor — moto's
+  layer order with verbatim messages, verified over a 28-shape live
+  matrix. moto quirks kept: empty-value unknown Condition operators,
+  reverse-sorted resource lists, the legacy `resource[2]` check.
+- **SetDefaultPolicyVersion shape gate.** Finding 22: the start-anchored
+  `v[1-9][0-9]*(\.[A-Za-z0-9-]*)?` version-id regex runs before the
+  policy lookup with moto's ValidationError sentence (re.match is not
+  fullmatch, so trailing junk like "v1junk" still passes through to
+  NoSuchEntity), and the not-found arm now carries moto's "Policy {arn}
+  version {v} does not exist or is not attachable."
+- **DynamoDB 1 MB result-size pagination.** Finding 3 of the moto audit
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): Query and Scan
+  pages now break when the next raw item would pass moto's
+  RESULT_SIZE_LIMIT of 1,000,000 bytes — the oversize candidate is
+  neither counted nor appended and LastEvaluatedKey stays on the last
+  included result, with pre-filter accrual (filtered-out items consume
+  size) and COUNT scans paginating like moto's. Number values keep the
+  AWS sizing formula (moto #10176), recorded twin-preferred.
+- **DynamoDB ConsumedCapacity rendering.** Finding 9: the single-item and
+  read legs of the include_consumed_capacity family now render —
+  PutItem/DeleteItem at 1.0, GetItem at 0.5 (misses included),
+  Query/Scan at 1.0 — gated on ReturnConsumedCapacity TOTAL/INDEXES,
+  with moto's INDEXES layouts (Table member; any IndexName parked under
+  LocalSecondaryIndexes, GSI or LSI alike), moto's UpdateItem always-0.5
+  quirk kept verbatim, and the decorator's enum validation on the raw
+  wire.
 - **IAM List\* operations resolve the entity.** Finding 21 of the moto
   audit (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): ListUserTags,
   ListUserPolicies, ListAttachedUserPolicies, ListRoleTags,

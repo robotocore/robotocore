@@ -1,10 +1,10 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-11-07T04:03:04.796411+00:00",
+  "generated_at": "2026-11-08T01:57:27.643655+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/dynamodb.rs": "absent",
     "rotocore/src/services/dynamodb/": "absent",
-    "crates/dynamodb/src/": "6e1fad57de4e351996db8011d5ff3906f0b0fdf19dbabf8ae356a94fd26efea7"
+    "crates/dynamodb/src/": "fab60d1684c7f977c92c9faa0d5f6f24638cb5b06eff3b8177ecfff677ab1cc5"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -213,7 +213,7 @@
     {
       "operation": "Query",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "RestoreTableFromBackup",

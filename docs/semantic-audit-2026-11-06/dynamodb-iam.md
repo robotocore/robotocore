@@ -42,6 +42,19 @@ DYNAMODB
    (d) Real AWS enforces the 1 MB per-response limit — robotocore diverges.
    (e) A.
 
+   **FIXED (2026-11-08, verified live)**: run_scan_or_query accrues
+   `result_size` over the raw pre-filter items (crate::models::item_size)
+   and breaks when the next candidate would pass RESULT_SIZE_LIMIT = 1_000_000
+   (crates/dynamodb/src/models.rs) — the oversize candidate is neither
+   counted (ScannedCount stops before it) nor appended, and the
+   LastEvaluatedKey stays on the last included result, matching moto's
+   table.py:930-935/1111 byte-for-byte on the 150 kB corpus (6-item cut,
+   ESK resume, filtered-out accrual, COUNT scans). One deliberate
+   divergence inherited from the item-size work stands: Number values are
+   sized with AWS's ceil(digits/2)+1 formula (moto #10176) instead of
+   moto's len(str()) — only a page boundary straddling a
+   number-sided-overrun item can cut one position differently.
+
 4. Empty-string keys, empty sets and NULL-typed GSI keys are accepted on writes.
    (a) PutItem, BatchWriteItem, TransactWriteItems Put/Update.
    (b) moto rejects: empty S/B key values (validate_put_has_empty_keys, responses.py:93-131, called at 680-682 and in batch 745-749 / transact 1499-1513), empty SS/NS sets anywhere in the item (validate_put_has_empty_attrs, responses.py:134-146), and a GSI key attribute set to `{"NULL": true}` (responses.py:154-161) — all MockValidationException.
@@ -121,6 +134,22 @@ DYNAMODB
    (CapacityUnits = requested key count). Still open: the single-item
    / Query / Scan members (moto gates them on ReturnConsumedCapacity
    --- with moto's always-on quirks on UpdateItem/DeleteItem).
+
+   **FIXED (2026-11-08, verified live)**: the single-item and read legs are
+   done — a decorate_consumed_capacity helper mirrors the
+   include_consumed_capacity decorator (responses.py:47-90): PutItem and
+   DeleteItem at 1.0, GetItem at 0.5 (misses included), Query/Scan at 1.0,
+   gated on ReturnConsumedCapacity TOTAL/INDEXES; INDEXES adds a Table
+   member plus moto's quirk of parking any IndexName (GSI or LSI) under
+   LocalSecondaryIndexes (verified live 2026-11-08 on query and scan).
+   The decorator's enum validation now also runs before the handler body
+   on the raw wire (botocore pre-validates client-side, so only raw
+   requests reach moto's check).
+   UpdateItem carries moto's always-0.5 quirk verbatim (responses.py:1316,
+   ReturnConsumedCapacity notwithstanding); moto's internal
+   "ConsumedCapacityUnits": 0.5 DeleteItem artifact (responses.py:1216)
+   stays hidden from the wire, matching live moto. BatchGetItem (see the
+   2026-11-07 note above) was already rendered.
 
    **FIXED in part (2026-11-06, verified in source):** one related table-description member is fixed — `describe_table_response` now renders `NumberOfDecreasesToday` in the provisioned-throughput block (crates/dynamodb/src/handler.rs:627). The missing ConsumedCapacity rendering described above remains open.
 
@@ -207,6 +236,27 @@ IAM
     (c) robotocore stores the raw string unvalidated on every path (e.g. put_role_policy handler.rs:1190-1208 — the comment acknowledges the deferral; create_policy 1699-1731; create_policy_version 1832-1895; update_assume_role_policy 1081-1096). Garbage documents are accepted with 200 and then silently contribute nothing in Simulate*.
     (d) Real AWS validates policy syntax server-side (MalformedPolicyDocument/ValidationError) — robotocore diverges from both.
     (e) A.
+
+    **FIXED (2026-11-08, verified live)**: crates/iam/src/policy_validation.rs
+    ports the validator — moto's layer order (syntax → version → legacy
+    parsing → Sid uniqueness → action existence → accumulated resource
+    errors → action prefixes → flavor extras) with moto's verbatim
+    messages; mounted at CreatePolicy/CreatePolicyVersion (validate
+    BEFORE the duplicate-name and policy lookups, models.py:2031-2033,
+    2382-2387) and PutUserPolicy/PutRolePolicy/PutGroupPolicy after the
+    entity resolution (2849-2851, 2231, 2600-2602), UpdateAssumeRolePolicy
+    after get_role with the trust flavor (2222-2225). Verified against a
+    28-shape live moto matrix; the validator quirks port verbatim (an
+    unknown Condition operator is legal on an EMPTY value; R+NR and
+    Action+NotAction exclusivity; reverse-sorted resource lists; the
+    legacy `resource[2]` third-character check for list members). Two
+    recorded divergences from moto itself (kept twin-preferred): moto
+    crashes HTTP 500 on a null Action list element (None.split), and the
+    legacy Date-condition layer on raw JSON numbers: python `int()`
+    REFUSES float values (1.5 → legacy parsing fail) while the port
+    truncates f64s, and python's `int()` accepts underscore-style strings
+    ("2_0") the port rejects — both unreachable through botocore's own
+    client-side Date validators on the common paths.
 
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
    **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role
@@ -299,6 +349,15 @@ IAM
     (c) robotocore mirrors the cap and the monotonic counter (handler.rs:1848-1894 — including moto's quirk of syncing policy.policy_document only on default changes) but performs no version-id regex validation on SetDefaultPolicyVersion (handler.rs:1970-2017) — a malformed id falls through to NoSuchEntity instead of ValidationError.
     (d) Real AWS validates the id pattern client-side in boto3; server-side verdict not determinable from the model.
     (e) A on the divergence, C on the AWS verdict.
+
+    **FIXED (2026-11-08, verified live)**: set_default_policy_version runs
+    the start-anchored `v[1-9][0-9]*(\.[A-Za-z0-9-]*)?` gate BEFORE the
+    policy lookup with moto's exact ValidationError sentence — note
+    re.match is NOT fullmatch, so "v1junk" passes the gate and falls
+    through to the not-found arm — and the not-found message is moto's
+    "Policy {arn} version {version_id} does not exist or is not
+    attachable." (models.py:2119-2121, live-probed). DeletePolicyVersion's
+    absent id-format gate stays open in the ledger (finding 23's queue).
 
 23. Residual IAM wording/order drift flagged by the finding-21 review (2026-11-08), queued for the policy-validation tranche.
     (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.
