@@ -117,17 +117,22 @@ resources (lambda, kinesis, etc. — per-stack leads queued).
 
 - association.route-table-id now returns the table's OWN id even for a
   table with zero associations (moto parity,
-  ec2/routes_tables.py:126-128 behavior, live-probed).
+  moto/ec2/models/route_tables.py:127-128, live-probed).
 - main-assoc delete semantics: real AWS (and the twin) answer
   DependencyViolation when deleting the main (rtbassoc-carrying) route
   table while moto permits it — real-AWS-preferred, recorded + pinned.
 - ModifySecurityGroupRules port normalization CHECKED against moto
-  with a live probe and REVERSED: moto's modify path KEEPS
+  re-checked live against moto's modify source and wire: moto's
+  modify path (models/security_groups.py:886-888, bypassing
+  SecurityGroupRule.__init__) KEEPS
   FromPort/ToPort -1 on an all-protocol rule (the port-drop in
   SecurityGroupRule.__init__ is the CREATE path only; the seeded
-  default rule is port-less because of its origin). The twin now pins
+  default rule is port-less because of its origin). The twin pins
   both row shapes (TestSecurityGroupRuleModifyPortNorm +
-  TestModifyKeepsAllProtocolPortsDossier).
+  TestModifyKeepsAllProtocolPortsDossier — the dossier's first draft
+  collided with the seeded -1/0.0.0.0/0 rule and answered
+  InvalidPermission.Duplicate on both engines; the shipped pin uses a
+  distinct cidr).
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.

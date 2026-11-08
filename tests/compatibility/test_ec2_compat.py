@@ -11956,7 +11956,7 @@ class TestSecurityGroupRuleModifyPortNorm:
 
 
 class TestRouteTableAssocFilterParity:
-    """moto (route_tables.py:126-128) answersassociation.route-table-id
+    """moto (route_tables.py:126-128) answers association.route-table-id
     with the table's own id even when the table has no associations."""
 
     @pytest.fixture
@@ -12008,7 +12008,10 @@ class TestModifyKeepsAllProtocolPortsDossier:
         name = f"bothpaths-{uuid.uuid4().hex[:8]}"
         gid = ec2.create_security_group(GroupName=name, Description="dossier")["GroupId"]
         try:
-            # the CREATE path on moto: ports dropped for the all protocol
+            # The CREATE path on moto: ports dropped for the all protocol.
+            # Use a DISTINCT cidr — the seeded default rule already holds
+            # -1/0.0.0.0/0, so authorizing the same pair answers
+            # InvalidPermission.Duplicate on BOTH engines (review-verified).
             ec2.authorize_security_group_egress(
                 GroupId=gid,
                 IpPermissions=[
@@ -12016,13 +12019,18 @@ class TestModifyKeepsAllProtocolPortsDossier:
                         "IpProtocol": "-1",
                         "FromPort": -1,
                         "ToPort": -1,
-                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                        "IpRanges": [{"CidrIp": "10.0.0.0/8"}],
                     }
                 ],
             )
             sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
-            created = [p for p in sgd["IpPermissionsEgress"] if p["IpProtocol"] == "-1"]
-            assert created, "seeded/authorized -1 rule present"
+            created = [
+                p
+                for p in sgd["IpPermissionsEgress"]
+                if any(r["CidrIp"] == "10.0.0.0/8" for r in p.get("IpRanges", []))
+            ]
+            assert created, "authorized -1 rule present"
+            assert created[0]["IpProtocol"] == "-1"
             assert "FromPort" not in created[0] and "ToPort" not in created[0]
         finally:
             ec2.delete_security_group(GroupId=gid)
