@@ -62,6 +62,15 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM List\* operations resolve the entity.** Finding 21 of the moto
+  audit (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): ListUserTags,
+  ListUserPolicies, ListAttachedUserPolicies, ListRoleTags,
+  ListRolePolicies, ListAttachedRolePolicies, ListGroupPolicies,
+  ListAttachedGroupPolicies and ListPolicyTags answer `NoSuchEntity` 404
+  with moto's exact sentences for a nonexistent entity instead of an
+  empty 200 (ListGroupTags is botocore-absent; ListAccessKeys already
+  raised).
+
 - **IAM delete-semantics and boundary contracts.** The moto audit's
   eleventh tranche (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`,
   findings 17–20): `DeleteRolePolicy` resolves the role and the policy

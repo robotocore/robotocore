@@ -714,10 +714,14 @@ impl IamHandler {
     fn list_user_tags(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state
-            .get_user(&username)
-            .map(|u| u.tags.read().clone())
-            .unwrap_or_default();
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        let tags = user.tags.read().clone();
         AwsResponse::xml(200, "ListUserTags", tags_xml(&tags))
     }
 
@@ -779,10 +783,14 @@ impl IamHandler {
     fn list_attached_user_policies(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_user(&username)
-            .map(|u| u.attached_policies.read().clone())
-            .unwrap_or_default();
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        let policies = user.attached_policies.read().clone();
         let mut body = String::from("<AttachedPolicies>");
         for p in &policies {
             body.push_str(&attached_policy_item(p));
@@ -863,10 +871,14 @@ impl IamHandler {
     fn list_user_policies(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_user(&username)
-            .map(|u| u.policies.read().clone())
-            .unwrap_or_default();
+        let Some(user) = state.get_user(&username) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {username} cannot be found."),
+            );
+        };
+        let policies = user.policies.read().clone();
         AwsResponse::xml(200, "ListUserPolicies", names_xml(&policies))
     }
 
@@ -1161,10 +1173,10 @@ impl IamHandler {
     fn list_role_tags(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state
-            .get_role(&role_name)
-            .map(|r| r.tags.read().clone())
-            .unwrap_or_default();
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        let tags = role.tags.read().clone();
         AwsResponse::xml(200, "ListRoleTags", tags_xml(&tags))
     }
 
@@ -1214,10 +1226,10 @@ impl IamHandler {
     fn list_attached_role_policies(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_role(&role_name)
-            .map(|r| r.attached_policies.read().clone())
-            .unwrap_or_default();
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        let policies = role.attached_policies.read().clone();
         let mut body = String::from("<AttachedPolicies>");
         for p in &policies {
             body.push_str(&attached_policy_item(p));
@@ -1292,10 +1304,10 @@ impl IamHandler {
     fn list_role_policies(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_role(&role_name)
-            .map(|r| r.inline_policies.read().clone())
-            .unwrap_or_default();
+        let Some(role) = state.get_role(&role_name) else {
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
+        };
+        let policies = role.inline_policies.read().clone();
         AwsResponse::xml(200, "ListRolePolicies", names_xml(&policies))
     }
 
@@ -1576,10 +1588,14 @@ impl IamHandler {
     fn list_group_tags(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state
-            .get_group(&group_name)
-            .map(|g| g.tags.read().clone())
-            .unwrap_or_default();
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {group_name} cannot be found."),
+            );
+        };
+        let tags = group.tags.read().clone();
         AwsResponse::xml(200, "ListGroupTags", tags_xml(&tags))
     }
 
@@ -1633,10 +1649,14 @@ impl IamHandler {
     fn list_attached_group_policies(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_group(&group_name)
-            .map(|g| g.attached_policies.read().clone())
-            .unwrap_or_default();
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {group_name} cannot be found."),
+            );
+        };
+        let policies = group.attached_policies.read().clone();
         let mut body = String::from("<AttachedPolicies>");
         for p in &policies {
             body.push_str(&attached_policy_item(p));
@@ -1702,10 +1722,14 @@ impl IamHandler {
     fn list_group_policies(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state
-            .get_group(&group_name)
-            .map(|g| g.inline_policies.read().clone())
-            .unwrap_or_default();
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {group_name} cannot be found."),
+            );
+        };
+        let policies = group.inline_policies.read().clone();
         AwsResponse::xml(200, "ListGroupPolicies", names_xml(&policies))
     }
 
@@ -2132,10 +2156,10 @@ impl IamHandler {
     fn list_policy_tags(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state
-            .get_policy(&arn)
-            .map(|p| p.tags.read().clone())
-            .unwrap_or_default();
+        let Some(policy) = state.get_policy(&arn) else {
+            return err(404, "NoSuchEntity", &format!("Policy {arn} not found"));
+        };
+        let tags = policy.tags.read().clone();
         AwsResponse::xml(200, "ListPolicyTags", tags_xml(&tags))
     }
 

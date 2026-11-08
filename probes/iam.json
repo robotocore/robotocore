@@ -4,7 +4,7 @@
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "973f541a1624078bde7c817cfe3194e21660a8216ffeec64329123c5f0a9b0e4"
+    "crates/iam/src/": "5c996387e97fe86eca0e039cd18046e66a7f61d553bdd62f04b3bb9c9760c2fe"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

@@ -5918,3 +5918,64 @@ class TestIamWordingReview:
         assert exc.value.response["Error"]["Message"] == (
             "Value (junk-boundary-000123) for parameter PermissionsBoundary is invalid."
         )
+
+
+class TestIamListEntityResolution:
+    """#443 tranche: finding 21 — every List* on a tagged/policied entity
+    resolves the entity first (moto models.py:2840-2842, 2191, 2836...)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_user_list_ops_nosuchentity(self, iam_c):
+        for call in ["tags", "policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "tags":
+                    iam_c.list_user_tags(UserName="ghost-list-u")
+                elif call == "policies":
+                    iam_c.list_user_policies(UserName="ghost-list-u")
+                else:
+                    iam_c.list_attached_user_policies(UserName="ghost-list-u")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == (
+                "The user with name ghost-list-u cannot be found."
+            )
+
+    def test_role_list_ops_nosuchentity(self, iam_c):
+        for call in ["tags", "policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "tags":
+                    iam_c.list_role_tags(RoleName="ghost-list-r")
+                elif call == "policies":
+                    iam_c.list_role_policies(RoleName="ghost-list-r")
+                else:
+                    iam_c.list_attached_role_policies(RoleName="ghost-list-r")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == "Role ghost-list-r not found"
+
+    def test_group_list_ops_nosuchentity(self, iam_c):
+        # botocore's model has no ListGroupTags: only the policy arms exist
+        for call in ["policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "policies":
+                    iam_c.list_group_policies(GroupName="ghost-list-g")
+                else:
+                    iam_c.list_attached_group_policies(GroupName="ghost-list-g")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == (
+                "The group with name ghost-list-g cannot be found."
+            )
+
+    def test_policy_tags_nosuchentity(self, iam_c):
+        ghost_arn = "arn:aws:iam::123456789012:policy/ghost-policy-x"
+        with pytest.raises(ClientError) as exc:
+            iam_c.list_policy_tags(PolicyArn=ghost_arn)
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+        assert exc.value.response["Error"]["Message"] == f"Policy {ghost_arn} not found"

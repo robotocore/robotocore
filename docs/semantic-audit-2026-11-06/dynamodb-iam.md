@@ -267,6 +267,16 @@ IAM
     (e) A on put/delete divergence; B on the CreateRole boundary drop (moto's create_role accepts a `permissions_boundary` parameter — robotocore's create_role never reads it).
 
 21. List*Tags / ListUserPolicies / ListAttached{User,Role,Group}Policies return empty 200 for a nonexistent entity.
+
+   **FIXED (2026-11-08, verified live)**: every List* in the family resolves
+   the entity first with moto's sentences — users ("The user with name {n}
+   cannot be found.", models.py:2840-2842), roles ("Role {n} not found",
+   models.py:2191), groups ("The group with name {n} cannot be found."),
+   and policy arns ("Policy {arn} not found") — ListUserTags/
+   ListUserPolicies/ListAttachedUserPolicies/ListRoleTags/
+   ListRolePolicies/ListAttachedRolePolicies/ListGroupPolicies/
+   ListAttachedGroupPolicies/ListPolicyTags. (Excepted: ListAccessKeys
+   already raised; botocore has no ListGroupTags client method.)
     (a) ListUserTags, ListRoleTags, ListGroupTags, ListUserPolicies, ListAttachedUserPolicies (+ role/group flavors), ListPolicyTags.
     (b) moto resolves the entity first and raises NoSuchEntity ("The user with name … cannot be found", "Role {name} not found", "Policy {arn} not found") (models.py:2840-2842, 2304-2306, 2341+, 2836, 2056+, 2066+).
     (c) robotocore uses `.map(...).unwrap_or_default()` and renders an empty list with 200 (handler.rs:714-722 list_user_tags, 863-871 list_user_policies, 779-792 list_attached_user_policies, 1122-1130 list_role_tags, 1175-1188, 2081-2089). (ListAccessKeys, by contrast, does raise.)
