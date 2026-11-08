@@ -62,6 +62,16 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda runner discovers the repo venv python + honest import
+  errors.** 28 cross-service lambda-invocation tests failed with
+  Runtime.ImportModuleError naming the HANDLER module: the runner's
+  python3 was the daemon's PATH python (no boto3) while every
+  cross-service handler imports boto3. The runner now discovers the
+  repo `.venv/bin/python3` (current_exe walk-up; moto-parity: the
+  runner environment owns its deps, ROBOTOCORE_PY still wins), and
+  import errors name the REAL missing module
+  ("Cannot find module: boto3 (imported by lambda_function)") like
+  real AWS's ImportModuleError.
 - **Drift harness: missing Cognito/Kinesis provider endpoints.** The
   2026-11-06 "twin rejects cognito/kinesis" drift row (both answering
   real-AWS's UnrecognizedClientException) was a harness gap, not a twin
