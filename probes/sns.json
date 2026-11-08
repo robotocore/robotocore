@@ -1,10 +1,10 @@
 {
   "service": "sns",
-  "generated_at": "2026-11-06T19:42:47.493339+00:00",
+  "generated_at": "2026-11-08T22:36:39.935860+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/sns.rs": "absent",
     "rotocore/src/services/sns/": "absent",
-    "crates/sns/src/": "11b508df1cb9f06b778d116792876327c3e191389969d6b42aa52f381df07e26"
+    "crates/sns/src/": "4f9a46e5c174bbc348209ed988dd79955120d62822454fc99eecc2d9134e0c8a"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

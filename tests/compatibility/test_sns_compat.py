@@ -1536,3 +1536,38 @@ class TestSNSMissingGapOps:
             assert r2["DataProtectionPolicy"] == policy
         finally:
             sns.delete_topic(TopicArn=arn)
+
+
+class TestDisplayNameEcho:
+    """moto (and real AWS) echo DisplayName EMPTY when the topic has
+    none — the previous twin fallback to the topic NAME made the
+    terraform refresh flag a perpetual plan (monitoring drift)."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_unset_display_name_echoes_empty(self, sns):
+        import uuid
+
+        name = f"unset-disp-{uuid.uuid4().hex[:8]}"
+        arn = sns.create_topic(Name=name)["TopicArn"]
+        try:
+            got = sns.get_topic_attributes(TopicArn=arn)["Attributes"]["DisplayName"]
+            assert got == ""
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_set_display_name_round_trips(self, sns):
+        import uuid
+
+        name = f"set-disp-{uuid.uuid4().hex[:8]}"
+        arn = sns.create_topic(Name=name)["TopicArn"]
+        try:
+            sns.set_topic_attributes(
+                TopicArn=arn, AttributeName="DisplayName", AttributeValue="My Display"
+            )
+            got = sns.get_topic_attributes(TopicArn=arn)["Attributes"]["DisplayName"]
+            assert got == "My Display"
+        finally:
+            sns.delete_topic(TopicArn=arn)

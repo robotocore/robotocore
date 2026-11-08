@@ -78,8 +78,11 @@ impl Topic {
     }
 
     pub fn display_name(&self) -> String {
-        self.attr("DisplayName")
-            .unwrap_or_else(|| self.name.clone())
+        // moto (and real AWS) echo DisplayName EMPTY when the topic has
+        // none — falling back to the topic NAME made the TF provider's
+        // refresh flag it as a perpetual plan
+        // (monitoring stack drift, 2026-11-08).
+        self.attr("DisplayName").unwrap_or_default()
     }
 
     /// Tag lookup helper (ordered list, last value wins per key).

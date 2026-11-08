@@ -180,3 +180,12 @@ two ways:
 2. **The import error names the REAL missing module** — "Cannot find
    module: boto3 (imported by <handler>)" instead of the misleading
    handler name — so dep gaps read like real AWS's ImportModuleError.
+
+## monitoring stack: SNS DisplayName echo (2026-11-08, probed)
+
+The plan's `-display_name -> null` was the twin's display_name()
+FALLBACK to the topic NAME (crates/sns/models.rs) when the topic has no
+DisplayName attribute — moto and real AWS echo an EMPTY DisplayName
+instead. Fixed to unwrap_or_default; the drift stack now PASSES
+end-to-end. Pins: TestDisplayNameEcho (unset echoes empty;
+set-topic-attributes round trips).
