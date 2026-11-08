@@ -22,5 +22,10 @@
  "s3.list_v1": "twin-preferred: the twin echoes real AWS's Marker member on v1 listings; moto omits it",
  "s3.list_v2_prefix": "follow-up: real AWS (and moto) report ChecksumAlgorithm [CRC32] on objects stored without an explicit checksum \u2014 needs the ObjectVersion checksum slot recorded in crates/s3/src/aws_chunked.rs",
  "s3.put_glacier_storage_class": "follow-up: same checksum slot gap \u2014 moto's PUT response carries ChecksumCRC32; the twin does not compute flex-checksums yet",
- "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys"
+ "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys",
+ "sqs_validation.create_fifo_bad": "same-as-moto: both engines answer 400 InvalidParameterValue (Queue name must end in .fifo for FIFO queues) \u2014 pin",
+ "sqs_validation.create_mms_low": "same-as-moto: 400 InvalidAttributeValue (Invalid value for the parameter MaximumMessageSize.)",
+ "sqs_validation.create_rp_badjson": "crash-faithful: moto escapes an unhandled JSONDecodeError above the dict checks (models.py:373-377) and answers the werkzeug plain-500 page; the twin mirrors it via SqsError::MotoCrash (replaces the earlier same-as-moto wording, which papered over the wire mismatch the review caught)",
+ "sqs_validation.create_rp_missing_arn": "same-as-moto: 400 InvalidParameterValue (Redrive policy does not contain deadLetterTargetArn)",
+ "sqs_validation.create_rp_unknown_dlq": "same-as-moto: 400 AWS.SimpleQueueService.NonExistentQueue (Could not find DLQ for arn)"
 }

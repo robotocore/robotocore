@@ -4,7 +4,7 @@
   "impl_fingerprint": {
     "rotocore/src/services/sqs.rs": "absent",
     "rotocore/src/services/sqs/": "absent",
-    "crates/sqs/src/": "964a126260b6ca372c5331b349e7e1e60ac9e6d164d5a0881261169788461c20"
+    "crates/sqs/src/": "1023e570d0b756ec87b9741e6ff5a1aebcfb8acd058b137bd72c82ecf620f37c"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

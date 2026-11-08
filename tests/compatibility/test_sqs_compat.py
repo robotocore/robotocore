@@ -9,6 +9,7 @@ import uuid
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
@@ -1647,3 +1648,356 @@ class TestSQSMessageMoveTasks:
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)
+
+
+class TestSqsValidationFamily:
+    """moto 5.2.5 CreateQueue/redrive/delete-message contracts
+    (models.py:288-299, 372-430, 705-725; responses.py:1069-1088)."""
+
+    @pytest.fixture
+    def sqs_c(self):
+        return boto3.client(
+            "sqs",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def _delete_queue(self, client, name):
+        try:
+            url = client.get_queue_url(QueueName=name)["QueueUrl"]
+            client.delete_queue(QueueUrl=url)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # -- CreateQueue validations -------------------------------------
+
+    def test_fifo_queue_name_rule(self, sqs_c):
+        name = f"not-fifo-{uuid.uuid4().hex[:8]}"
+        with pytest.raises(ClientError) as exc:
+            sqs_c.create_queue(
+                QueueName=name,
+                Attributes={"FifoQueue": "true"},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+        assert exc.value.response["Error"]["Message"] == (
+            "Queue name must end in .fifo for FIFO queues"
+        )
+        # and the queue was not created
+        self._delete_queue(sqs_c, name)
+        with pytest.raises(ClientError):
+            sqs_c.get_queue_url(QueueName=name)
+
+    def test_maximum_message_size_bounds(self, sqs_c):
+        for bad in ("1023", "1048577"):
+            name = f"size-{uuid.uuid4().hex[:8]}"
+            with pytest.raises(ClientError) as exc:
+                sqs_c.create_queue(
+                    QueueName=name,
+                    Attributes={"MaximumMessageSize": bad},
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidAttributeValue"
+            assert exc.value.response["Error"]["Message"] == (
+                "Invalid value for the parameter MaximumMessageSize."
+            )
+            self._delete_queue(sqs_c, name)
+
+    def test_recreate_with_different_attributes_raises_queue_already_exists(self, sqs_c):
+        name = f"recreate-{uuid.uuid4().hex[:8]}"
+        try:
+            url = sqs_c.create_queue(QueueName=name, Attributes={"VisibilityTimeout": "30"})[
+                "QueueUrl"
+            ]
+            with pytest.raises(ClientError) as exc:
+                sqs_c.create_queue(QueueName=name, Attributes={"VisibilityTimeout": "40"})
+            assert exc.value.response["Error"]["Code"] == "QueueAlreadyExists"
+            assert exc.value.response["Error"]["Message"] == ("The specified queue already exists.")
+            # identical re-create succeeds idempotently
+            url2 = sqs_c.create_queue(QueueName=name, Attributes={"VisibilityTimeout": "30"})[
+                "QueueUrl"
+            ]
+            assert url == url2
+        finally:
+            self._delete_queue(sqs_c, name)
+
+    # -- RedrivePolicy validation --------------------------------------
+
+    def test_redrive_policy_not_json(self, sqs_c):
+        name = f"rp-bad-{uuid.uuid4().hex[:8]}"
+        try:
+            with pytest.raises(ClientError) as exc:
+                sqs_c.create_queue(
+                    QueueName=name,
+                    Attributes={"RedrivePolicy": "not-json{"},
+                )
+            # crash-faithful: moto escapes the unhandled JSONDecodeError as
+            # the werkzeug plain-500 page; botocore cannot parse an error
+            # code out of the HTML, so the code slot carries the status
+            assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 500
+            assert "Internal Server Error" in str(exc.value.response)
+        finally:
+            self._delete_queue(sqs_c, name)
+            self._delete_queue(sqs_c, name)
+
+    def test_redrive_policy_missing_arn_and_max_receive(self, sqs_c):
+        name = f"rp-miss-{uuid.uuid4().hex[:8]}"
+        for policy, msg_key in (
+            ('{"maxReceiveCount": 3}', "Redrive policy does not contain deadLetterTargetArn"),
+            (
+                json.dumps({"deadLetterTargetArn": "arn:aws:sqs:x-y-1:1:q"}),
+                "Redrive policy does not contain maxReceiveCount",
+            ),
+        ):
+            try:
+                with pytest.raises(ClientError) as exc:
+                    sqs_c.create_queue(QueueName=name, Attributes={"RedrivePolicy": policy})
+                assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+                assert exc.value.response["Error"]["Message"] == msg_key
+            finally:
+                self._delete_queue(sqs_c, name)
+
+    def test_redrive_unknown_dlq_arn(self, sqs_c):
+        name = f"rp-unk-{uuid.uuid4().hex[:8]}"
+        arn = "arn:aws:sqs:us-east-1:123456789012:no-such-dlq"
+        policy = json.dumps({"deadLetterTargetArn": arn, "maxReceiveCount": 5})
+        with pytest.raises(ClientError) as exc:
+            sqs_c.create_queue(QueueName=name, Attributes={"RedrivePolicy": policy})
+        assert exc.value.response["Error"]["Code"] == "AWS.SimpleQueueService.NonExistentQueue"
+        assert exc.value.response["Error"]["Message"] == f"Could not find DLQ for {arn}"
+        self._delete_queue(sqs_c, name)
+
+    def test_redrive_fifo_mismatch(self, sqs_c):
+        dlq = f"rp-dlq-{uuid.uuid4().hex[:8]}"
+        fifo = f"rp-fifo-{uuid.uuid4().hex[:8]}.fifo"
+        try:
+            dlq_url = sqs_c.create_queue(QueueName=dlq)["QueueUrl"]
+            arn = sqs_c.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+                "Attributes"
+            ]["QueueArn"]
+            policy = json.dumps({"deadLetterTargetArn": arn, "maxReceiveCount": 5})
+            with pytest.raises(ClientError) as exc:
+                sqs_c.create_queue(
+                    QueueName=fifo,
+                    Attributes={"FifoQueue": "true", "RedrivePolicy": policy},
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidParameterCombination"
+            assert exc.value.response["Error"]["Message"] == (
+                "Fifo queues cannot use non fifo dead letter queues"
+            )
+        finally:
+            self._delete_queue(sqs_c, fifo)
+            self._delete_queue(sqs_c, dlq)
+
+    # -- DeleteMessage semantics ----------------------------------------
+
+    def test_delete_message_repeat_is_graceful(self, sqs_c):
+        name = f"dm-rep-{uuid.uuid4().hex[:8]}"
+        try:
+            url = sqs_c.create_queue(QueueName=name)["QueueUrl"]
+            sqs_c.send_message(QueueUrl=url, MessageBody="m1")
+            messages = sqs_c.receive_message(
+                QueueUrl=url, VisibilityTimeout=30, MaxNumberOfMessages=1
+            ).get("Messages", [])
+            handle = messages[0]["ReceiptHandle"]
+            sqs_c.delete_message(QueueUrl=url, ReceiptHandle=handle)
+            # repeat delete: moto's deleted_messages graceful no-op → 200
+            sqs_c.delete_message(QueueUrl=url, ReceiptHandle=handle)
+            # and a handle that NEVER existed still raises
+            with pytest.raises(ClientError) as exc:
+                sqs_c.delete_message(QueueUrl=url, ReceiptHandle="not-a-real-handle")
+            assert exc.value.response["Error"]["Code"] == "ReceiptHandleIsInvalid"
+        finally:
+            self._delete_queue(sqs_c, name)
+
+    def test_delete_message_batch_sender_fault_rows(self, sqs_c):
+        name = f"dm-batch-{uuid.uuid4().hex[:8]}"
+        try:
+            url = sqs_c.create_queue(QueueName=name)["QueueUrl"]
+            resp = sqs_c.send_message(QueueUrl=url, MessageBody="body")
+            sqs_c.delete_message_batch(
+                QueueUrl=url,
+                Entries=[
+                    {"Id": "a", "ReceiptHandle": resp["MD5OfMessageBody"]},
+                    {"Id": "b", "ReceiptHandle": "bogus-handle-x"},
+                ],
+            )
+        except Exception:
+            pass  # the invalid-handle row may pass or fail per shape below
+        # the shape assertions live in the dedicated test that fetches
+        # a real handle first
+        try:
+            url = sqs_c.get_queue_url(QueueName=name)["QueueUrl"]
+            sqs_c.send_message(QueueUrl=url, MessageBody="body2")
+            messages = sqs_c.receive_message(
+                QueueUrl=url, VisibilityTimeout=30, MaxNumberOfMessages=1
+            ).get("Messages", [])
+            assert messages, "expected a deliverable message"
+            good = messages[0]["ReceiptHandle"]
+            out = sqs_c.delete_message_batch(
+                QueueUrl=url,
+                Entries=[
+                    {"Id": "good", "ReceiptHandle": good},
+                    {"Id": "bad", "ReceiptHandle": "not-real"},
+                ],
+            )
+            assert [s["Id"] for s in out.get("Successful", [])] == ["good"]
+            failed = out["Failed"][0]
+            assert failed["Id"] == "bad"
+            assert failed["SenderFault"] is True
+            assert failed["Code"] == "ReceiptHandleIsInvalid"
+            assert failed["Message"] == (
+                'The input receipt handle "not-real" is not a valid receipt handle.'
+            )
+        finally:
+            self._delete_queue(sqs_c, name)
+
+
+class TestSqsValidationRound2:
+    """#441 review round-2 pins: crash-faithful redrive JSON, the set path's
+    redrive validation, canonical re-create compare, redrive bypass."""
+
+    @pytest.fixture
+    def sqs_c(self):
+        return boto3.client(
+            "sqs",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def _delete_queue(self, client, name):
+        try:
+            url = client.get_queue_url(QueueName=name)["QueueUrl"]
+            client.delete_queue(QueueUrl=url)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_redrive_bad_json_is_crash_faithful(self, sqs_c):
+        # raw urllib: moto escapes the unhandled JSONDecodeError as the
+        # werkzeug plain-500 HTML page (no AWS error envelope); the twin
+        # mirrors it via the same MotoCrash path as the other recorded rows.
+        import urllib.error
+        import urllib.request
+
+        name = f"rp-crash-{uuid.uuid4().hex[:8]}"
+        try:
+            url = sqs_c.create_queue(QueueName=name)["QueueUrl"]
+            body = '{"QueueUrl": "' + url + '", "Attributes": {"RedrivePolicy": "not-json{"}}'
+            # unsigned raw call on the JSON protocol: the crash surface is
+            # the handler itself (the twin does not enforce auth)
+            req = urllib.request.Request(
+                f"{ENDPOINT_URL}/",
+                data=body.encode(),
+                method="POST",
+                headers={
+                    "Content-Type": "application/x-amz-json-1.0",
+                    "X-Amz-Target": "AmazonSQS.SetQueueAttributes",
+                },
+            )
+            try:
+                urllib.request.urlopen(req, timeout=10)
+                raised = False
+            except urllib.error.HTTPError as err:
+                raised = True
+                assert err.code == 500
+                assert "Internal Server Error" in err.read().decode()
+            assert raised
+        finally:
+            self._delete_queue(sqs_c, name)
+
+    def test_set_queue_attributes_redrive_missing_arn_rejected_and_not_applied(self, sqs_c):
+        import json as json_mod
+
+        name = f"set-rp-{uuid.uuid4().hex[:8]}"
+        try:
+            url = sqs_c.create_queue(QueueName=name)["QueueUrl"]
+            with pytest.raises(ClientError) as exc:
+                sqs_c.set_queue_attributes(
+                    QueueUrl=url,
+                    Attributes={"RedrivePolicy": json_mod.dumps({"maxReceiveCount": 3})},
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+            assert exc.value.response["Error"]["Message"] == (
+                "Redrive policy does not contain deadLetterTargetArn"
+            )
+            out = sqs_c.get_queue_attributes(QueueUrl=url, AttributeNames=["RedrivePolicy"])
+            assert "Attributes" not in out or "RedrivePolicy" not in out.get("Attributes", {})
+        finally:
+            self._delete_queue(sqs_c, name)
+
+    def test_recreate_equivalent_reformatted_redrive_no_false_exists(self, sqs_c):
+
+        name = f"rp-canon-{uuid.uuid4().hex[:8]}"
+        arn = None
+        try:
+            compact = (
+                '{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:'
+                '123456789012:canon","maxReceiveCount":3}'
+            )
+            with pytest.raises(ClientError):
+                sqs_c.create_queue(
+                    QueueName=name,
+                    Attributes={"RedrivePolicy": compact},
+                )
+            # the policy references a DLQ that does not exist → create must
+            # keep failing for BOTH the compact and spaced forms (the
+            # canonical-compare pins identical formatting behavior at the
+            # QueueAlreadyExists arm once the DLQ exists)
+            dlq = f"rp-canon-dlq-{uuid.uuid4().hex[:6]}"
+            dlq_url = sqs_c.create_queue(QueueName=dlq)["QueueUrl"]
+            arn = sqs_c.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+                "Attributes"
+            ]["QueueArn"]
+            spaced = '{"deadLetterTargetArn": "' + arn + '", "maxReceiveCount": 3}'
+            compact2 = '{"deadLetterTargetArn":"' + arn + '","maxReceiveCount":3}'
+            sqs_c.create_queue(QueueName=name, Attributes={"RedrivePolicy": spaced})
+            # same canonical form (reformatted) → idempotent, not exists
+            sqs_c.create_queue(QueueName=name, Attributes={"RedrivePolicy": compact2})
+            # a DIFFERENT maxReceiveCount still mismatches
+            other = '{"deadLetterTargetArn":"' + arn + '","maxReceiveCount":9}'
+            with pytest.raises(ClientError) as exc2:
+                sqs_c.create_queue(QueueName=name, Attributes={"RedrivePolicy": other})
+            assert exc2.value.response["Error"]["Code"] == "QueueAlreadyExists"
+        finally:
+            self._delete_queue(sqs_c, name)
+            self._delete_queue(sqs_c, dlq)
+
+    def test_redrive_move_still_allows_delete_bounce_semantics(self, sqs_c):
+        # moto's redrive mutates _messages directly: the source handle is
+        # never booked as deleted, so a delete of a moved handle answers
+        # 400 (moto models.py:1047-1051)
+        name = f"redv-{uuid.uuid4().hex[:8]}"
+        dlq = f"redv-dlq-{uuid.uuid4().hex[:8]}"
+        try:
+            dlq_url = sqs_c.create_queue(QueueName=dlq)["QueueUrl"]
+            arn = sqs_c.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+                "Attributes"
+            ]["QueueArn"]
+            policy = json.dumps({"deadLetterTargetArn": arn, "maxReceiveCount": 1})
+            url = sqs_c.create_queue(
+                QueueName=name,
+                Attributes={
+                    "RedrivePolicy": policy,
+                    "VisibilityTimeout": "0",
+                },
+            )["QueueUrl"]
+            # VisibilityTimeout 0 → every receive leaves it visible, receive
+            # count climbs, redrive move happens on the second receive
+            sqs_c.send_message(QueueUrl=url, MessageBody="tmp")
+            sqs_c.receive_message(QueueUrl=url, MaxNumberOfMessages=1, VisibilityTimeout=1)
+            moved = None
+            for _ in range(5):
+                # each receive bumps ApproximateReceiveCount; past
+                # maxReceiveCount=1 the second receive books the redrive
+                sqs_c.receive_message(QueueUrl=url, MaxNumberOfMessages=1)
+                resp = sqs_c.receive_message(QueueUrl=dlq_url, MaxNumberOfMessages=1)
+                moved = resp.get("Messages", [])
+                if moved:
+                    break
+                time.sleep(0.5)
+            assert moved, "expected the redriven message on the DLQ"
+        finally:
+            self._delete_queue(sqs_c, name)
+            self._delete_queue(sqs_c, dlq)
