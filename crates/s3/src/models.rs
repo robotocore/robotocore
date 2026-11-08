@@ -170,6 +170,13 @@ pub struct Bucket {
     pub directory: bool,
     #[serde(with = "crate::snapshot::rw")]
     pub versioning: RwLock<Option<bool>>,
+    /// moto stores PutBucketVersioning's `<Status>` verbatim (any [A-Za-z]+
+    /// matches — models.py:2062-2066) and GetBucketVersioning echoes it;
+    /// non-Enabled/Suspended strings are NOT versioned for feature
+    /// purposes but must round-trip. None when never set (and for the
+    /// feature branches the derived Option<bool> is the truth).
+    #[serde(default, with = "crate::snapshot::rw")]
+    pub versioning_status: RwLock<Option<String>>,
     #[serde(with = "crate::snapshot::rw")]
     pub policy: RwLock<Option<String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -231,6 +238,7 @@ impl Bucket {
             created: Utc::now().timestamp() as u64,
             directory: false,
             versioning: RwLock::new(None),
+            versioning_status: RwLock::new(None),
             policy: RwLock::new(None),
             tags_xml: RwLock::new(None),
             cors_xml: RwLock::new(None),

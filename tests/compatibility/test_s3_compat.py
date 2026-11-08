@@ -3214,3 +3214,142 @@ class TestS3AwsChunkedUploads:
             _put_aws_chunked(f"{bucket}/short.txt", body, "STREAMING-AWS4-HMAC-SHA256-PAYLOAD", 12)
         assert excinfo.value.code == 400
         assert b"IncompleteBody" in excinfo.value.read()
+
+
+# ---------------------------------------------------------------------------
+# Bucket-level PUT validation (finding 15) — moto s3/responses.py:1104-1148
+# (CreateBucket location-constraint + owned-recreate semantics) and
+# 1003-1011/models.py:2062-2066 (PutBucketVersioning status regex + verbatim
+# echo). Every message below was captured live from moto 5.2.5 (2026-11-08).
+# ---------------------------------------------------------------------------
+
+
+class TestCreateBucketLocationConstraint:
+    """The location-constraint gate rides on the request region."""
+
+    @pytest.fixture
+    def s3(self):
+        return boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def _region_client(self, region):
+        return boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name=region,
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_us_east_1_semantics(self, s3):
+        # no constraint → fine; an explicit us-east-1 constraint → invalid;
+        # creating OTHER regions' buckets from us-east-1 is allowed.
+        name = f"lc-nolc-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.delete_bucket(Bucket=name)
+        with pytest.raises(ClientError) as exc:
+            s3.create_bucket(
+                Bucket=f"lc-self-{uuid.uuid4().hex[:8]}",
+                CreateBucketConfiguration={"LocationConstraint": "us-east-1"},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidLocationConstraint"
+        assert exc.value.response["Error"]["Message"] == (
+            "The specified location-constraint is not valid"
+        )
+        name = f"lc-eu-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name, CreateBucketConfiguration={"LocationConstraint": "eu-west-1"})
+        s3.delete_bucket(Bucket=name)
+
+    def test_non_default_region_requires_matching_constraint(self, s3):
+        eu = self._region_client("eu-west-1")
+        with pytest.raises(ClientError) as exc:
+            eu.create_bucket(Bucket=f"lc-missing-{uuid.uuid4().hex[:8]}")
+        assert exc.value.response["Error"]["Code"] == "IllegalLocationConstraintException"
+        assert exc.value.response["Error"]["Message"] == (
+            "The unspecified location constraint is incompatible for the region "
+            "specific endpoint this request was sent to."
+        )
+        eu.create_bucket(
+            Bucket=f"lc-ok-{uuid.uuid4().hex[:8]}",
+            CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
+        )
+        with pytest.raises(ClientError) as exc:
+            eu.create_bucket(
+                Bucket=f"lc-mismatch-{uuid.uuid4().hex[:8]}",
+                CreateBucketConfiguration={"LocationConstraint": "ap-south-1"},
+            )
+        assert exc.value.response["Error"]["Code"] == "IllegalLocationConstraintException"
+        assert exc.value.response["Error"]["Message"] == (
+            "The ap-south-1 location constraint is incompatible for the region specific "
+            "endpoint this request was sent to."
+        )
+        del s3  # unused in this test body beyond the fixture
+
+    def test_owned_recreate_semantics(self, s3):
+        # us-east-1 + us-east-1 → idempotent (moto's special case)
+        name = f"dup-use1-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.create_bucket(Bucket=name)
+        s3.delete_bucket(Bucket=name)
+        # a bucket created for a NON-default region (even from us-east-1's
+        # request path) is NOT idempotent: the second create answers
+        # BucketAlreadyOwnedByYou (moto responses.py:1131-1147; the twin's
+        # per-region state hides moto's GLOBAL cross-region collision rows).
+        eu_name = f"dup-lc-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(
+            Bucket=eu_name, CreateBucketConfiguration={"LocationConstraint": "eu-west-1"}
+        )
+        with pytest.raises(ClientError) as exc:
+            s3.create_bucket(
+                Bucket=eu_name,
+                CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
+            )
+        assert exc.value.response["Error"]["Code"] == "BucketAlreadyOwnedByYou"
+        assert exc.value.response["Error"]["Message"] == (
+            "Your previous request to create the named bucket succeeded and you already own it."
+        )
+
+
+class TestPutBucketVersioningStatus:
+    """moto stores any <Status>[A-Za-z]+</Status> verbatim and echoes it."""
+
+    @pytest.fixture
+    def s3(self):
+        return boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    @pytest.fixture
+    def bucket(self, s3):
+        name = f"veri-status-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        s3.delete_bucket(Bucket=name)
+
+    def test_no_status_matches_nothing(self, s3, bucket):
+        # moto's regex misses → bare 404 (responses.py:1010-1011)
+        with pytest.raises(ClientError) as exc:
+            s3.put_bucket_versioning(
+                Bucket=bucket, VersioningConfiguration={"MFADelete": "Disabled"}
+            )
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+        assert exc.value.response["Error"]["Code"] == "404"
+
+    def test_any_alphabetic_status_stores_verbatim(self, s3, bucket):
+        for status in ["Wibble", "enabled", "Disabled", "Enabled"]:
+            s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": status})
+            resp = s3.get_bucket_versioning(Bucket=bucket)
+            assert resp["Status"] == status
+
+    def test_suspended_round_trip(self, s3, bucket):
+        s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Suspended"})
+        assert s3.get_bucket_versioning(Bucket=bucket)["Status"] == "Suspended"

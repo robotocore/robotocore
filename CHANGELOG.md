@@ -62,6 +62,21 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3 bucket-level PUT validation.** Finding 15 of the moto audit
+  (`docs/semantic-audit-2026-11-06/sqs-s3.md`): CreateBucket runs moto's
+  region gate before any bucket resolution — us-east-1 rejects its own
+  explicit LocationConstraint (InvalidLocationConstraint) and permits
+  creating other regions' buckets (bucket_region stamped from the
+  constraint); every other region requires a present-and-matching
+  constraint (IllegalLocationConstraintException, moto's two sentences);
+  owned recreation is idempotent only for the us-east-1 pair and
+  otherwise answers BucketAlreadyOwnedByYou 409 (the twin's per-region
+  state cannot see moto's global cross-region collision rows — recorded
+  twin-preferred architecture gap). PutBucketVersioning mirrors the
+  `<Status>[A-Za-z]+</Status>` regex: no match → moto's bare 404; any
+  matched charset (junk casing included) stores verbatim and
+  GetBucketVersioning echoes it exactly, with the derived unversioned
+  feature flag for non-Enabled/Suspended strings.
 - **IAM policy-document validation.** Finding 16 of the moto audit
   (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): a port of moto's
   IAMPolicyDocumentValidator (crates/iam/src/policy_validation.rs) runs on
