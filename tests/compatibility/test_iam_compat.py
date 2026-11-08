@@ -5944,10 +5944,10 @@ class TestIamGroupWordingReview:
     def test_add_user_user_first(self, iam_c):
         # a bogus USER beats a bogus GROUP (moto resolves the user first)
         with pytest.raises(ClientError) as exc:
-            iam_c.add_user_to_group(
-                GroupName="ghost-wording-g", UserName="ghost-wording-u")
+            iam_c.add_user_to_group(GroupName="ghost-wording-g", UserName="ghost-wording-u")
         assert exc.value.response["Error"]["Message"] == (
-            "The user with name ghost-wording-u cannot be found.")
+            "The user with name ghost-wording-u cannot be found."
+        )
 
     def test_delete_group_policy_short_sentence(self, iam_c):
         name = f"grp-wording-{uuid.uuid4().hex[:8]}"
