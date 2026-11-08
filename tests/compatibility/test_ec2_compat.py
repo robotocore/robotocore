@@ -12006,9 +12006,7 @@ class TestModifyKeepsAllProtocolPortsDossier:
         import uuid
 
         name = f"bothpaths-{uuid.uuid4().hex[:8]}"
-        gid = ec2.create_security_group(GroupName=name, Description="dossier")[
-            "GroupId"
-        ]
+        gid = ec2.create_security_group(GroupName=name, Description="dossier")["GroupId"]
         try:
             # the CREATE path on moto: ports dropped for the all protocol
             ec2.authorize_security_group_egress(
