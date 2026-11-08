@@ -2704,14 +2704,11 @@ impl LambdaHandler {
                 200,
                 json!({"CodeSigningConfigArn": arn, "FunctionName": func.function_name}),
             ),
-            None => AwsResponse::error(
-                404,
-                "ResourceNotFoundException",
-                &format!(
-                    "Code signing configuration not found for function: {}",
-                    func.function_arn
-                ),
-            ),
+            // moto answers 200 with ONLY {FunctionName} when the function
+            // has no code-signing config at all (no CodeSigningConfigArn
+            // member — live-probed) — the twin's ResourceNotFoundException
+            // aborted the rest_api drift apply (lambda describe).
+            None => AwsResponse::json(200, json!({"FunctionName": func.function_name})),
         }
     }
 
