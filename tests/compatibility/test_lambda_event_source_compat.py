@@ -304,9 +304,7 @@ class TestEventSourceMappingTags:
                 ],
             }
         )
-        created = iam.create_role(
-            RoleName=name, AssumeRolePolicyDocument=trust
-        )["Role"]
+        created = iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)["Role"]
         yield created["Arn"]
         try:
             iam.delete_role(RoleName=name)
@@ -320,9 +318,9 @@ class TestEventSourceMappingTags:
         queue_name = f"tag-esm-queue-{suffix}"
         func_name = f"tag-esm-func-{suffix}"
         q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
-        queue_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
         code = _make_zip("def handler(e, c): pass")
         lam.create_function(
             FunctionName=func_name,
@@ -357,7 +355,10 @@ class TestEventSourceMappingTags:
             lam.list_tags(Resource=unknown)
         body = getattr(err.value, "response", {}).get("Error", {})
         assert body.get("Code") == "ResourceNotFoundException"
-        assert "deadbeef" in body.get("Message", "")
+        # moto's exact message (models.py:2455 RESTError) — a bare
+        # "deadbeef"-in-message would also pass the pre-fix "Function
+        # not found: …" which pins nothing.
+        assert body.get("Message", "") == "Event source mapping deadbeef not found."
 
     def test_tag_untag_round_trip(self, lam, mapping):
         arn = mapping["EventSourceMappingArn"]

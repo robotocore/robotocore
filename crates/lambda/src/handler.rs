@@ -2007,10 +2007,15 @@ impl LambdaHandler {
         state: &LambdaState,
         arn: &str,
     ) -> Result<Option<Arc<crate::models::EventSourceMapping>>, AwsResponse> {
-        if !arn.contains(":event-source-mapping:") {
+        // moto keys the family off the ARN's second-to-last member; the
+        // twin's substring check answers the same for every constructible
+        // ARN (uuid tails only), but the segment check keeps the parity
+        // exact for multi-segment tails too.
+        let segments: Vec<&str> = arn.split(':').collect();
+        if segments.len() < 2 || segments[segments.len() - 2] != "event-source-mapping" {
             return Ok(None);
         }
-        let uuid = arn.rsplit(':').next().unwrap_or_default();
+        let uuid = segments[segments.len() - 1];
         state
             .event_source_mappings
             .read()
