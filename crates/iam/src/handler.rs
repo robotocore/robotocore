@@ -2513,13 +2513,12 @@ impl IamHandler {
             );
         }
         if state.login_profiles.read().contains_key(&username) {
+            // moto models.py (create_login_profile duplicate arm):
+            // EntityAlreadyExists "User {n} already has password".
             return err(
                 409,
                 "EntityAlreadyExists",
-                &format!(
-                    "The Login Profile with domain User Name {} already exists for this account",
-                    username
-                ),
+                &format!("User {username} already has password"),
             );
         }
         let profile = LoginProfile {

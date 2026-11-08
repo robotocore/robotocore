@@ -387,7 +387,10 @@ IAM
     live-probed); login profiles resolve the USER FIRST on
     get/delete/update/create (create already did — all four arms
     live-probed), keeping "Login profile for {n} not found" as
-    moto's only-when-the-user-exists profile arm. update_server_
+    moto's only-when-the-user-exists profile arm; and the DUPLICATE
+    create answers moto's exact EntityAlreadyExists "User {n} already
+    has password" (409) where the twin carried its own long sentence
+    (live-probed; review caught the unrecorded oracle). update_server_
     certificate/tag_server_certificate have no moto oracle (moto does
     not implement them — 501), recorded as-is.
     (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.
