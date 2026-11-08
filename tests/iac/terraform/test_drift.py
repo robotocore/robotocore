@@ -75,6 +75,14 @@ provider "aws" {
     acm            = "{endpoint}"
     apigateway     = "{endpoint}"
     cloudformation = "{endpoint}"
+    # Without these two the provider constructs the REAL global endpoints
+    # (cognito-idp.us-east-1..., kinesis.us-east-1...) and the fake creds
+    # get real AWS's UnrecognizedClientException — the drift ledger's
+    # 2026-11-06 "twin rejects cognito/kinesis" row was this, not a twin
+    # bug (TF_LOG=DEBUG wire capture, 2026-11-08). Provider 5.100's
+    # endpoint key is `cognitoidp` (no underscore); `kinesis` is plain.
+    cognitoidp     = "{endpoint}"
+    kinesis        = "{endpoint}"
   }
 }
 """

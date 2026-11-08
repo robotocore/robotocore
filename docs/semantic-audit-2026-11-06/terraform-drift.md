@@ -152,6 +152,16 @@ Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
    only; an unknown filter KeyErrors); the wave-2 draft briefly added
    one and the review caught it — dropped. Pin:
    TestSecurityGroupRowGroupingAndSgrView second test.
-- Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
-  same Go-SDK signing-region session).
+- **Kinesis/Cognito `UnrecognizedClientException` — RESOLVED
+  (2026-11-08, TF_LOG=DEBUG wire capture): NOT a twin bug.** The drift
+  harness's provider override lacked `cognitoidp` and `kinesis`
+  endpoints (provider 5.100's key is `cognitoidp`, no underscore), so
+  those requests hit the REAL global endpoints and the fake creds got
+  real AWS's UnrecognizedClientException. With the endpoints added,
+  auth_stack applies and plans clean end-to-end.
+- **Cognito user-pool describe rendered no DeletionProtection** — the
+  auth_stack plan then added `deletion_protection = "INACTIVE"`
+  forever. real AWS always renders the member; moto omits it (known
+  diff). The twin now renders the INACTIVE default; pin
+  TestDeletionProtectionRender.
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.
