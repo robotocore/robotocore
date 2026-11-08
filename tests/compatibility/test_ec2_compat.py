@@ -12105,3 +12105,69 @@ class TestSecurityGroupRowGroupingAndSgrView:
             assert rows[0]["FromPort"] == -1 and rows[0]["ToPort"] == -1
         finally:
             ec2.delete_security_group(GroupId=gid)
+
+
+class TestModifyPathPortPersistsInSgrView:
+    """moto's sgr render normalizes PORT-LESS rules to -1/-1 but keeps
+    STORED ports verbatim (modify an all-protocol rule with real ports
+    and the sgr view renders them) — the wave-2 draft's protocol-branch
+    over-folded this row."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_ports_persist_in_sgr_view(self, ec2):
+        import uuid
+
+        name = f"persv-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="persist")["GroupId"]
+        try:
+            rules = ec2.describe_security_group_rules(
+                Filters=[{"Name": "group-id", "Values": [gid]}]
+            )["SecurityGroupRules"]
+            egress_seed = [r for r in rules if r["IsEgress"]]
+            rule_id = egress_seed[0]["SecurityGroupRuleId"]
+            ec2.modify_security_group_rules(
+                GroupId=gid,
+                SecurityGroupRules=[
+                    {
+                        "SecurityGroupRuleId": rule_id,
+                        "SecurityGroupRule": {
+                            "IpProtocol": "-1",
+                            "FromPort": 8080,
+                            "ToPort": 8081,
+                            "CidrIpv4": "0.0.0.0/0",
+                        },
+                    }
+                ],
+            )
+            view = ec2.describe_security_group_rules(
+                Filters=[
+                    {"Name": "security-group-rule-id", "Values": [rule_id]},
+                ]
+            )["SecurityGroupRules"]
+            assert view[0]["FromPort"] == 8080 and view[0]["ToPort"] == 8081
+            # follow-up: re-modify back to -1/-1 ports → still stored
+            ec2.modify_security_group_rules(
+                GroupId=gid,
+                SecurityGroupRules=[
+                    {
+                        "SecurityGroupRuleId": rule_id,
+                        "SecurityGroupRule": {
+                            "IpProtocol": "-1",
+                            "FromPort": -1,
+                            "ToPort": -1,
+                            "CidrIpv4": "0.0.0.0/0",
+                        },
+                    }
+                ],
+            )
+            view = ec2.describe_security_group_rules(
+                Filters=[
+                    {"Name": "security-group-rule-id", "Values": [rule_id]},
+                ]
+            )["SecurityGroupRules"]
+            assert view[0]["FromPort"] == -1 and view[0]["ToPort"] == -1
+        finally:
+            ec2.delete_security_group(GroupId=gid)

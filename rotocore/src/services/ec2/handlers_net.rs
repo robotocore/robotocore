@@ -980,19 +980,14 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(&perm.protocol),
                             xml_escape(cidr)
                         );
-                        // moto canonicalizes the "all" protocol to
-                        // -1/-1 in the SecurityGroupRules view even when
-                        // the record is port-less (the seeded default
-                        // row renders -1/-1, live-probed).
-                        let ports = if perm.protocol == "-1" {
-                            Some((-1i64, -1i64))
-                        } else {
-                            perm.from_port.zip(perm.to_port)
-                        };
-                        if let Some((f, t)) = ports {
-                            let _ =
-                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
-                        }
+                        // moto's sgr normalization is "port-less → -1"
+                        // (its describe_security_group_rules renders
+                        // from_port.unwrap_or(-1)): the seeded default
+                        // shows -1/-1 while a rule that STORED ports (the
+                        // modify path keeps -1/-1 as real ports) still
+                        // renders them (live-probed).
+                        let (f, t) = (perm.from_port.unwrap_or(-1), perm.to_port.unwrap_or(-1));
+                        let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         if !descr.is_empty() {
                             let _ =
                                 write!(body, "<description>{}</description>", xml_escape(descr));
@@ -1010,19 +1005,14 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(g),
                             xml_escape(owner)
                         );
-                        // moto canonicalizes the "all" protocol to
-                        // -1/-1 in the SecurityGroupRules view even when
-                        // the record is port-less (the seeded default
-                        // row renders -1/-1, live-probed).
-                        let ports = if perm.protocol == "-1" {
-                            Some((-1i64, -1i64))
-                        } else {
-                            perm.from_port.zip(perm.to_port)
-                        };
-                        if let Some((f, t)) = ports {
-                            let _ =
-                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
-                        }
+                        // moto's sgr normalization is "port-less → -1"
+                        // (its describe_security_group_rules renders
+                        // from_port.unwrap_or(-1)): the seeded default
+                        // shows -1/-1 while a rule that STORED ports (the
+                        // modify path keeps -1/-1 as real ports) still
+                        // renders them (live-probed).
+                        let (f, t) = (perm.from_port.unwrap_or(-1), perm.to_port.unwrap_or(-1));
+                        let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         body.push_str("</item>");
                     }
                 }
