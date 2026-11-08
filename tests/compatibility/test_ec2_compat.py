@@ -11677,9 +11677,7 @@ class TestSecurityGroupDefaultEgressShape:
         name = f"egress-shape-{uuid.uuid4().hex[:8]}"
         created = ec2.create_security_group(GroupName=name, Description="shape pin")
         try:
-            sgd = ec2.describe_security_groups(GroupIds=[created["GroupId"]])[
-                "SecurityGroups"
-            ][0]
+            sgd = ec2.describe_security_groups(GroupIds=[created["GroupId"]])["SecurityGroups"][0]
             assert sgd["IpPermissionsEgress"] == [
                 {
                     "IpProtocol": "-1",
@@ -11692,23 +11690,25 @@ class TestSecurityGroupDefaultEgressShape:
             # the provider-style revoke matches the full shape
             ec2.revoke_security_group_egress(
                 GroupId=created["GroupId"],
-                IpPermissions=[{
-                    "IpProtocol": "-1",
-                    "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
-                }],
+                IpPermissions=[
+                    {
+                        "IpProtocol": "-1",
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
             )
-            after = ec2.describe_security_groups(GroupIds=[created["GroupId"]])[
-                "SecurityGroups"
-            ][0]
+            after = ec2.describe_security_groups(GroupIds=[created["GroupId"]])["SecurityGroups"][0]
             assert after["IpPermissionsEgress"] == []
             # and a second revoke answers real AWS's not-found code
             with pytest.raises(botocore.exceptions.ClientError) as exc:
                 ec2.revoke_security_group_egress(
                     GroupId=created["GroupId"],
-                    IpPermissions=[{
-                        "IpProtocol": "-1",
-                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
-                    }],
+                    IpPermissions=[
+                        {
+                            "IpProtocol": "-1",
+                            "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                        }
+                    ],
                 )
             assert exc.value.response["Error"]["Code"] == "InvalidPermission.NotFound"
         finally:
