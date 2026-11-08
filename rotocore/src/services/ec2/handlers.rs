@@ -643,7 +643,10 @@ fn create_vpc(req: &Request, params: &P) -> Response {
             is_default: false,
             dhcp_options_id: "default".into(),
             cidr_assoc_id: assoc,
-            enable_dns_support: false,
+            // real AWS (and moto) default newer created VPCs to
+            // enableDnsSupport=true (terraform's refresh then flips it,
+            // producing drift on every plan after apply).
+            enable_dns_support: true,
             enable_dns_hostnames: false,
             ..Default::default()
         });
@@ -658,8 +661,12 @@ fn create_vpc(req: &Request, params: &P) -> Response {
             ..Default::default()
         };
         state.security_groups.push(sg);
-        // And a main route table.
+        // And a main route table. moto pairs a MAIN association with it
+        // (association.main=true, no subnet) — the provider's
+        // association waiter filters on association.main + vpc-id, so
+        // the row must exist (moto's main_route_table_association).
         let rt_id = state.next_id("rtb");
+        let main_assoc = state.next_id("rtbassoc");
         state.route_tables.push(RouteTable {
             id: rt_id,
             vpc_id: vpc_id.clone(),
@@ -670,6 +677,7 @@ fn create_vpc(req: &Request, params: &P) -> Response {
                 state: "active".into(),
                 origin: "CreateRouteTable".into(),
             }],
+            associations: vec![(main_assoc, None, true)],
             ..Default::default()
         });
         // moto pairs a default network ACL with each new VPC.

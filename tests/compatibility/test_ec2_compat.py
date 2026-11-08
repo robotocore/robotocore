@@ -11713,3 +11713,180 @@ class TestSecurityGroupDefaultEgressShape:
             assert exc.value.response["Error"]["Code"] == "InvalidPermission.NotFound"
         finally:
             ec2.delete_security_group(GroupId=created["GroupId"])
+
+
+class TestRouteTableAssociationShape:
+    """The terraform provider's route-table-association waiter needs
+    RouteTableId + AssociationState.State on every association row
+    (moto renders both; a bare association member hung the drift
+    apply loop forever)."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_association_row_carries_rtid_and_state(self, ec2):
+        import uuid
+
+        cidr = f"10.{uuid.uuid4().node % 250 + 2}.0.0/16"
+        vpc = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc, CidrBlock=cidr.replace(".0.0/16", ".1.0/24"))[
+            "Subnet"
+        ]["SubnetId"]
+        rt = ec2.create_route_table(VpcId=vpc)["RouteTable"]["RouteTableId"]
+        try:
+            assoc = ec2.associate_route_table(RouteTableId=rt, SubnetId=subnet)
+            aid = assoc["AssociationId"]
+            rts = ec2.describe_route_tables(RouteTableIds=[rt])["RouteTables"][0]
+            rows = [a for a in rts["Associations"] if a["RouteTableAssociationId"] == aid]
+            assert len(rows) == 1
+            row = rows[0]
+            assert row["RouteTableId"] == rt
+            assert row["SubnetId"] == subnet
+            assert row["Main"] is False
+            assert row["AssociationState"] == {"State": "associated"}
+        finally:
+            ec2.disassociate_route_table(AssociationId=aid)
+            ec2.delete_route_table(RouteTableId=rt)
+            ec2.delete_subnet(SubnetId=subnet)
+            ec2.delete_vpc(VpcId=vpc)
+
+    def test_disassociate_removes_the_row(self, ec2):
+        cidr = "10.90.0.0/16"
+        vpc = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc, CidrBlock="10.90.1.0/24")["Subnet"]["SubnetId"]
+        rt = ec2.create_route_table(VpcId=vpc)["RouteTable"]["RouteTableId"]
+        try:
+            aid = ec2.associate_route_table(RouteTableId=rt, SubnetId=subnet)["AssociationId"]
+            ec2.disassociate_route_table(AssociationId=aid)
+            rts = ec2.describe_route_tables(RouteTableIds=[rt])["RouteTables"][0]
+            assert all(a.get("RouteTableAssociationId") != aid for a in rts["Associations"])
+        finally:
+            ec2.delete_route_table(RouteTableId=rt)
+            ec2.delete_subnet(SubnetId=subnet)
+            ec2.delete_vpc(VpcId=vpc)
+
+
+class TestSecurityGroupAllProtocolRevoke:
+    """moto normalizes the 'all' (-1) protocol to a port-less rule
+    (security_groups.py:60-66) — a revoke carrying FromPort/ToPort -1
+    must key-match the seeded default rule (the terraform provider's
+    revoke does exactly that)."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_revoke_with_explicit_ports_matches_seed(self, ec2):
+        import uuid
+
+        name = f"eg-portnorm-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="port norm")["GroupId"]
+        try:
+            ec2.revoke_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": -1,
+                        "ToPort": -1,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
+            )
+            sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
+            assert sgd["IpPermissionsEgress"] == []
+            # a tcp rule still round-trips authorize/revoke port-exact
+            ec2.authorize_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
+            )
+            ec2.revoke_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
+            )
+            sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
+            assert sgd["IpPermissionsEgress"] == []
+        finally:
+            ec2.delete_security_group(GroupId=gid)
+
+
+class TestVpcDefaultsMirrorRealAws:
+    """The terraform drift work calls out the create-path defaults that
+    must mirror real AWS: enableDnsSupport=true on a new VPC (moto's
+    create DOES default it true), and TagSpecifications consumed at
+    create time for igw/route-table/security-group flows."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_new_vpc_dns_support_true(self, ec2):
+
+        cidr = "10.96.0.0/16"
+        vpc_id = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        try:
+            support = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsSupport")
+            assert support["EnableDnsSupport"]["Value"] is True
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_create_with_tag_specifications_round_trip(self, ec2):
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        ig = ec2.create_internet_gateway(
+            TagSpecifications=[
+                {
+                    "ResourceType": "internet-gateway",
+                    "Tags": [{"Key": "Name", "Value": f"ts-ig-{suffix}"}],
+                }
+            ]
+        )["InternetGateway"]
+        try:
+            got = ec2.describe_internet_gateways(InternetGatewayIds=[ig["InternetGatewayId"]])[
+                "InternetGateways"
+            ][0]
+            assert got["Tags"] == [{"Key": "Name", "Value": f"ts-ig-{suffix}"}]
+            vpc_id = ec2.create_vpc(CidrBlock="10.97.0.0/16")["Vpc"]["VpcId"]
+            rt = ec2.create_route_table(
+                VpcId=vpc_id,
+                TagSpecifications=[
+                    {
+                        "ResourceType": "route-table",
+                        "Tags": [{"Key": "Name", "Value": f"rt-{suffix}"}],
+                    }
+                ],
+            )["RouteTable"]
+            got = ec2.describe_route_tables(RouteTableIds=[rt["RouteTableId"]])["RouteTables"][0]
+            assert got["Tags"] == [{"Key": "Name", "Value": f"rt-{suffix}"}]
+            sg = ec2.create_security_group(
+                GroupName=f"ts-sg-{suffix}",
+                Description="tag spec round trip",
+                TagSpecifications=[
+                    {
+                        "ResourceType": "security-group",
+                        "Tags": [{"Key": "Name", "Value": f"sg-{suffix}"}],
+                    }
+                ],
+            )
+            got = ec2.describe_security_groups(GroupIds=[sg["GroupId"]])["SecurityGroups"][0]
+            assert got["Tags"] == [{"Key": "Name", "Value": f"sg-{suffix}"}]
+        finally:
+            ec2.delete_route_table(RouteTableId=rt["RouteTableId"])
+            ec2.delete_vpc(VpcId=vpc_id)
+            ec2.delete_internet_gateway(InternetGatewayId=ig["InternetGatewayId"])

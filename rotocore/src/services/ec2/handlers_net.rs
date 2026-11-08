@@ -341,7 +341,12 @@ fn create_security_group(req: &Request, params: &P) -> Response {
             ip_ranges: vec![("0.0.0.0/0".to_string(), String::new())],
             ..Default::default()
         }];
-        let tags = super::handlers::wire_tags(params);
+        let mut tags = super::handlers::wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(tk, _)| tk == &k) {
+                tags.push((k, v));
+            }
+        }
         if !tags.is_empty() {
             sg.tags = tags.clone();
         }
@@ -450,17 +455,29 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
     let mut out = Vec::new();
     for i in params.container_indices("IpPermissions") {
         let base = format!("IpPermissions.{}", i + 1);
+        let protocol = params
+            .sub("IpPermissions", i, "IpProtocol")
+            .unwrap_or("-1")
+            .to_string();
+        // moto's SecurityGroupRule (security_groups.py:60-66) drops the
+        // ports for the "all" protocol — a revoke carrying FromPort/ToPort
+        // -1 must still key-match the seeded port-less default rule.
+        let (from_port, to_port) = if protocol == "-1" {
+            (None, None)
+        } else {
+            (
+                params
+                    .sub("IpPermissions", i, "FromPort")
+                    .and_then(|v| v.parse::<i64>().ok()),
+                params
+                    .sub("IpPermissions", i, "ToPort")
+                    .and_then(|v| v.parse::<i64>().ok()),
+            )
+        };
         let mut perm = IpPermission {
-            protocol: params
-                .sub("IpPermissions", i, "IpProtocol")
-                .unwrap_or("-1")
-                .to_string(),
-            from_port: params
-                .sub("IpPermissions", i, "FromPort")
-                .and_then(|v| v.parse::<i64>().ok()),
-            to_port: params
-                .sub("IpPermissions", i, "ToPort")
-                .and_then(|v| v.parse::<i64>().ok()),
+            protocol,
+            from_port,
+            to_port,
             ..Default::default()
         };
         let ranges = params.container_indices(&format!("{base}.IpRanges"));
@@ -1017,10 +1034,11 @@ pub fn igw_item(igw: &super::state::InternetGateway) -> String {
         );
     }
     format!(
-        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet>{}<tagSet/></item>",
+        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet>{}{}</item>",
         xml_escape(&igw.id),
         attachments,
-        ""
+        "",
+        tags_xml(&igw.tags)
     )
 }
 
@@ -1047,7 +1065,12 @@ pub fn igw_item_full(igw: &super::state::InternetGateway) -> String {
 fn create_internet_gateway(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let igw_id = state.next_id("igw");
-        let tags = wire_tags(params);
+        let mut tags = wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(tk, _)| tk == &k) {
+                tags.push((k, v));
+            }
+        }
         let mut igw = super::state::InternetGateway {
             id: igw_id.clone(),
             ..Default::default()
@@ -1601,15 +1624,20 @@ pub fn route_table_item(state: &Ec2State, account: u64, rt: &RouteTable) -> Stri
     }
     let mut associations = String::new();
     for (assoc_id, subnet_id, main) in &rt.associations {
+        // moto (and real AWS) render RouteTableId + AssociationState on
+        // every association row; the terraform provider's waiter needs
+        // AssociationState.State (route-table_association create polls
+        // it) — the twin's bare members hung the apply loop forever.
         let _ = write!(
             associations,
-            "<item><routeTableAssociationId>{}</routeTableAssociationId>{}<main>{}</main></item>",
+            "<item><routeTableAssociationId>{}</routeTableAssociationId>{}<main>{}</main><routeTableId>{}</routeTableId><associationState><state>associated</state></associationState></item>",
             xml_escape(assoc_id),
             match subnet_id {
                 Some(v) => format!("<subnetId>{}</subnetId>", xml_escape(v)),
                 None => String::new(),
             },
-            main
+            main,
+            xml_escape(&rt.id)
         );
     }
     let mut propagations = String::new();
@@ -1621,13 +1649,13 @@ pub fn route_table_item(state: &Ec2State, account: u64, rt: &RouteTable) -> Stri
         );
     }
     format!(
-        "<item><ownerId>{}</ownerId><associationSet>{}</associationSet><propagatingVgwSet>{}</propagatingVgwSet><routeTableId>{}</routeTableId><routeSet>{}</routeSet>{}<tagSet/><vpcId>{}</vpcId></item>",
+        "<item><ownerId>{}</ownerId><associationSet>{}</associationSet><propagatingVgwSet>{}</propagatingVgwSet><routeTableId>{}</routeTableId><routeSet>{}</routeSet>{}<vpcId>{}</vpcId></item>",
         account,
         associations,
         propagations,
         xml_escape(&rt.id),
         routes,
-        "",
+        tags_xml(&rt.tags),
         xml_escape(&rt.vpc_id)
     )
 }
@@ -1650,7 +1678,12 @@ fn create_route_table(req: &Request, params: &P) -> Response {
             .find(|v| v.id == vpc_id)
             .map(|v| v.cidr.clone())
             .unwrap_or_default();
-        let tags = wire_tags(params);
+        let mut tags = wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(tk, _)| tk == &k) {
+                tags.push((k, v));
+            }
+        }
         let mut rt = RouteTable {
             id: rt_id.clone(),
             vpc_id: vpc_id.clone(),
@@ -1736,6 +1769,22 @@ fn describe_route_tables(req: &Request, params: &P) -> Response {
                 } else {
                     "false".to_string()
                 }],
+                // The provider's association waiter polls specifically
+                // with association.route-table-association-id — the ids
+                // must be filter-candidates like moto's
+                // (DescribeRouteTables actions support all four
+                // association.* names).
+                "association.route-table-association-id" => {
+                    rt2.associations.iter().map(|(a, _, _)| a.clone()).collect()
+                }
+                "association.subnet-id" => rt2
+                    .associations
+                    .iter()
+                    .filter_map(|(_, s, _)| s.clone())
+                    .collect(),
+                "association.route-table-id" => {
+                    rt2.associations.iter().map(|_| rt2.id.clone()).collect()
+                }
                 other => tag_candidates(&rt2.tags, other),
             }) {
                 continue;
