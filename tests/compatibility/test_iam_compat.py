@@ -6765,5 +6765,12 @@ class TestIamWording23Remainder:
                 assert exc.value.response["Error"]["Message"] == (
                     f"Login profile for {name} not found"
                 ), label
+            # The duplicate create answers moto's EntityAlreadyExists
+            # "User {n} already has password" (409, review round 2).
+            iam_c.create_login_profile(UserName=name, Password="x123456789!")
+            with pytest.raises(ClientError) as exc:
+                iam_c.create_login_profile(UserName=name, Password="x123456789!")
+            assert exc.value.response["Error"]["Code"] == "EntityAlreadyExists"
+            assert exc.value.response["Error"]["Message"] == f"User {name} already has password"
         finally:
             iam_c.delete_user(UserName=name)
