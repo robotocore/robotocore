@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-08T01:55:29.995955+00:00",
+  "generated_at": "2026-11-08T02:14:04.335916+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "29bfef6d0b148aeff2cc559eba93ce69122af4e772219b9643a8fbd7f6ea61f1"
+    "crates/iam/src/": "a04847cb102356ce6e61c03f50a5f185a6275844acb65c20d356e33aebedb186"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -98,12 +98,12 @@
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (MalformedPolicyDocument)"
     },
     {
       "operation": "CreatePolicyVersion",
       "status": "working",
-      "message": "implemented (NoSuchEntity)"
+      "message": "implemented (MalformedPolicyDocument)"
     },
     {
       "operation": "CreateRole",
@@ -708,7 +708,7 @@
     {
       "operation": "SetDefaultPolicyVersion",
       "status": "working",
-      "message": "implemented (NoSuchEntity)"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "SetSecurityTokenServicePreferences",

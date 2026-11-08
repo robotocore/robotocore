@@ -815,6 +815,12 @@ impl IamHandler {
                 &format!("The user with name {username} cannot be found."),
             );
         };
+        // moto validates after the user resolution and BEFORE the store
+        // (models.py:2849-2851 → user.put_policy) — no state changes on a
+        // MalformedPolicyDocument.
+        if let Err(msg) = crate::policy_validation::validate_document(&doc, false) {
+            return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+        }
         let mut policies = user.policies.write();
         if !policies.contains(&policy_name) {
             policies.push(policy_name.clone());
@@ -1135,13 +1141,20 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_role(&role_name) {
             Some(role) => {
+                // moto runs the trust-flavor validator after the role
+                // resolution (models.py:2222-2225).
+                if let Err(msg) = crate::policy_validation::validate_document(&policy, true) {
+                    return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+                }
                 *role.assume_role_policy.write() = policy;
                 AwsResponse::xml(200, "UpdateAssumeRolePolicy", String::new())
             }
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name),
+                // moto routes through get_role (models.py:2220 →
+                // "Role {name} not found", 2187-2191).
+                &format!("Role {role_name} not found"),
             ),
         }
     }
@@ -1243,13 +1256,15 @@ impl IamHandler {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let doc = get_param(req, "PolicyDocument").unwrap_or_default();
         let state = self.get_state(req.account);
-        // moto resolves the role first (models.py:2226-2234 → get_role
-        // "Role {name} not found"). moto then validates the policy
-        // document (IAMPolicyDocumentValidator) — the twin defers that
-        // (the document-parse validation class is ledgered).
+        // moto resolves the role first, then validates
+        // (models.py:2226-2234 → get_role "Role {name} not found", 2231).
         let Some(role) = state.get_role(&role_name) else {
             return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
         };
+        // moto then runs the IAMPolicyDocumentValidator (models.py:2231).
+        if let Err(msg) = crate::policy_validation::validate_document(&doc, false) {
+            return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+        }
         let mut policies = role.inline_policies.write();
         if !policies.contains(&policy_name) {
             policies.push(policy_name.clone());
@@ -1707,6 +1722,11 @@ impl IamHandler {
                 &format!("Group {group_name} not found"),
             );
         };
+        // moto runs the IAMPolicyDocumentValidator after get_group
+        // (models.py:2600-2602).
+        if let Err(msg) = crate::policy_validation::validate_document(&doc, false) {
+            return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+        }
         let mut policies = group.inline_policies.write();
         if !policies.contains(&policy_name) {
             policies.push(policy_name.clone());
@@ -1824,6 +1844,11 @@ impl IamHandler {
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let description = get_param(req, "Description").unwrap_or_default();
         let document = get_param(req, "PolicyDocument").unwrap_or_default();
+        // moto validates the document BEFORE the duplicate-name check
+        // (models.py:2031-2033 precede the EntityAlreadyExists arm).
+        if let Err(msg) = crate::policy_validation::validate_document(&document, false) {
+            return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+        }
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
         let arn = IamState::policy_arn(req.account, &path, &policy_name);
@@ -1955,6 +1980,14 @@ impl IamHandler {
             .map(|v| v == "true" || v == "True")
             .unwrap_or(false);
         let state = self.get_state(req.account);
+        // moto validates the document FIRST, before any policy lookup
+        // (models.py:2382-2384 precede get_policy at 2385-2387) — a ghost
+        // arn with a malformed document surfaces the validator, not
+        // NoSuchEntity.
+        let document = get_param(req, "PolicyDocument").unwrap_or_else(|| "{}".into());
+        if let Err(msg) = crate::policy_validation::validate_document(&document, false) {
+            return AwsResponse::error(400, "MalformedPolicyDocument", &msg);
+        }
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
             None => {
@@ -1991,7 +2024,6 @@ impl IamHandler {
         let version_id = format!("v{}", next_version);
         *policy.next_version_num.write() = next_version + 1;
         let now = now_iso();
-        let document = get_param(req, "PolicyDocument").unwrap_or_else(|| "{}".into());
         if set_as_default {
             for v in policy.versions.write().iter_mut() {
                 if v.get("IsDefaultVersion").and_then(|x| x.as_bool()) == Some(true) {
@@ -2091,6 +2123,21 @@ impl IamHandler {
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let version_id = get_param(req, "VersionId").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto validates the version-id shape BEFORE any policy lookup
+        // (models.py:2106-2110): re.match is start-anchored, so "v1junk"
+        // passes the gate and later falls to NoSuchEntity, while "v0"/"xv"
+        // trigger this ValidationError.
+        if !version_id_matches_regex(&version_id) {
+            return err(
+                400,
+                "ValidationError",
+                &format!(
+                    "Value '{version_id}' at 'versionId' failed to satisfy constraint: \
+                     Member must satisfy regular expression pattern: \
+                     v[1-9][0-9]*(\\.[A-Za-z0-9-]*)?"
+                ),
+            );
+        }
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
             None => {
@@ -2114,10 +2161,13 @@ impl IamHandler {
                 }
             }
             if !found {
+                // moto models.py:2119-2121.
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("Policy version {} cannot be found.", version_id),
+                    &format!(
+                        "Policy {arn} version {version_id} does not exist or is not attachable."
+                    ),
                 );
             }
         }
@@ -4898,6 +4948,28 @@ fn err(status: u16, code: &str, message: &str) -> AwsResponse {
     AwsResponse::error(status, code, message)
 }
 
+/// moto's `re.match(r"v[1-9][0-9]*(\.[A-Za-z0-9-]*)?", version_id)`
+/// (models.py:2106-2110): start-anchored with NO end anchor and an
+/// optional trailing group — any trailing junk after the v[1-9][0-9]*
+/// prefix still matches, so the gate only rejects a missing 'v', an
+/// absent non-zero digit body, or an empty id.
+fn version_id_matches_regex(id: &str) -> bool {
+    let b = id.as_bytes();
+    if b.first() != Some(&b'v') {
+        return false;
+    }
+    if b.len() < 2 || !(b[1] >= b'1' && b[1] <= b'9') {
+        return false;
+    }
+    let mut i = 2;
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    // The optional (\.[A-Za-z0-9-]*)? group cannot change MATCH EXISTENCE
+    // on an already-anchored prefix; re.match would succeed regardless.
+    true
+}
+
 fn empty_ok(op: &str) -> AwsResponse {
     AwsResponse::xml(200, op, String::new())
 }
@@ -5326,6 +5398,10 @@ mod tests {
     use bytes::Bytes;
     use serde_json::json;
 
+    // Valid policy documents for the moto-validated surfaces.
+    const VALID_DOC: &str = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":"*"}]}"#;
+    const VALID_DOC_2: &str = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ec2:*","Resource":"*"}]}"#;
+
     fn make_req(operation: &str, params: serde_json::Value) -> AwsRequest {
         AwsRequest {
             service: "iam".to_string(),
@@ -5393,7 +5469,7 @@ mod tests {
             "CreatePolicy",
             json!({
                 "PolicyName": "ver-pol",
-                "PolicyDocument": "{}"
+                "PolicyDocument": VALID_DOC
             }),
         ));
         let arn = create
@@ -5408,7 +5484,7 @@ mod tests {
         let v2 = handler.handle(make_req(
             "CreatePolicyVersion",
             json!({
-                "PolicyArn": arn, "PolicyDocument": "{\"a\":1}", "SetAsDefault": "true"
+                "PolicyArn": arn, "PolicyDocument": VALID_DOC_2, "SetAsDefault": "true"
             }),
         ));
         assert!(v2.body.contains("<VersionId>v2</VersionId>"));
@@ -5786,7 +5862,7 @@ mod tests {
             "CreatePolicy",
             json!({
                 "PolicyName": "reader",
-                "PolicyDocument": r#"{"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}"#,
+                "PolicyDocument": r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}"#,
             }),
         ));
         handler.handle(make_req(
@@ -5798,7 +5874,7 @@ mod tests {
             json!({
                 "RoleName": "worker",
                 "PolicyName": "deny-s3-objects",
-                "PolicyDocument": r#"{"Statement":[{"Effect":"Deny","Action":"s3:*utObject","Resource":"*"}]}"#,
+                "PolicyDocument": r#"{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":"s3:*utObject","Resource":"*"}]}"#,
             }),
         ));
         let resp = handler.handle(make_req(
@@ -6222,7 +6298,7 @@ mod tests {
         // policy so the first-step policy check passes).
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "led-pol-sub", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "led-pol-sub", "PolicyDocument": VALID_DOC}),
         ));
         let ent404 = handler.handle(make_req(
             "AttachUserPolicy",
@@ -6264,7 +6340,7 @@ mod tests {
         // put_role_policy on a missing role (models.py:2226-2234).
         let resp = handler.handle(make_req(
             "PutRolePolicy",
-            json!({"RoleName": "no-role", "PolicyName": "p", "PolicyDocument": "{}"}),
+            json!({"RoleName": "no-role", "PolicyName": "p", "PolicyDocument": VALID_DOC}),
         ));
         assert!(
             resp.body.contains("Role no-role not found"),
@@ -6276,13 +6352,13 @@ mod tests {
         // monotonic across deletions (models.py:2379-2401).
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "led-pol", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "led-pol", "PolicyDocument": VALID_DOC}),
         ));
         let arn = "arn:aws:iam::123456789012:policy/led-pol";
         for expect in ["v2", "v3", "v4"] {
             let resp = handler.handle(make_req(
                 "CreatePolicyVersion",
-                json!({"PolicyArn": arn, "PolicyDocument": "{}", "SetAsDefault": "true"}),
+                json!({"PolicyArn": arn, "PolicyDocument": VALID_DOC, "SetAsDefault": "true"}),
             ));
             assert_eq!(resp.status, 200, "body: {}", resp.body);
             assert!(
@@ -6299,7 +6375,7 @@ mod tests {
         ));
         let resp = handler.handle(make_req(
             "CreatePolicyVersion",
-            json!({"PolicyArn": arn, "PolicyDocument": "{}"}),
+            json!({"PolicyArn": arn, "PolicyDocument": VALID_DOC}),
         ));
         assert!(
             resp.body.contains("<VersionId>v5</VersionId>"),
@@ -6311,18 +6387,18 @@ mod tests {
         // moto's cap counts the LIVE list.)
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "led-cap", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "led-cap", "PolicyDocument": VALID_DOC}),
         ));
         let cap_arn = "arn:aws:iam::123456789012:policy/led-cap";
         for _ in 0..4 {
             handler.handle(make_req(
                 "CreatePolicyVersion",
-                json!({"PolicyArn": cap_arn, "PolicyDocument": "{}"}),
+                json!({"PolicyArn": cap_arn, "PolicyDocument": VALID_DOC}),
             ));
         }
         let resp = handler.handle(make_req(
             "CreatePolicyVersion",
-            json!({"PolicyArn": cap_arn, "PolicyDocument": "{}"}),
+            json!({"PolicyArn": cap_arn, "PolicyDocument": VALID_DOC}),
         ));
         // moto/botocore wire: LimitExceeded httpStatusCode = 409 (w8-A).
         assert_eq!(resp.status, 409, "body: {}", resp.body);
@@ -6396,12 +6472,12 @@ mod tests {
         let handler = IamHandler::new();
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "w8-delpol", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "w8-delpol", "PolicyDocument": VALID_DOC}),
         ));
         let arn = "arn:aws:iam::123456789012:policy/w8-delpol";
         handler.handle(make_req(
             "CreatePolicyVersion",
-            json!({"PolicyArn": arn, "PolicyDocument": "{}"}),
+            json!({"PolicyArn": arn, "PolicyDocument": VALID_DOC}),
         ));
 
         // Unknown version id → moto's "Policy not found" (NoSuchEntity).
@@ -6431,7 +6507,7 @@ mod tests {
         // The default version still deletes fine afterwards.
         handler.handle(make_req(
             "CreatePolicyVersion",
-            json!({"PolicyArn": arn, "PolicyDocument": "{}", "SetAsDefault": "true"}),
+            json!({"PolicyArn": arn, "PolicyDocument": VALID_DOC, "SetAsDefault": "true"}),
         ));
         let resp = handler.handle(make_req(
             "DeletePolicyVersion",
@@ -6442,11 +6518,11 @@ mod tests {
         // Exactly-full terminal page (list_policies, MaxItems=2).
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "aaa-p1", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "aaa-p1", "PolicyDocument": VALID_DOC}),
         ));
         handler.handle(make_req(
             "CreatePolicy",
-            json!({"PolicyName": "bbb-p2", "PolicyDocument": "{}"}),
+            json!({"PolicyName": "bbb-p2", "PolicyDocument": VALID_DOC}),
         ));
         let page1 = handler.handle(make_req(
             "ListPolicies",

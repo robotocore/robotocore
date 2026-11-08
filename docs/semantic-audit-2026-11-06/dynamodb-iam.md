@@ -237,6 +237,24 @@ IAM
     (d) Real AWS validates policy syntax server-side (MalformedPolicyDocument/ValidationError) — robotocore diverges from both.
     (e) A.
 
+    **FIXED (2026-11-08, verified live)**: crates/iam/src/policy_validation.rs
+    ports the validator — moto's layer order (syntax → version → legacy
+    parsing → Sid uniqueness → action existence → accumulated resource
+    errors → action prefixes → flavor extras) with moto's verbatim
+    messages; mounted at CreatePolicy/CreatePolicyVersion (validate
+    BEFORE the duplicate-name and policy lookups, models.py:2031-2033,
+    2382-2387) and PutUserPolicy/PutRolePolicy/PutGroupPolicy after the
+    entity resolution (2849-2851, 2231, 2600-2602), UpdateAssumeRolePolicy
+    after get_role with the trust flavor (2222-2225). Verified against a
+    28-shape live moto matrix; the validator quirks port verbatim (an
+    unknown Condition operator is legal on an EMPTY value; R+NR and
+    Action+NotAction exclusivity; reverse-sorted resource lists; the
+    legacy `resource[2]` third-character check for list members). Two
+    recorded divergences from moto itself (kept twin-preferred): moto
+    crashes HTTP 500 on a null Action list element (None.split), and the
+    unstructured `[policies]` probe arm's date-condition int() truncation
+    of float values is emulated where python rejects it.
+
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
    **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role
    ("Role {n} not found" — moto's role-family wording, models.py:2191) and the
@@ -328,6 +346,15 @@ IAM
     (c) robotocore mirrors the cap and the monotonic counter (handler.rs:1848-1894 — including moto's quirk of syncing policy.policy_document only on default changes) but performs no version-id regex validation on SetDefaultPolicyVersion (handler.rs:1970-2017) — a malformed id falls through to NoSuchEntity instead of ValidationError.
     (d) Real AWS validates the id pattern client-side in boto3; server-side verdict not determinable from the model.
     (e) A on the divergence, C on the AWS verdict.
+
+    **FIXED (2026-11-08, verified live)**: set_default_policy_version runs
+    the start-anchored `v[1-9][0-9]*(\.[A-Za-z0-9-]*)?` gate BEFORE the
+    policy lookup with moto's exact ValidationError sentence — note
+    re.match is NOT fullmatch, so "v1junk" passes the gate and falls
+    through to the not-found arm — and the not-found message is moto's
+    "Policy {arn} version {version_id} does not exist or is not
+    attachable." (models.py:2119-2121, live-probed). DeletePolicyVersion's
+    absent id-format gate stays open in the ledger (finding 23's queue).
 
 23. Residual IAM wording/order drift flagged by the finding-21 review (2026-11-08), queued for the policy-validation tranche.
     (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.

@@ -5697,11 +5697,17 @@ class TestIamDeleteSemantics:
             assert exc.value.response["Error"]["Message"] == (
                 "The role policy with name ghost cannot be found."
             )
-            # the happy path stays
+            # the happy path stays (a doc that survives the validator —
+            # moto rejects a bare empty Statement list as a syntax error)
             iam_c.put_role_policy(
                 RoleName=role,
                 PolicyName="real",
-                PolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": []}),
+                PolicyDocument=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                    }
+                ),
             )
             iam_c.delete_role_policy(RoleName=role, PolicyName="real")
         finally:
@@ -5944,10 +5950,10 @@ class TestIamGroupWordingReview:
     def test_add_user_user_first(self, iam_c):
         # a bogus USER beats a bogus GROUP (moto resolves the user first)
         with pytest.raises(ClientError) as exc:
-            iam_c.add_user_to_group(
-                GroupName="ghost-wording-g", UserName="ghost-wording-u")
+            iam_c.add_user_to_group(GroupName="ghost-wording-g", UserName="ghost-wording-u")
         assert exc.value.response["Error"]["Message"] == (
-            "The user with name ghost-wording-u cannot be found.")
+            "The user with name ghost-wording-u cannot be found."
+        )
 
     def test_delete_group_policy_short_sentence(self, iam_c):
         name = f"grp-wording-{uuid.uuid4().hex[:8]}"
@@ -6086,3 +6092,517 @@ class TestIamListEntityResolution:
         finally:
             iam_c.delete_user(UserName="cert-x-user")
             iam_c.delete_group(GroupName="empty-group-for-removal")
+
+
+# ---------------------------------------------------------------------------
+# Policy-document validation (finding 16) + SetDefaultPolicyVersion shape
+# validation (finding 22) — moto's IAMPolicyDocumentValidator
+# (iam/policy_validation.py) port and the version-id regex gate
+# (iam/models.py:2106-2110). Every expected message was captured live from
+# moto 5.2.5 in-process (2026-11-08 matrix).
+# ---------------------------------------------------------------------------
+
+
+class TestIamPolicyDocumentValidation:
+    """moto's validation layers in moto's short-circuit order."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def _malformed(self, iam_c, doc, msg, label="p"):
+        with pytest.raises(ClientError) as exc:
+            iam_c.create_policy(PolicyName=f"{label}-{uuid.uuid4().hex[:8]}", PolicyDocument=doc)
+        assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+        assert exc.value.response["Error"]["Message"] == msg
+
+    def test_syntax_errors(self, iam_c):
+        cases = {
+            "notjson": ("definitely not json", "Syntax errors in policy."),
+            "nondict": ("[1,2,3]", "Syntax errors in policy."),
+            "unknowntop": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": ["s3:*"], "Resource": "*"}],
+                        "Foo": "x",
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "badversion": (
+                json.dumps(
+                    {
+                        "Version": "2006",
+                        "Statement": [{"Effect": "Allow", "Action": ["s3:*"], "Resource": "*"}],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "statementgone": (json.dumps({"Version": "2012-10-17"}), "Syntax errors in policy."),
+            "emptystatements": (
+                json.dumps({"Version": "2012-10-17", "Statement": []}),
+                "Syntax errors in policy.",
+            ),
+            "unknownmember": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {"Effect": "Allow", "Action": "*", "Resource": "*", "Shot": 1}
+                        ],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "pairresource": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Resource": "*", "NotResource": "*"}],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "pairaction": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": "*", "NotAction": "*"}],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "noeffect": (
+                json.dumps(
+                    {"Version": "2012-10-17", "Statement": [{"Action": "*", "Resource": "*"}]}
+                ),
+                "Syntax errors in policy.",
+            ),
+            "typedeffect": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": 3, "Action": "*", "Resource": "*"}],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "ttypedsid": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {"Sid": 9, "Effect": "Allow", "Action": "*", "Resource": "*"}
+                        ],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+            "unknowncondop": (
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "*",
+                                "Resource": "*",
+                                "Condition": {"MakesLie": {"aws:x": "y"}},
+                            }
+                        ],
+                    }
+                ),
+                "Syntax errors in policy.",
+            ),
+        }
+        for label, (doc, msg) in cases.items():
+            self._malformed(iam_c, doc, msg, label)
+
+    def test_condition_quirks(self, iam_c):
+        # unknown operator with an EMPTY value is legal (moto quirk, live
+        # probe 2026-11-08); nested dict condition values are not.
+        ok = iam_c.create_policy(
+            PolicyName=f"cond-empty-{uuid.uuid4().hex[:8]}",
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "*",
+                            "Resource": "*",
+                            "Condition": {"MakesLie": {}},
+                        }
+                    ],
+                }
+            ),
+        )
+        assert "Policy" in ok
+        self._malformed(
+            iam_c,
+            json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "*",
+                            "Resource": "*",
+                            "Condition": {"StringEquals": {"aws:x": {"n": "d"}}},
+                        }
+                    ],
+                }
+            ),
+            "Syntax errors in policy.",
+            "condnested",
+        )
+
+    def test_version_strictness(self, iam_c):
+        for label, doc in {
+            "noversion": json.dumps(
+                {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
+            ),
+            "oldversion": json.dumps(
+                {
+                    "Version": "2008-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+                }
+            ),
+        }.items():
+            self._malformed(
+                iam_c, doc, "Policy document must be version 2012-10-17 or greater.", label
+            )
+
+    def test_legacy_effect_case(self, iam_c):
+        for eff in ["allow", "ALLOW"]:
+            self._malformed(
+                iam_c,
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": eff, "Action": "*", "Resource": "*"}],
+                    }
+                ),
+                "The policy failed legacy parsing",
+                f"legacy{eff}",
+            )
+
+    def test_sid_uniqueness(self, iam_c):
+        self._malformed(
+            iam_c,
+            json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Sid": "dup", "Effect": "Allow", "Action": "*", "Resource": "*"},
+                        {"Sid": "dup", "Effect": "Allow", "Action": "*", "Resource": "*"},
+                    ],
+                }
+            ),
+            "Statement IDs (SID) in a single policy must be unique.",
+            "siddup",
+        )
+
+    def test_actions_required(self, iam_c):
+        for label, stmt in {
+            "noaction": {"Effect": "Allow", "Resource": "*"},
+            "emptyaction": {"Effect": "Allow", "Action": [], "Resource": "*"},
+            "emptynotaction": {"Effect": "Allow", "NotAction": [], "Resource": "*"},
+        }.items():
+            self._malformed(
+                iam_c,
+                json.dumps({"Version": "2012-10-17", "Statement": [stmt]}),
+                "Policy statement must contain actions.",
+                label,
+            )
+
+    def test_resource_formats(self, iam_c):
+        cases = {
+            "notarn": ("iamcats", 'Resource iamcats must be in ARN format or "*".'),
+            "badpartition": (
+                "arn:badzone:s3:::bucket",
+                'Partition "badzone" is not valid for resource "arn:badzone:s3:::bucket".',
+            ),
+            "iamregion": (
+                "arn:aws:iam:us-east-1:123456789012:user/bob",
+                "IAM resource arn:aws:iam:us-east-1:123456789012:user/bob cannot contain "
+                "region information.",
+            ),
+            "iampath": (
+                "arn:aws:iam::123456789012:kitten/bob",
+                'IAM resource path must either be "*" or start with user/, '
+                "federated-user/, role/, group/, instance-profile/, mfa/, "
+                "server-certificate/, policy/, sms-mfa/, saml-provider/, "
+                "oidc-provider/, report/, access-report/.",
+            ),
+        }
+        for label, (res, msg) in cases.items():
+            self._malformed(
+                iam_c,
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": "*", "Resource": res}],
+                    }
+                ),
+                msg,
+                label,
+            )
+
+    def test_action_prefixes(self, iam_c):
+        for label, (action, msg) in {
+            "novendor": (
+                "monkeybob",
+                "Actions/Conditions must be prefaced by a vendor, e.g., iam, sdb, ec2, etc.",
+            ),
+            "twocolons": ("s3:s3:*", "Actions/Condition can contain only one colon."),
+            "badvendor": ("s3!x:read", "Vendor s3!x is not valid"),
+        }.items():
+            self._malformed(
+                iam_c,
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": action, "Resource": "*"}],
+                    }
+                ),
+                msg,
+                label,
+            )
+
+    def test_resources_required(self, iam_c):
+        self._malformed(
+            iam_c,
+            json.dumps(
+                {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*"}]}
+            ),
+            "Policy statement must contain resources.",
+            "nores",
+        )
+
+    def test_precedence(self, iam_c):
+        # syntax wins over everything
+        self._malformed(
+            iam_c,
+            json.dumps({"Version": "2006", "Statement": []}),
+            "Syntax errors in policy.",
+            "syxwins",
+        )
+
+    def test_happy_paths(self, iam_c):
+        good = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "s1",
+                        "Effect": "Deny",
+                        "NotAction": ["s3:*"],
+                        "NotResource": ["arn:aws:s3:::b/x"],
+                        "Condition": {"ForAllValues:StringEquals": {"aws:x": ["y"]}},
+                    }
+                ],
+            }
+        )
+        resp = iam_c.create_policy(PolicyName=f"valid-{uuid.uuid4().hex[:8]}", PolicyDocument=good)
+        assert "Policy" in resp
+        iam_c.create_policy(
+            PolicyName=f"star-{uuid.uuid4().hex[:8]}",
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+                }
+            ),
+        )
+
+    def test_put_surfaces_order(self, iam_c):
+        name = f"putval-{uuid.uuid4().hex[:8]}"
+        iam_c.create_user(UserName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                iam_c.put_user_policy(
+                    UserName="ghost-put-policy-u", PolicyName="p", PolicyDocument="not json"
+                )
+            assert exc.value.response["Error"]["Message"] == (
+                "The user with name ghost-put-policy-u cannot be found."
+            )
+            with pytest.raises(ClientError) as exc:
+                iam_c.put_user_policy(UserName=name, PolicyName="p", PolicyDocument="not json")
+            assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+        finally:
+            iam_c.delete_user(UserName=name)
+        rname = f"putval-r-{uuid.uuid4().hex[:8]}"
+        gname = f"putval-g-{uuid.uuid4().hex[:8]}"
+        iam_c.create_role(
+            RoleName=rname,
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}
+                    ],
+                }
+            ),
+        )
+        iam_c.create_group(GroupName=gname)
+        try:
+            for kw in [{"RoleName": rname}, {"GroupName": gname}]:
+                with pytest.raises(ClientError) as exc:
+                    iam_c.put_role_policy(
+                        **kw, PolicyName="p", PolicyDocument="[1]"
+                    ) if "RoleName" in kw else iam_c.put_group_policy(
+                        **kw, PolicyName="p", PolicyDocument="[1]"
+                    )
+                assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+        finally:
+            iam_c.delete_role(RoleName=rname)
+            iam_c.delete_group(GroupName=gname)
+
+    def test_trust_policy_validation(self, iam_c):
+        rname = f"trust-{uuid.uuid4().hex[:8]}"
+        iam_c.create_role(
+            RoleName=rname,
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}
+                    ],
+                }
+            ),
+        )
+        try:
+            # role resolution beats the trust validator
+            with pytest.raises(ClientError) as exc:
+                iam_c.update_assume_role_policy(RoleName="ghost-trust-r", PolicyDocument="not json")
+            assert exc.value.response["Error"]["Message"] == "Role ghost-trust-r not found"
+            with pytest.raises(ClientError) as exc:
+                iam_c.update_assume_role_policy(
+                    RoleName=rname,
+                    PolicyDocument=json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "Action": "s3:*", "Principal": {"AWS": "*"}}
+                            ],
+                        }
+                    ),
+                )
+            assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+            assert exc.value.response["Error"]["Message"] == (
+                "Trust Policy statement actions can only be sts:AssumeRole, "
+                "sts:AssumeRoleWithSAML,  and sts:AssumeRoleWithWebIdentity"
+            )
+            with pytest.raises(ClientError) as exc:
+                iam_c.update_assume_role_policy(
+                    RoleName=rname,
+                    PolicyDocument=json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "sts:AssumeRole",
+                                    "Principal": {"AWS": "*"},
+                                    "Resource": "*",
+                                }
+                            ],
+                        }
+                    ),
+                )
+            assert exc.value.response["Error"]["Message"] == "Has prohibited field Resource."
+            iam_c.update_assume_role_policy(
+                RoleName=rname,
+                PolicyDocument=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "sts:AssumeRole",
+                                "Principal": {"AWS": "*"},
+                            }
+                        ],
+                    }
+                ),
+            )
+            role = iam_c.get_role(RoleName=rname)["Role"]
+            assert "sts:AssumeRole" in json.dumps(role["AssumeRolePolicyDocument"])
+        finally:
+            iam_c.delete_role(RoleName=rname)
+
+    def test_create_policy_version_validates_first(self, iam_c):
+        ghost = "arn:aws:iam::123456789012:policy/ghost-cpv-vv"
+        with pytest.raises(ClientError) as exc:
+            iam_c.create_policy_version(PolicyArn=ghost, PolicyDocument="not json")
+        assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+
+
+class TestSetDefaultPolicyVersionShape:
+    """finding 22: the version-id regex gate runs before the policy lookup
+    (moto models.py:2106-2110), start-anchored with no end anchor."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def _policy(self, iam_c, name="shape"):
+        resp = iam_c.create_policy(
+            PolicyName=f"{name}-{uuid.uuid4().hex[:8]}",
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                }
+            ),
+        )
+        return resp["Policy"]["Arn"]
+
+    def test_bogus_shapes_raise_validation_error(self, iam_c):
+        ghost = "arn:aws:iam::123456789012:policy/ghost-shape-x"
+        for bad in ["v0", "xv1", "NO", "1", ""]:
+            with pytest.raises(ClientError) as exc:
+                iam_c.set_default_policy_version(PolicyArn=ghost, VersionId=bad)
+            assert exc.value.response["Error"]["Code"] == "ValidationError"
+            assert exc.value.response["Error"]["Message"] == (
+                f"Value '{bad}' at 'versionId' failed to satisfy constraint: "
+                "Member must satisfy regular expression pattern: "
+                r"v[1-9][0-9]*(\.[A-Za-z0-9-]*)?"
+            )
+
+    def test_regex_is_start_anchored(self, iam_c):
+        # 'v1junk' passes the regex gate and falls to the not-found arm
+        ghost = "arn:aws:iam::123456789012:policy/ghost-shape-y"
+        with pytest.raises(ClientError) as exc:
+            iam_c.set_default_policy_version(PolicyArn=ghost, VersionId="v1junk")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+
+    def test_ghost_version_message(self, iam_c):
+        arn = self._policy(iam_c, "shape")
+        with pytest.raises(ClientError) as exc:
+            iam_c.set_default_policy_version(PolicyArn=arn, VersionId="v9")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+        assert exc.value.response["Error"]["Message"] == (
+            f"Policy {arn} version v9 does not exist or is not attachable."
+        )
+
+    def test_real_version_succeeds(self, iam_c):
+        arn = self._policy(iam_c, "realv")
+        resp = iam_c.set_default_policy_version(PolicyArn=arn, VersionId="v1")
+        assert "IsDefaultVersion" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        pol = iam_c.get_policy(PolicyArn=arn)["Policy"]
+        assert pol["DefaultVersionId"] == "v1"

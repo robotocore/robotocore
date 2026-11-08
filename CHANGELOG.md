@@ -62,6 +62,21 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM policy-document validation.** Finding 16 of the moto audit
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): a port of moto's
+  IAMPolicyDocumentValidator (crates/iam/src/policy_validation.rs) runs on
+  CreatePolicy/CreatePolicyVersion (before the name/arn lookups, per
+  moto's order), PutUserPolicy/PutRolePolicy/PutGroupPolicy (after the
+  entity resolution) and UpdateAssumeRolePolicy's trust flavor — moto's
+  layer order with verbatim messages, verified over a 28-shape live
+  matrix. moto quirks kept: empty-value unknown Condition operators,
+  reverse-sorted resource lists, the legacy `resource[2]` check.
+- **SetDefaultPolicyVersion shape gate.** Finding 22: the start-anchored
+  `v[1-9][0-9]*(\.[A-Za-z0-9-]*)?` version-id regex runs before the
+  policy lookup with moto's ValidationError sentence (re.match is not
+  fullmatch, so trailing junk like "v1junk" still passes through to
+  NoSuchEntity), and the not-found arm now carries moto's "Policy {arn}
+  version {v} does not exist or is not attachable."
 - **DynamoDB 1 MB result-size pagination.** Finding 3 of the moto audit
   (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): Query and Scan
   pages now break when the next raw item would pass moto's

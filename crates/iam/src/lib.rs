@@ -5,6 +5,7 @@
 pub mod handler;
 pub mod models;
 pub mod policy;
+pub mod policy_validation;
 pub mod protocol;
 pub mod snapshot;
 
