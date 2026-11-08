@@ -62,6 +62,22 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM List\* operations resolve the entity.** Finding 21 of the moto
+  audit (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): ListUserTags,
+  ListUserPolicies, ListAttachedUserPolicies, ListRoleTags,
+  ListRolePolicies, ListAttachedRolePolicies, ListGroupPolicies,
+  ListAttachedGroupPolicies and ListPolicyTags answer `NoSuchEntity` 404
+  with moto's exact sentences — get_group's "Group {n} not found" for the
+  group arms — instead of an empty 200 (ListGroupTags is botocore-absent;
+  ListAccessKeys already raised). The review pass also closed the
+  family's remaining silent-200 rows: ListSSHPublicKeys and
+  ListSigningCertificates resolve the user; bogus ssh/certificate ids
+  raise moto's "The {SSH Public Key|Certificate} with id {id} cannot be
+  found"; AddUserToGroup resolves the user before the group and
+  RemoveUserFromGroup raises "User {n} not in group {n}"; DeleteGroupPolicy
+  resolves the group then the policy; GetGroup's raise arm carries
+  get_group's short sentence.
+
 - **IAM delete-semantics and boundary contracts.** The moto audit's
   eleventh tranche (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`,
   findings 17–20): `DeleteRolePolicy` resolves the role and the policy

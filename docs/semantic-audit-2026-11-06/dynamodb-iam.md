@@ -267,6 +267,26 @@ IAM
     (e) A on put/delete divergence; B on the CreateRole boundary drop (moto's create_role accepts a `permissions_boundary` parameter — robotocore's create_role never reads it).
 
 21. List*Tags / ListUserPolicies / ListAttached{User,Role,Group}Policies return empty 200 for a nonexistent entity.
+
+   **FIXED (2026-11-08, verified live)**: every List* in the family resolves
+   the entity first with moto's sentences — users ("The user with name {n}
+   cannot be found.", models.py:2840-2842), roles ("Role {n} not found",
+   models.py:2191), groups get_group's short sentence ("Group {n} not
+   found", models.py:2581 — delete_group/update_group keep their long
+   form), and policy arns ("Policy {arn} not found") — ListUserTags/
+   ListUserPolicies/ListAttachedUserPolicies/ListRoleTags/
+   ListRolePolicies/ListAttachedRolePolicies/ListGroupPolicies/
+   ListAttachedGroupPolicies/ListPolicyTags. (Excepted: ListAccessKeys
+   already raised; botocore has no ListGroupTags client method.) The same
+   pass closed the family's remaining silent-200 rows — ListSSHPublicKeys
+   and ListSigningCertificates resolve the user (2938, 2769); the per-id
+   ssh/cert ops raise ("The SSH Public Key with id {id} cannot be found",
+   1464-1472; "The Certificate with id {id} cannot be found.", 2762-2767,
+   2782-2786); AddUserToGroup resolves the user before the group
+   (2818-2822) and RemoveUserFromGroup raises "User {n} not in group {n}"
+   (2825-2829); DeleteGroupPolicy resolves the group and the policy.
+   GetGroup's raise arm switched to get_group's short sentence (a
+   pre-existing long-form drift the review caught).
     (a) ListUserTags, ListRoleTags, ListGroupTags, ListUserPolicies, ListAttachedUserPolicies (+ role/group flavors), ListPolicyTags.
     (b) moto resolves the entity first and raises NoSuchEntity ("The user with name … cannot be found", "Role {name} not found", "Policy {arn} not found") (models.py:2840-2842, 2304-2306, 2341+, 2836, 2056+, 2066+).
     (c) robotocore uses `.map(...).unwrap_or_default()` and renders an empty list with 200 (handler.rs:714-722 list_user_tags, 863-871 list_user_policies, 779-792 list_attached_user_policies, 1122-1130 list_role_tags, 1175-1188, 2081-2089). (ListAccessKeys, by contrast, does raise.)
@@ -279,6 +299,14 @@ IAM
     (c) robotocore mirrors the cap and the monotonic counter (handler.rs:1848-1894 — including moto's quirk of syncing policy.policy_document only on default changes) but performs no version-id regex validation on SetDefaultPolicyVersion (handler.rs:1970-2017) — a malformed id falls through to NoSuchEntity instead of ValidationError.
     (d) Real AWS validates the id pattern client-side in boto3; server-side verdict not determinable from the model.
     (e) A on the divergence, C on the AWS verdict.
+
+23. Residual IAM wording/order drift flagged by the finding-21 review (2026-11-08), queued for the policy-validation tranche.
+    (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.
+    (b) moto: get/delete_policy + get/create/set_default/list/delete policy version raise "Policy {arn} not found" (vs the twin's "The policy with ARN {arn} cannot be found." — list_policy_tags already carries moto's text); get/tag_instance_profile raise "Instance profile {n} not found" (vs "… cannot be found"); get/update/tag_server_certificate append a trailing period ("The Server Certificate with name {n} cannot be found.", models.py:2543); get/delete_login_profile resolve the user FIRST ("The user with name {n} cannot be found.") before the profile check; list_entities_for_policy returns 200 empty for a nonexistent policy where the twin is stricter (404 NoSuchEntity).
+    (c) UpdateGroup semantics: moto errors when the rename target already exists BEFORE resolving the group (EntityAlreadyExists wins over NoSuchEntity, models.py:2627-2647) and silently ignores a NewPath-only update when NewGroupName is absent; the twin resolves the group first and applies the path change.
+    (c2) The inline inline-policy ghost family raises the SHORT "Policy {name} not found" on both user and group flavors (Group/User.get_policy / delete_policy, models.py:1306-1309, 1325-1327, 1390-1393) where the twin's get_user_policy/get_group_policy still carry "The {user,group} policy with name {n} cannot be found." — DeleteGroupPolicy was switched to the short sentence in the #443 review pass; the get_-family rows stay open queue for this tranche.
+    (d) Real AWS unknown for each (no moto-oracle conflict documented yet beyond the above).
+    (e) A (wording) / C (AWS verdict where unprobed); fix with the finding-16 policy-document validator.
 
 Skipped per instructions: moto's Simulate*/credential-report implementations are stubs or absent (moto has no Simulate handlers in iam/responses.py), so robotocore's full simulator has no moto branch to compare; moto's TransactWriteItems per-row error capture for non-MockValidationException exceptions (models/__init__.py:708-710 turning e.g. ItemSizeTooLarge into cancellation reasons) is unreachable in practice because those exception types are MockValidationException subclasses (exceptions.py:162-175) that abort — robotocore's immediate-return matches. Numeric precision: robotocore's exact decimal arithmetic (expr.rs dec_add/dec_cmp/attr_eq) is observably identical to moto's Decimal-based evaluation except in one internal inconsistency — the Query/Scan SORT comparator uses f64 (handler.rs dyn_cmp:1956-1988), so sort order can differ from both moto (Decimal, table.py:901) and from robotocore's own equality for N keys beyond 2^53; folded into finding 10's neighborhood but worth its own fix.
 

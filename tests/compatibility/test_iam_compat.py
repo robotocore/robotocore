@@ -5918,3 +5918,171 @@ class TestIamWordingReview:
         assert exc.value.response["Error"]["Message"] == (
             "Value (junk-boundary-000123) for parameter PermissionsBoundary is invalid."
         )
+
+
+class TestIamGroupWordingReview:
+    """#443 review gaps: GetGroup's ghost arm, AddUserToGroup ordering and
+    DeleteGroupPolicy's short policy sentence (moto models.py:2581,
+    2818-2822, 1325-1327)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_get_group_ghost_message(self, iam_c):
+        with pytest.raises(ClientError) as exc:
+            iam_c.get_group(GroupName="ghost-wording-g")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+        assert exc.value.response["Error"]["Message"] == "Group ghost-wording-g not found"
+
+    def test_add_user_user_first(self, iam_c):
+        # a bogus USER beats a bogus GROUP (moto resolves the user first)
+        with pytest.raises(ClientError) as exc:
+            iam_c.add_user_to_group(GroupName="ghost-wording-g", UserName="ghost-wording-u")
+        assert exc.value.response["Error"]["Message"] == (
+            "The user with name ghost-wording-u cannot be found."
+        )
+
+    def test_delete_group_policy_short_sentence(self, iam_c):
+        name = f"grp-wording-{uuid.uuid4().hex[:8]}"
+        iam_c.create_group(GroupName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                iam_c.delete_group_policy(GroupName=name, PolicyName="bogus-pol-wording")
+            assert exc.value.response["Error"]["Message"] == "Policy bogus-pol-wording not found"
+        finally:
+            iam_c.delete_group(GroupName=name)
+
+
+class TestIamListEntityResolution:
+    """#443 tranche: finding 21 — every List* on a tagged/policied entity
+    resolves the entity first (moto models.py:2840-2842, 2191, 2836...)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_user_list_ops_nosuchentity(self, iam_c):
+        for call in ["tags", "policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "tags":
+                    iam_c.list_user_tags(UserName="ghost-list-u")
+                elif call == "policies":
+                    iam_c.list_user_policies(UserName="ghost-list-u")
+                else:
+                    iam_c.list_attached_user_policies(UserName="ghost-list-u")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == (
+                "The user with name ghost-list-u cannot be found."
+            )
+
+    def test_role_list_ops_nosuchentity(self, iam_c):
+        for call in ["tags", "policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "tags":
+                    iam_c.list_role_tags(RoleName="ghost-list-r")
+                elif call == "policies":
+                    iam_c.list_role_policies(RoleName="ghost-list-r")
+                else:
+                    iam_c.list_attached_role_policies(RoleName="ghost-list-r")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == "Role ghost-list-r not found"
+
+    def test_group_list_ops_nosuchentity(self, iam_c):
+        # botocore's model has no ListGroupTags: only the policy arms exist.
+        # moto's group List* route through get_group's short sentence
+        # ("Group {name} not found", models.py:2581) — the long one is
+        # delete_group/update_group's (2620-2626, 2636-2639).
+        for call in ["policies", "attached"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "policies":
+                    iam_c.list_group_policies(GroupName="ghost-list-g")
+                else:
+                    iam_c.list_attached_group_policies(GroupName="ghost-list-g")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == ("Group ghost-list-g not found")
+
+    def test_policy_tags_nosuchentity(self, iam_c):
+        ghost_arn = "arn:aws:iam::123456789012:policy/ghost-policy-x"
+        with pytest.raises(ClientError) as exc:
+            iam_c.list_policy_tags(PolicyArn=ghost_arn)
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+        assert exc.value.response["Error"]["Message"] == f"Policy {ghost_arn} not found"
+
+    def test_ssh_key_and_cert_entity_resolution(self, iam_c):
+        """The ssh-key and signing-certificate families resolve the user
+        first; the per-id ops raise moto's exact id sentences."""
+        # A nonexistent user surfaces get_user's sentence, not an empty 200.
+        for call in ["ssh", "certs"]:
+            with pytest.raises(ClientError) as exc:
+                if call == "ssh":
+                    iam_c.list_ssh_public_keys(UserName="ghost-list-u")
+                else:
+                    iam_c.list_signing_certificates(UserName="ghost-list-u")
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+            assert exc.value.response["Error"]["Message"] == (
+                "The user with name ghost-list-u cannot be found."
+            )
+        # With the user present, a bogus certificate id raises for both
+        # ops (models.py:2762-2767, 2782-2786 — trailing period).
+        iam_c.create_user(UserName="cert-x-user")
+        try:
+            for call in ["update", "delete"]:
+                with pytest.raises(ClientError) as exc:
+                    if call == "update":
+                        iam_c.update_signing_certificate(
+                            UserName="cert-x-user",
+                            CertificateId="bogus-cert-list-000123456",
+                            Status="Active",
+                        )
+                    else:
+                        iam_c.delete_signing_certificate(
+                            UserName="cert-x-user",
+                            CertificateId="bogus-cert-list-000123456",
+                        )
+                assert exc.value.response["Error"]["Message"] == (
+                    "The Certificate with id bogus-cert-list-000123456 cannot be found."
+                )
+            # The ssh public key ops behave the same, without the period
+            # (models.py:1464-1472).
+            for call in ["update", "delete"]:
+                with pytest.raises(ClientError) as exc:
+                    if call == "update":
+                        iam_c.update_ssh_public_key(
+                            UserName="cert-x-user",
+                            SSHPublicKeyId="bogus-ssh-list-key-000123",
+                            Status="Active",
+                        )
+                    else:
+                        iam_c.delete_ssh_public_key(
+                            UserName="cert-x-user",
+                            SSHPublicKeyId="bogus-ssh-list-key-000123",
+                        )
+                assert exc.value.response["Error"]["Message"] == (
+                    "The SSH Public Key with id bogus-ssh-list-key-000123 cannot be found"
+                )
+            # RemoveUserFromGroup with a member-missing pair raises moto's
+            # membership sentence (models.py:2825-2829).
+            iam_c.create_group(GroupName="empty-group-for-removal")
+            with pytest.raises(ClientError) as exc:
+                iam_c.remove_user_from_group(
+                    GroupName="empty-group-for-removal", UserName="cert-x-user"
+                )
+            assert exc.value.response["Error"]["Message"] == (
+                "User cert-x-user not in group empty-group-for-removal"
+            )
+        finally:
+            iam_c.delete_user(UserName="cert-x-user")
+            iam_c.delete_group(GroupName="empty-group-for-removal")
