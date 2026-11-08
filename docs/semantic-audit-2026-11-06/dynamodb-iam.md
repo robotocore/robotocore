@@ -360,6 +360,26 @@ IAM
     absent id-format gate stays open in the ledger (finding 23's queue).
 
 23. Residual IAM wording/order drift flagged by the finding-21 review (2026-11-08), queued for the policy-validation tranche.
+
+    **FIXED in part (2026-11-08, verified live)**: the POLICY row is done —
+    all eight policy-arn ghost raises (get/delete policy,
+    get/list/delete policy version, create_policy_version,
+    set_default_policy_version, list_entities_for_policy) now raise
+    moto's short "Policy {arn} not found" (live-probed arm-by-arm; the
+    wording pins pin it — note list_entities_for_policy still diverges
+    the other way, see "Still open" below). Also recorded live:
+    DeletePolicyVersion has NO version-id regex gate in moto
+    (models.py:2415-2429 strikes finding 22's "absent validation" — a
+    ghost version answers the generic "Policy not found", JunkDb ids
+    included, and the default version raises DeleteConflict 409) — the
+    twin already matched every row; pins added, finding 22 is now
+    FULLY fixed (modulo the DeleteConflict status note).
+
+    **Still open**: instance profiles ("Instance profile {n} not
+    found"), server-certificate trailing period, login-profile user
+    resolution first, list_entities_for_policy's strictness (opposite
+    direction: moto 200 empty), and the inline-policy get_-family
+    (c2) rows.
     (a) Policy entities, instance profiles, server certificates, login profiles, entity updates.
     (b) moto: get/delete_policy + get/create/set_default/list/delete policy version raise "Policy {arn} not found" (vs the twin's "The policy with ARN {arn} cannot be found." — list_policy_tags already carries moto's text); get/tag_instance_profile raise "Instance profile {n} not found" (vs "… cannot be found"); get/update/tag_server_certificate append a trailing period ("The Server Certificate with name {n} cannot be found.", models.py:2543); get/delete_login_profile resolve the user FIRST ("The user with name {n} cannot be found.") before the profile check; list_entities_for_policy returns 200 empty for a nonexistent policy where the twin is stricter (404 NoSuchEntity).
     (c) UpdateGroup semantics: moto errors when the rename target already exists BEFORE resolving the group (EntityAlreadyExists wins over NoSuchEntity, models.py:2627-2647) and silently ignores a NewPath-only update when NewGroupName is absent; the twin resolves the group first and applies the path change.

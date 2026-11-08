@@ -6621,3 +6621,75 @@ class TestSetDefaultPolicyVersionShape:
         assert "IsDefaultVersion" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         pol = iam_c.get_policy(PolicyArn=arn)["Policy"]
         assert pol["DefaultVersionId"] == "v1"
+
+
+class TestIamPolicyArnWording:
+    """finding 23's policy row: every ghost-arn policy surface raises
+    moto's short "Policy {arn} not found" (models.py:2051-2054 et al.),
+    and delete_policy_version mirrors moto's trio
+    (41 default-DeleteConflict / "Policy not found" ghost version)."""
+
+    @pytest.fixture
+    def iam_c(self):
+        return boto3.client(
+            "iam",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    GOOD_DOC = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+        }
+    )
+
+    def test_ghost_arn_wording(self, iam_c):
+        ghost = "arn:aws:iam::123456789012:policy/ghost-word-pol"
+        for label, fn in [
+            ("get", lambda: iam_c.get_policy(PolicyArn=ghost)),
+            ("delete", lambda: iam_c.delete_policy(PolicyArn=ghost)),
+            ("getver", lambda: iam_c.get_policy_version(PolicyArn=ghost, VersionId="v1")),
+            ("listver", lambda: iam_c.list_policy_versions(PolicyArn=ghost)),
+            ("delver", lambda: iam_c.delete_policy_version(PolicyArn=ghost, VersionId="v1")),
+            (
+                "cpv",
+                lambda: iam_c.create_policy_version(PolicyArn=ghost, PolicyDocument=self.GOOD_DOC),
+            ),
+            ("sdp", lambda: iam_c.set_default_policy_version(PolicyArn=ghost, VersionId="v1")),
+        ]:
+            with pytest.raises(ClientError) as exc:
+                fn()
+            assert exc.value.response["Error"]["Code"] == "NoSuchEntity", label
+            assert exc.value.response["Error"]["Message"] == f"Policy {ghost} not found", label
+
+    def test_delete_policy_version_trio(self, iam_c):
+        resp = iam_c.create_policy(
+            PolicyName=f"dpv-{uuid.uuid4().hex[:8]}", PolicyDocument=self.GOOD_DOC
+        )
+        arn = resp["Policy"]["Arn"]
+        iam_c.create_policy_version(PolicyArn=arn, PolicyDocument=self.GOOD_DOC)
+        iam_c.create_policy_version(PolicyArn=arn, PolicyDocument=self.GOOD_DOC, SetAsDefault=True)
+        # moto: default version → DeleteConflict 409
+        with pytest.raises(ClientError) as exc:
+            iam_c.delete_policy_version(PolicyArn=arn, VersionId="v3")
+        assert exc.value.response["Error"]["Code"] == "DeleteConflict"
+        assert exc.value.response["Error"]["Message"] == (
+            "Cannot delete the default version of a policy."
+        )
+        # moto: an unknown non-default version → "Policy not found"
+        # (models.py:2420-2429 — NO version-id regex gate exists there)
+        with pytest.raises(ClientError) as exc:
+            iam_c.delete_policy_version(PolicyArn=arn, VersionId="v9")
+        assert exc.value.response["Error"]["Message"] == "Policy not found"
+        with pytest.raises(ClientError) as exc:
+            iam_c.delete_policy_version(PolicyArn=arn, VersionId="junk")
+        assert exc.value.response["Error"]["Message"] == "Policy not found"
+        # the real delete stays (order-insensitive — the twin's and moto's
+        # list ordering share their storage layouts but the pin should not
+        # depend on it)
+        iam_c.delete_policy_version(PolicyArn=arn, VersionId="v1")
+        versions = iam_c.list_policy_versions(PolicyArn=arn)["Versions"]
+        assert sorted(v["VersionId"] for v in versions) == ["v2", "v3"]
