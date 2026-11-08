@@ -1932,7 +1932,10 @@ class TestSqsValidationRound2:
         name = f"rp-canon-{uuid.uuid4().hex[:8]}"
         arn = None
         try:
-            compact = '{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:123456789012:canon","maxReceiveCount":3}'
+            compact = (
+                '{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:'
+                '123456789012:canon","maxReceiveCount":3}'
+            )
             with pytest.raises(ClientError):
                 sqs_c.create_queue(
                     QueueName=name,
