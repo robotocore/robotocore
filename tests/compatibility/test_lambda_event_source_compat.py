@@ -268,3 +268,137 @@ class TestSQSToLambdaTrigger:
                 fn()
             except Exception:
                 pass  # best-effort cleanup
+
+
+class TestEventSourceMappingTags:
+    """Tag calls on a mapping ARN resolve the mapping, not a function —
+    moto's `_get_resource_by_arn` (awslambda/models.py:2447-2462) routes
+    the `event-source-mapping` ARN family to the ESM store by uuid. The
+    terraform provider's refresh ListTags-es a mapping mid-apply, so a
+    misrouted 404 "Function not found" aborts the drift apply."""
+
+    @pytest.fixture
+    def lam(self):
+        return make_client("lambda")
+
+    @pytest.fixture
+    def sqs(self):
+        return make_client("sqs")
+
+    @pytest.fixture
+    def iam(self):
+        return make_client("iam")
+
+    @pytest.fixture
+    def role(self, iam):
+        name = f"esm-tag-role-{uuid.uuid4().hex[:8]}"
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        created = iam.create_role(
+            RoleName=name, AssumeRolePolicyDocument=trust
+        )["Role"]
+        yield created["Arn"]
+        try:
+            iam.delete_role(RoleName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    @pytest.fixture
+    def mapping(self, lam, sqs, role):
+        """Queue + function + a tagged mapping, torn down after each test."""
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"tag-esm-queue-{suffix}"
+        func_name = f"tag-esm-func-{suffix}"
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(
+            QueueUrl=q_url, AttributeNames=["QueueArn"]
+        )["Attributes"]["QueueArn"]
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=queue_arn,
+            FunctionName=func_name,
+            Tags={"team": "red"},
+        )
+        yield esm
+        for fn in [
+            lambda: lam.delete_event_source_mapping(UUID=esm["UUID"]),
+            lambda: lam.delete_function(FunctionName=func_name),
+            lambda: sqs.delete_queue(QueueUrl=q_url),
+        ]:
+            try:
+                fn()
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_tags_routes_to_mapping(self, lam, mapping):
+        tags = lam.list_tags(Resource=mapping["EventSourceMappingArn"])["Tags"]
+        assert tags == {"team": "red"}
+
+    def test_list_tags_unknown_mapping_404(self, lam, mapping):
+        unknown = mapping["EventSourceMappingArn"].rsplit(":", 1)[0] + ":deadbeef"
+        with pytest.raises(Exception) as err:
+            lam.list_tags(Resource=unknown)
+        body = getattr(err.value, "response", {}).get("Error", {})
+        assert body.get("Code") == "ResourceNotFoundException"
+        assert "deadbeef" in body.get("Message", "")
+
+    def test_tag_untag_round_trip(self, lam, mapping):
+        arn = mapping["EventSourceMappingArn"]
+        lam.tag_resource(Resource=arn, Tags={"env": "prod"})
+        tags = lam.list_tags(Resource=arn)["Tags"]
+        assert tags == {"team": "red", "env": "prod"}
+        lam.untag_resource(Resource=arn, TagKeys=["team"])
+        assert lam.list_tags(Resource=arn)["Tags"] == {"env": "prod"}
+
+    def test_update_preserves_tags(self, lam, mapping):
+        arn = mapping["EventSourceMappingArn"]
+        updated = lam.update_event_source_mapping(UUID=mapping["UUID"], BatchSize=10)
+        assert updated["BatchSize"] == 10
+        lam.untag_resource(Resource=arn, TagKeys=["nope"])
+        assert lam.list_tags(Resource=arn)["Tags"] == {"team": "red"}
+
+    def test_function_tags_unaffected(self, lam, sqs, role):
+        """The function tag path still resolves through the function
+        resolver — the ESM branch only claims mapping ARNs."""
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"tag-fn-esm-queue-{suffix}"
+        func_name = f"tag-fn-esm-{suffix}"
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Tags={"on": "fn"},
+        )
+        try:
+            func_arn = lam.get_function(FunctionName=func_name)["Configuration"]["FunctionArn"]
+            assert lam.list_tags(Resource=func_arn)["Tags"] == {"on": "fn"}
+        finally:
+            try:
+                lam.delete_function(FunctionName=func_name)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                sqs.delete_queue(QueueUrl=q_url)
+            except Exception:
+                pass  # best-effort cleanup

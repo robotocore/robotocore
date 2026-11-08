@@ -1956,6 +1956,7 @@ mod tests {
             maximum_retry_attempts: None,
             maximum_batching_window_in_seconds: None,
             maximum_record_age_in_seconds: None,
+            tags: parking_lot::RwLock::new(std::collections::HashMap::new()),
             kinesis_bound_watermarks: None,
             ddb_attached_watermark: None,
         }
