@@ -1883,11 +1883,7 @@ impl IamHandler {
                 let body = self.policy_xml(&policy, true);
                 AwsResponse::xml(200, "GetPolicy", format!("<Policy>{}</Policy>", body))
             }
-            None => err(
-                404,
-                "NoSuchEntity",
-                &format!("Policy {arn} not found"),
-            ),
+            None => err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         }
     }
 
@@ -1899,11 +1895,7 @@ impl IamHandler {
                 state.policies.write().remove(&policy.policy_name);
                 AwsResponse::xml(200, "DeletePolicy", String::new())
             }
-            None => err(
-                404,
-                "NoSuchEntity",
-                &format!("Policy {arn} not found"),
-            ),
+            None => err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         }
     }
 
@@ -1990,13 +1982,7 @@ impl IamHandler {
         }
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         // moto (models.py:2379-2401): the 5-version cap raises LimitExceeded
         // (no drop-oldest), ids come from the monotonic per-policy
@@ -2052,13 +2038,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         let default_id = (*policy.default_version_id.read()).clone();
         let versions = policy.versions.read();
@@ -2093,13 +2073,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         let default_id = (*policy.default_version_id.read()).clone();
         let mut body = String::from("<Versions>");
@@ -2140,13 +2114,7 @@ impl IamHandler {
         }
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         {
             let mut versions = policy.versions.write();
@@ -2192,13 +2160,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         if *policy.default_version_id.read() == version_id {
             return err(
@@ -2263,13 +2225,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("Policy {arn} not found"),
-                )
-            }
+            None => return err(404, "NoSuchEntity", &format!("Policy {arn} not found")),
         };
         let mut body = String::new();
         body.push_str("<PolicyGroups>");
@@ -2585,6 +2541,16 @@ impl IamHandler {
     fn get_login_profile(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the USER first, then the profile
+        // (models.py:2795-2815 → get_user's user sentence before the
+        // "Login profile for {n} not found" arm).
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
+        }
         let profile = state.login_profiles.read().get(&username).cloned();
         match profile {
             Some(profile) => AwsResponse::xml(
@@ -2633,6 +2599,14 @@ impl IamHandler {
     fn delete_login_profile(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the user first, like get/update (2795-2815).
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
+        }
         if state.login_profiles.write().remove(&username).is_none() {
             return err(
                 404,
@@ -3556,7 +3530,7 @@ impl IamHandler {
             err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name),
+                &format!("Instance profile {} not found", name),
             )
         }
     }
@@ -3705,7 +3679,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name),
+                &format!("Instance profile {} not found", name),
             );
         }
         // Upsert like every other tag op (moto models.py:3415-3422) — the
@@ -3725,7 +3699,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name),
+                &format!("Instance profile {} not found", name),
             );
         }
         let mut tags = state.instance_profile_tags.write();
@@ -3927,7 +3901,7 @@ impl IamHandler {
             return err(
                 409,
                 "EntityAlreadyExists",
-                &format!("The Server Certificate with name {} cannot be found", name),
+                &format!("The Server Certificate with name {} cannot be found.", name),
             );
         }
         let cert = Arc::new(ServerCert {
@@ -3967,7 +3941,7 @@ impl IamHandler {
                 xml_escape(&c.chain)
             )),
             None => err(404, "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name)),
+                &format!("The Server Certificate with name {} cannot be found.", name)),
         }
     }
 
@@ -4002,7 +3976,7 @@ impl IamHandler {
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name),
+                &format!("The Server Certificate with name {} cannot be found.", name),
             ),
         }
     }
@@ -4014,7 +3988,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name),
+                &format!("The Server Certificate with name {} cannot be found.", name),
             );
         }
         AwsResponse::xml(200, "DeleteServerCertificate", String::new())
@@ -4069,7 +4043,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The Server Certificate with name {} cannot be found", name),
+                    &format!("The Server Certificate with name {} cannot be found.", name),
                 )
             }
         }
@@ -4086,7 +4060,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The Server Certificate with name {} cannot be found", name),
+                    &format!("The Server Certificate with name {} cannot be found.", name),
                 )
             }
         }

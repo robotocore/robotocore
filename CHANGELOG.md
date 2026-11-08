@@ -62,6 +62,14 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM instance-profile / certificate / login-profile wording.** The
+  remainder of finding 23 (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`,
+  live-probed): instance-profile ghosts carry moto's "Instance profile
+  {n} not found"; server-certificate raises append the trailing period
+  ("The Server Certificate with name {n} cannot be found."); login
+  profiles resolve the user FIRST on get/delete/update so a ghost user
+  surfaces "The user with name {n} cannot be found." and the "Login
+  profile for {n} not found" arm only answers an existing user.
 - **IAM policy-arn wording + DeletePolicyVersion contract.** Finding 23's
   policy row of the moto audit and finding 22's close-out
   (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): all eight
