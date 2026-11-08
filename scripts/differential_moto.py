@@ -781,8 +781,9 @@ def corpus_dynamodb(engine):
         (
             # ListTables order+pagination: the twin sorts (real-AWS order)
             # and its stateful table list includes neighbor corpora, so the
-            # full TableNames arrays diverge from fresh moto — the ledger
-            # entry documents both halves; the step pins the walk shape.
+            # full TableNames arrays diverge from fresh moto; the
+            # known-diffs row keyed dynamodb.list_tables_walk documents
+            # both halves.
             "list_tables_walk",
             err_wrap(lambda: d.list_tables(Limit=50)),
         ),

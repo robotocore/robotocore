@@ -3675,11 +3675,12 @@ class TestConsumedCapacity:
         assert cc["LocalSecondaryIndexes"] == {"gsi-keys-only": {"CapacityUnits": 1.0}}
 
 
-# a note: the twin paginates list_tables in real-AWS ascending-name order
-# (differential ledger twin-preferred vs moto's insertion walk); moto's
-# row shows LEK on the page-LEN table and None on the tail page, both
-# orders faithful. The pin walks the full pagination contract without
-# assuming either engine's order.
+# A note: the twin paginates list_tables in real-AWS ascending-name
+# order (twin-preferred vs moto's insertion walk; the known-diffs row
+# keyed dynamodb.list_tables_walk documents the order halves). moto's
+# LEK is the last row of each non-tail page, None on the tail page. The
+# pin walks the full pagination contract without assuming either
+# engine's order.
 
 
 class TestListTablesPaginationWalk:
@@ -3712,15 +3713,18 @@ class TestListTablesPaginationWalk:
             assert page1["LastEvaluatedTableName"] == page1["TableNames"][-1]
             table_names = list(page1["TableNames"])
             lek = page1.get("LastEvaluatedTableName")
+            # A generous cap only trips the budget note — a real contract
+            # break must not be masked by a guard misreporting as "no LEK"
+            # (stateful accounts hold unrelated session tables).
             guard = 0
-            while lek is not None and guard < 10:
+            while lek is not None and guard < 500:
                 page = dynamodb.list_tables(Limit=3, ExclusiveStartTableName=lek)
                 table_names.extend(page["TableNames"])
                 if "LastEvaluatedTableName" in page:
                     assert page["LastEvaluatedTableName"] == page["TableNames"][-1]
                 lek = page.get("LastEvaluatedTableName")
                 guard += 1
-            assert lek is None, "tail page carries no LEK"
+            assert lek is None, "tail page carries no LEK (budget exhausted)"
             # The twin carries accumulated session state (earlier corpus
             # tables); scope to this pin's prefix.
             ours = [n for n in table_names if n.startswith(prefix)]
