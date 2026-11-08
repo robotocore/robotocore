@@ -68,8 +68,11 @@ hangs at route-table associations).
   the default rule with real AWS's full shape; the provider-style
   RevokeSecurityGroupEgress now removes it (200 → empty egress list),
   a SECOND revoke answers InvalidPermission.NotFound exactly like
-  moto, and the wire row matches moto's DescribeSecurityGroups
-  byte-shape. Compat pin: TestSecurityGroupDefaultEgressShape. The
+  moto, and the wire row is parse-equivalent to moto's
+  DescribeSecurityGroups (byte diff only in the twin's empty-element
+  form: `<ipv6Ranges></ipv6Ranges>` vs moto's self-closing form — the
+  renderer's own inconsistency is separate, pre-existing). Compat
+  pin: TestSecurityGroupDefaultEgressShape. The
   SG phase of the vpc stack now passes; the stack subsequently hangs
   on apply at `aws_route_table_association.subnet_{a,b}` (Still
   creating → timeout — a NEW open lead: the twin never completes

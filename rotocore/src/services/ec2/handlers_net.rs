@@ -335,7 +335,7 @@ fn create_security_group(req: &Request, params: &P) -> Response {
         // SG with the all-egress rule CARRYING its 0.0.0.0/0 CidrIp — a
         // bare protocol:-1 with empty IpRanges fails the provider's
         // revoke key-match (InvalidPermission.NotFound; terraform drift
-        // rerun sqs-s3.md 2026-11-08).
+        // rerun, terraform-drift.md 2026-11-08).
         sg.egress = vec![IpPermission {
             protocol: "-1".into(),
             ip_ranges: vec![("0.0.0.0/0".to_string(), String::new())],

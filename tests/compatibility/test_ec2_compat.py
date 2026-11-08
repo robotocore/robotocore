@@ -11667,8 +11667,8 @@ class TestEC2Batch0CreateTransitGatewayPolicyTable:
 
 # ---------------------------------------------------------------------------
 # The seeded default all-egress rule carries real AWS's 0.0.0.0/0 CidrIp
-# (terraform drift rerun, sqs-s3.md 2026-11-08): the provider-style revoke
-# needs the full shape to match.
+# (terraform drift rerun, docs/semantic-audit-2026-11-06/terraform-drift.md):
+# the provider-style revoke needs the full shape to match.
 # ---------------------------------------------------------------------------
 
 

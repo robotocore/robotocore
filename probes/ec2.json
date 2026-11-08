@@ -1,9 +1,9 @@
 {
   "service": "ec2",
-  "generated_at": "2026-11-08T05:09:37.635588+00:00",
+  "generated_at": "2026-11-08T05:25:42.008538+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/ec2.rs": "absent",
-    "rotocore/src/services/ec2/": "e082445209a39cd51ae6cab65f1636efa2ef64693b1cedd4b98f303e91f06e19",
+    "rotocore/src/services/ec2/": "21fbf34c5969a940c37280c0dbbd33d17c76bf6c9f47adc56aedf6572830eafb",
     "crates/ec2/src/": "absent"
   },
   "endpoint": "http://localhost:4566",
@@ -48,7 +48,7 @@
     {
       "operation": "AcceptVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-9d3f3585' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-3632fd4e' does not exist)"
     },
     {
       "operation": "AcceptVpcPeeringConnection",
@@ -488,12 +488,12 @@
     {
       "operation": "CreateKeyPair",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidKeyPair.Duplicate: The key pair 'probe-test-value' already exists)"
     },
     {
       "operation": "CreateLaunchTemplate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidLaunchTemplateName.AlreadyExistsException: A launch template named 'probe-test-value' already exists.)"
     },
     {
       "operation": "CreateLaunchTemplateVersion",
@@ -1288,7 +1288,7 @@
     {
       "operation": "DeprovisionByoipCidr",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: The id '10.0.0.0/16' does not exist)"
+      "message": "OK"
     },
     {
       "operation": "DeprovisionIpamByoasn",
