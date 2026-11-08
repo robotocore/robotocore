@@ -72,13 +72,46 @@ hangs at route-table associations).
   DescribeSecurityGroups (byte diff only in the twin's empty-element
   form: `<ipv6Ranges></ipv6Ranges>` vs moto's self-closing form — the
   renderer's own inconsistency is separate, pre-existing). Compat
-  pin: TestSecurityGroupDefaultEgressShape. The
-  SG phase of the vpc stack now passes; the stack subsequently hangs
-  on apply at `aws_route_table_association.subnet_{a,b}` (Still
-  creating → timeout — a NEW open lead: the twin never completes
-  (or wrongly retries) the association create; TF_LOG wire session
-  to capture the raw request/answer), so the vpc STACK still fails —
-  at a later phase than before.
+  pin: TestSecurityGroupDefaultEgressShape.
+
+## Rerun after wave 2 (2026-11-08) — FOUR more drift root causes fixed, vpc_network PASSes
+
+The TF_LOG wire session surfaced a chain, each fixed and live-verified:
+
+1. **Route-table association rows carried no RouteTableId /
+   AssociationState** — the provider's association waiter polls
+   DescribeRouteTables and waits for `associationState.State` to reach
+   "associated"; the bare association member hung every
+   aws_route_table_association create for its full 5-minute wait.
+   Fixed in route_table_item; pins:
+   TestRouteTableAssociationShape.
+2. ** moto's SecurityGroupRule drops the ports for protocol -1**
+   (security_groups.py:60-66) — a revoke carrying FromPort/ToPort -1
+   (the provider's default-revoke shape) must key-match the seeded
+   port-less default rule; the twin's parse keeps -1/-1 and missed.
+   parse_permissions now normalizes; pin:
+   TestSecurityGroupAllProtocolRevoke.
+3. **The VPC's main route table had no main association row** and
+   DescribeRouteTables lacked the association.* filters — the
+   provider's waiter polls Filter `association.route-table-
+   association-id` (35 straight polls, all empty) and the
+   aws_vpc waiter polls `association.main`+`vpc-id`. create_vpc now
+   seeds the main association (moto's main_route_table_association)
+   and describe_route_tables renders association.route-table-
+   association-id / association.subnet-id / association.route-table-id
+   arms.
+4. **Create-path tag specifications were dropped** for IGW/route-table/
+   security-group creates (wire_tags read only bare Tag.N) and
+   **create-VPC defaulted enableDnsSupport=false** (real AWS defaults
+   true) — every plan-after-apply fought Name-tag re-adds and the
+   dns-support flip. tag_spec_tags now merges into the three creates
+   (pins: TestVpcDefaultsMirrorRealAws), and the VPC create default
+   mirrors real AWS.
+
+Results: **vpc_network and static_website now PASS the drift oracle**
+(apply completes and plan shows no changes); the six remaining stacks
+all progress past SG/route-table phases and fail at their NEXT
+resources (lambda, kinesis, etc. — per-stack leads queued).
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.
