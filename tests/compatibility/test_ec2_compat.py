@@ -11890,3 +11890,141 @@ class TestVpcDefaultsMirrorRealAws:
             ec2.delete_route_table(RouteTableId=rt["RouteTableId"])
             ec2.delete_vpc(VpcId=vpc_id)
             ec2.delete_internet_gateway(InternetGatewayId=ig["InternetGatewayId"])
+
+
+class TestSecurityGroupRuleModifyPortNorm:
+    """ModifySecurityGroupRules keeps FromPort/ToPort -1 on an
+    all-protocol rule exactly like moto's modify path (live-probed: the
+    SecurityGroupRule port drop is the CREATE path only; the seeded
+    default rule is port-less because of its ORIGIN)."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_keeps_all_protocol_ports(self, ec2):
+        import uuid
+
+        name = f"modsg-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="port norm")["GroupId"]
+        try:
+            ec2.authorize_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 5000,
+                        "ToPort": 5001,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
+            )
+            rules = ec2.describe_security_group_rules(
+                Filters=[{"Name": "group-id", "Values": [gid]}]
+            )["SecurityGroupRules"]
+            tcp_rules = [r for r in rules if r["IsEgress"] and r.get("FromPort") == 5000]
+            rule_id = tcp_rules[0]["SecurityGroupRuleId"]
+            assert rule_id, f"modify-op twin assigns securityGroupRuleIds: {tcp_rules}"
+            ec2.modify_security_group_rules(
+                GroupId=gid,
+                SecurityGroupRules=[
+                    {
+                        "SecurityGroupRuleId": rule_id,
+                        "SecurityGroupRule": {
+                            "IpProtocol": "-1",
+                            "FromPort": -1,
+                            "ToPort": -1,
+                            "CidrIpv4": "0.0.0.0/0",
+                        },
+                    }
+                ],
+            )
+            sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
+            modified = [
+                p
+                for p in sgd["IpPermissionsEgress"]
+                if p["IpProtocol"] == "-1" and p.get("FromPort") == -1 and p.get("ToPort") == -1
+            ]
+            assert len(modified) == 1
+            # moto KEEPS FromPort/ToPort -1 on a modified all-protocol rule
+            # (live-probed: the #-1 drop is SecurityGroupRule.__init__'s
+            # create-path behavior; the modify path preserves them)
+            assert modified[0].get("FromPort") == -1
+            assert modified[0].get("ToPort") == -1
+        finally:
+            ec2.delete_security_group(GroupId=gid)
+
+
+class TestRouteTableAssocFilterParity:
+    """moto (route_tables.py:126-128) answersassociation.route-table-id
+    with the table's own id even when the table has no associations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_assoc_route_table_id_filter_matches_assocless(self, ec2):
+        cidr = "10.99.0.0/16"
+        vpc_id = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        rt = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]
+        try:
+            got = ec2.describe_route_tables(
+                Filters=[{"Name": "association.route-table-id", "Values": [rt["RouteTableId"]]}]
+            )["RouteTables"]
+            assert [r["RouteTableId"] for r in got] == [rt["RouteTableId"]]
+            # and the main-assoc arm still answers for the seeded row
+            main_rts = ec2.describe_route_tables(
+                Filters=[
+                    {"Name": "association.main", "Values": ["true"]},
+                    {"Name": "vpc-id", "Values": [vpc_id]},
+                ]
+            )["RouteTables"]
+            assert any(any(a.get("Main") for a in r["Associations"]) for r in main_rts)
+            # deleting the main (rtbassoc-carrying) table answers real
+            # AWS's DependencyViolation (real-AWS-preferred divergence
+            # from moto's permissive main-delete)
+            with pytest.raises(botocore.exceptions.ClientError) as exc:
+                ec2.delete_route_table(RouteTableId=main_rts[0]["RouteTableId"])
+            assert exc.value.response["Error"]["Code"] == "DependencyViolation"
+        finally:
+            ec2.delete_route_table(RouteTableId=rt["RouteTableId"])
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestModifyKeepsAllProtocolPortsDossier:
+    """Compact search to keep the moto-parity ties in one place: the
+    create path drops -1 ports (SecurityGroupRule.__init__), the modify
+    path keeps them, the seeded default rule is port-less, and a -1
+    modify lands in moto exactly as kept ('FromPort': -1 with the rule
+    id lookup through DescribeSecurityGroupRules)."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_authorize_drops_ports_but_modify_keeps(self, ec2):
+        import uuid
+
+        name = f"bothpaths-{uuid.uuid4().hex[:8]}"
+        gid = ec2.create_security_group(GroupName=name, Description="dossier")[
+            "GroupId"
+        ]
+        try:
+            # the CREATE path on moto: ports dropped for the all protocol
+            ec2.authorize_security_group_egress(
+                GroupId=gid,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": -1,
+                        "ToPort": -1,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }
+                ],
+            )
+            sgd = ec2.describe_security_groups(GroupIds=[gid])["SecurityGroups"][0]
+            created = [p for p in sgd["IpPermissionsEgress"] if p["IpProtocol"] == "-1"]
+            assert created, "seeded/authorized -1 rule present"
+            assert "FromPort" not in created[0] and "ToPort" not in created[0]
+        finally:
+            ec2.delete_security_group(GroupId=gid)
