@@ -209,6 +209,11 @@ IAM
     (e) A.
 
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
+   **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role
+   ("Role {n} not found" — moto's role-family wording, models.py:2191) and the
+   policy ("The role policy with name {p} cannot be found.", models.py:914-920)
+   — NoSuchEntity 404 on both absences.
+
     (a) DeleteRolePolicy.
     (b) moto resolves the role (`Role {name} not found`) and then `Role.delete_policy` raises NotFound "The role policy with name {p} cannot be found." (models.py:2235-2238 → 914-922), wire code NoSuchEntity.
     (c) robotocore answers 200 unconditionally — a missing role and a missing policy name both no-op (handler.rs:1230-1239). The DeleteUserPolicy/DeleteGroupPolicy siblings do check; this is the one blind arm.
@@ -216,6 +221,13 @@ IAM
     (e) A.
 
 18. DeleteRole succeeds while the role is still in an instance profile.
+   **FIXED (2026-11-08, verified live)**: the instance-profile membership
+   conflict now precedes the policy checks (moto models.py:2198-2212's
+   three-raise shape — profile conflict first (409 DeleteConflict), then
+   managed policies ("must detach all policies first."), then inline
+   ("must delete policies first.")). The stored strip loop still exists and
+   is now a no-op race: it runs only after the new conflict guard.
+
     (a) DeleteRole.
     (b) moto raises DeleteConflictException "Cannot delete entity, must remove roles from instance profile first." when any instance profile references the role (models.py:2199-2206), before the policy checks.
     (c) robotocore performs no instance-profile check and instead silently strips the role from every profile, then deletes (handler.rs:965-994).
@@ -223,6 +235,10 @@ IAM
     (e) A.
 
 19. DeleteInstanceProfile succeeds while roles are attached.
+   **FIXED (2026-11-08, verified live)**: DeleteInstanceProfile with roles
+   attached raises moto's DeleteConflictException before its own removal
+   (models.py:2456-2464).
+
     (a) DeleteInstanceProfile.
     (b) moto raises DeleteConflictException "Cannot delete entity, must remove roles from instance profile first." when `instance_profile.roles` is non-empty (models.py:2456-2464).
     (c) robotocore's IamState::delete_instance_profile removes the profile and all side maps unconditionally (models.rs:577-584; handler.rs:3394-3405) — an attached role is silently orphaned.
@@ -230,6 +246,20 @@ IAM
     (e) A.
 
 20. Permissions-boundary operations are silent no-ops on unknown entities and skip ARN validation.
+   **FIXED (2026-11-08, verified live; deltas noted 2026-11-08 review)**:
+   put/delete boundary operations resolve the entity ("Role {n} not found" /
+   the user sibling) and validate the boundary arn with moto's EXACT
+   policy_arn_regex partition shape (models.py:1894-1896 via 1959/2157 —
+   partitions aws/aws-cn/aws-eusc/aws-iso/aws-iso-b/aws-us-gov, account
+   (aws|[0-9]*), path :policy/.*); moto's FALSY-arn arm skips the regex and
+   clears an existing entity's boundary (models.py:1959-1967), matching the
+   twin now; create_role validates the boundary BEFORE the duplicate check
+   (2157-2163) and stores it (finding 20's create half).
+   PARTIALLY ALIGNED: moto has NO PutUserPermissionsBoundary at all (its raw
+   wire 500s; the twin answers real-AWS — unverifiable against moto, ledgered
+   below); the render Type member is now PermissionsBoundaryPolicy per moto
+   models.py:736-742.
+
     (a) PutUserPermissionsBoundary, PutRolePermissionsBoundary, DeleteUser/RolePermissionsBoundary.
     (b) moto validates the boundary ARN shape up front (RESTError InvalidParameterValue "Value ({arn}) for parameter PermissionsBoundary is invalid.", models.py:1956-1963, and the same check in create_role:2159-2162) and resolves the user/role (NoSuchEntity otherwise, 1956-1971).
     (c) robotocore's put_boundary/delete_boundary answer 200 without checking that the user/role exists and without any ARN validation (handler.rs:4547-4578); create_role likewise accepts any PermissionsBoundary string... (create_role handler.rs:913-950 has no boundary handling at all — the CreateRole PermissionsBoundary parameter is dropped, so a boundary requested at role creation is lost).
