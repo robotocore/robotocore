@@ -62,6 +62,12 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **EC2 new-security-group default egress shape.** The terraform drift
+  rerun's vpc root cause (`docs/semantic-audit-2026-11-06/terraform-drift.md`):
+  create_security_group seeds the default all-egress rule with real
+  AWS's full shape (`IpProtocol: -1` + `IpRanges: [{CidrIp: 0.0.0.0/0}]`)
+  instead of a bare protocol — the provider-style revoke now matches
+  and a second revoke answers InvalidPermission.NotFound like moto.
 - **IAM instance-profile / certificate / login-profile wording.** The
   remainder of finding 23 (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`,
   live-probed): instance-profile ghosts carry moto's "Instance profile

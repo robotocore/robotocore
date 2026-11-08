@@ -50,7 +50,11 @@ monitoring + auth_stack + data_lake + event_pipeline + rest_api fail;
 `static_website` is the one passing STACK (the pytest row totals 7
 failed / 2 passed because the corpus is 8 stacks + the
 `test_stacks_exist` meta-guard). The corpus confirms the SAME open
-classes as above, updated by the review's wire evidence:
+classes as above, updated by the review's wire evidence. A SECOND
+rerun after the SG-egress shape fix (#448 follow-up) keeps the same
+7-failed census but EVERY SG-carrying stack now progresses past the
+revoke phase — the failures shift to later resources (the vpc stack
+hangs at route-table associations).
 
 - **The vpc_network failure is rule-SHAPE drift, not a missing rule**:
   a fresh twin SG DOES materialize the default all-egress rule, but it
@@ -58,10 +62,20 @@ classes as above, updated by the review's wire evidence:
   `[{CidrIp: 0.0.0.0/0}]` — so the provider's revoke of the
   `(IpProtocol=-1, no-ip-range)` rule answers `InvalidPermission.NotFound`
   (400 on the twin, 200 OK on moto, live-probed on identical
-  sg-create). Fix candidate: seed the twin's default egress rule with
-  real AWS's shape; next oracle for confirmation: a TF_LOG Go-SDK wire
-  session against a minimal SG stack diffed against boto3 on the same
-  sg-id — timeboxed 2h per the design.
+  sg-create).
+
+  **FIXED (2026-11-08, verified live)**: create_security_group seeds
+  the default rule with real AWS's full shape; the provider-style
+  RevokeSecurityGroupEgress now removes it (200 → empty egress list),
+  a SECOND revoke answers InvalidPermission.NotFound exactly like
+  moto, and the wire row matches moto's DescribeSecurityGroups
+  byte-shape. Compat pin: TestSecurityGroupDefaultEgressShape. The
+  SG phase of the vpc stack now passes; the stack subsequently hangs
+  on apply at `aws_route_table_association.subnet_{a,b}` (Still
+  creating → timeout — a NEW open lead: the twin never completes
+  (or wrongly retries) the association create; TF_LOG wire session
+  to capture the raw request/answer), so the vpc STACK still fails —
+  at a later phase than before.
 - Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
   same Go-SDK signing-region session).
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.

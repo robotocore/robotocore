@@ -11663,3 +11663,53 @@ class TestEC2Batch0CreateTransitGatewayPolicyTable:
         resp = ec2.create_transit_gateway_policy_table(TransitGatewayId="tgw-12345678")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "TransitGatewayPolicyTable" in resp
+
+
+# ---------------------------------------------------------------------------
+# The seeded default all-egress rule carries real AWS's 0.0.0.0/0 CidrIp
+# (terraform drift rerun, sqs-s3.md 2026-11-08): the provider-style revoke
+# needs the full shape to match.
+# ---------------------------------------------------------------------------
+
+
+class TestSecurityGroupDefaultEgressShape:
+    def test_default_egress_rule_full_shape(self, ec2):
+        name = f"egress-shape-{uuid.uuid4().hex[:8]}"
+        created = ec2.create_security_group(GroupName=name, Description="shape pin")
+        try:
+            sgd = ec2.describe_security_groups(GroupIds=[created["GroupId"]])[
+                "SecurityGroups"
+            ][0]
+            assert sgd["IpPermissionsEgress"] == [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                }
+            ]
+            # the provider-style revoke matches the full shape
+            ec2.revoke_security_group_egress(
+                GroupId=created["GroupId"],
+                IpPermissions=[{
+                    "IpProtocol": "-1",
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                }],
+            )
+            after = ec2.describe_security_groups(GroupIds=[created["GroupId"]])[
+                "SecurityGroups"
+            ][0]
+            assert after["IpPermissionsEgress"] == []
+            # and a second revoke answers real AWS's not-found code
+            with pytest.raises(botocore.exceptions.ClientError) as exc:
+                ec2.revoke_security_group_egress(
+                    GroupId=created["GroupId"],
+                    IpPermissions=[{
+                        "IpProtocol": "-1",
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    }],
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidPermission.NotFound"
+        finally:
+            ec2.delete_security_group(GroupId=created["GroupId"])
