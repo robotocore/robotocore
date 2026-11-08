@@ -1611,3 +1611,24 @@ class TestCognitoAuthExtended:
                 assert "AuthenticationResult" in auth
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestDeletionProtectionRender:
+    """real AWS always carries DeletionProtection on describe (the
+    terraform provider's refresh flags its absence as a plan about
+    `deletion_protection = INACTIVE` — the auth_stack drift);
+    moto omits the member entirely (recorded known diff)."""
+
+    @pytest.fixture
+    def cognito(self):
+        return make_client("cognito-idp")
+
+    def test_describe_renders_default_inactive(self, cognito):
+        import uuid
+
+        pool_id = cognito.create_user_pool(PoolName=f"dp-{uuid.uuid4().hex[:8]}")["UserPool"]["Id"]
+        try:
+            got = cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]
+            assert got["DeletionProtection"] == "INACTIVE"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)

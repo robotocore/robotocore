@@ -62,6 +62,16 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Drift harness: missing Cognito/Kinesis provider endpoints.** The
+  2026-11-06 "twin rejects cognito/kinesis" drift row (both answering
+  real-AWS's UnrecognizedClientException) was a harness gap, not a twin
+  bug — the provider override lacked `cognitoidp` and `kinesis`
+  endpoints so those requests reached the REAL global endpoints. With
+  the endpoints added, auth_stack applies and plans clean end-to-end.
+- **Cognito user-pool describe renders DeletionProtection** (default
+  INACTIVE like real AWS; moto omits it — the TF oracle flagged its
+  absence as a permanent plan). Pin added. Also in the
+  cognito-refresh family: the pool schema drift remains open.
 - **EC2 security-group row grouping + SecurityGroupRules view.** Two
   wire divergences from the wave-2 pinning pass (both live-probed):
   the SG describe folds same-(protocol, ports) permissions into one row

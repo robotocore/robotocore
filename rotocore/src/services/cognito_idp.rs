@@ -874,6 +874,15 @@ fn create_user_pool(
 /// SchemaAttributes (the describe path only; create keeps "Schema").
 fn user_pool_json(p: &Value, rename_schema: bool) -> Value {
     let mut result = p.clone();
+    // real AWS (and the terraform provider's refresh) always carries
+    // DeletionProtection on describe; moto omits it, which is the drift
+    // the TF oracle flags as planscale `+ deletion_protection =
+    // "INACTIVE"` (auth_stack, TF wire capture 2026-11-08). real-AWS
+    // preferred: render the default when absent.
+    if let Some(obj) = result.as_object_mut() {
+        obj.entry("DeletionProtection")
+            .or_insert_with(|| json!("INACTIVE"));
+    }
     if rename_schema {
         if let Some(obj) = result.as_object_mut() {
             if let Some(schema) = obj.remove("Schema") {
