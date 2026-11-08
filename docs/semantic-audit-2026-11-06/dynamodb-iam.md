@@ -252,8 +252,11 @@ IAM
     legacy `resource[2]` third-character check for list members). Two
     recorded divergences from moto itself (kept twin-preferred): moto
     crashes HTTP 500 on a null Action list element (None.split), and the
-    unstructured `[policies]` probe arm's date-condition int() truncation
-    of float values is emulated where python rejects it.
+    legacy Date-condition layer on raw JSON numbers: python `int()`
+    REFUSES float values (1.5 → legacy parsing fail) while the port
+    truncates f64s, and python's `int()` accepts underscore-style strings
+    ("2_0") the port rejects — both unreachable through botocore's own
+    client-side Date validators on the common paths.
 
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
    **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role

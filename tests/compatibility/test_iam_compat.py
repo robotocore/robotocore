@@ -6437,6 +6437,9 @@ class TestIamPolicyDocumentValidation:
             with pytest.raises(ClientError) as exc:
                 iam_c.put_user_policy(UserName=name, PolicyName="p", PolicyDocument="not json")
             assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+            # a rejected put persists NOTHING (moto validates before
+            # user.put_policy) — the policy name is absent afterwards
+            assert iam_c.list_user_policies(UserName=name)["PolicyNames"] == []
         finally:
             iam_c.delete_user(UserName=name)
         rname = f"putval-r-{uuid.uuid4().hex[:8]}"
@@ -6544,6 +6547,18 @@ class TestIamPolicyDocumentValidation:
         with pytest.raises(ClientError) as exc:
             iam_c.create_policy_version(PolicyArn=ghost, PolicyDocument="not json")
         assert exc.value.response["Error"]["Code"] == "MalformedPolicyDocument"
+        # a VALID document on a ghost arn surfaces the lookup instead
+        with pytest.raises(ClientError) as exc:
+            iam_c.create_policy_version(
+                PolicyArn=ghost,
+                PolicyDocument=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                    }
+                ),
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
 
 
 class TestSetDefaultPolicyVersionShape:
