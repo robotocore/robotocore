@@ -158,7 +158,13 @@ def main():
         try:
             module = importlib.import_module(module_path)
         except ModuleNotFoundError as exc:
-            raise HandlerImportError(f"Cannot find module: {module_path}") from exc
+            # Name the REAL missing module — a handler importing boto3
+            # against an interpreter without it used to misreport as
+            # "Cannot find module: <handler>" and hide the dep gap.
+            missing = exc.name or module_path
+            raise HandlerImportError(
+                f"Cannot find module: {missing} (imported by {module_path})"
+            ) from exc
         fn = getattr(module, func_name, None)
         if fn is None or not callable(fn):
             raise HandlerLoadError(
@@ -562,6 +568,30 @@ fn find_python3() -> String {
     if let Ok(path) = std::env::var("ROBOTOCORE_PY") {
         if !path.is_empty() {
             return path;
+        }
+    }
+    // moto's runner executes handlers in moto's own environment (boto3
+    // importable, wheels installed). A PATH python3 without the twin's
+    // deps turns any handler that imports boto3 into a Runtime.Import
+    // ModuleError naming the handler module instead of the real missing
+    // dep. The twin binary lives at <repo>/target/release/, so the repo
+    // .venv python (which carries botocore/boto3 like moto's env) is the
+    // safe next candidate when it exists.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir: Option<std::path::PathBuf> = exe.parent().map(|p| p.to_path_buf());
+        for _ in 0..3 {
+            if let Some(d) = dir {
+                let cand = d.join(".venv/bin/python3");
+                if std::fs::metadata(&cand)
+                    .map(|m| m.is_file())
+                    .unwrap_or(false)
+                {
+                    return cand.to_string_lossy().to_string();
+                }
+                dir = d.parent().map(|p| p.to_path_buf());
+            } else {
+                break;
+            }
         }
     }
     "python3".to_string()
