@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-06T19:42:43.305335+00:00",
+  "generated_at": "2026-11-08T01:02:06.897983+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "a718f3a2e608ee5f422efcd9056c5a4dd49b8585c10a6402a6b9ebb9c8bd7836"
+    "crates/iam/src/": "973f541a1624078bde7c817cfe3194e21660a8216ffeec64329123c5f0a9b0e4"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -108,7 +108,7 @@
     {
       "operation": "CreateRole",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "CreateSAMLProvider",
@@ -193,17 +193,17 @@
     {
       "operation": "DeleteRole",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteRolePermissionsBoundary",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteRolePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteSAMLProvider",
@@ -243,7 +243,7 @@
     {
       "operation": "DeleteUserPermissionsBoundary",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteUserPolicy",
@@ -653,7 +653,7 @@
     {
       "operation": "PutRolePermissionsBoundary",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "PutRolePolicy",
@@ -663,7 +663,7 @@
     {
       "operation": "PutUserPermissionsBoundary",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "PutUserPolicy",

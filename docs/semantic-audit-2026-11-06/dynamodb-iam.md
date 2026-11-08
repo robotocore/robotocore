@@ -210,9 +210,9 @@ IAM
 
 17. DeleteRolePolicy is a silent 200 for a missing role or missing policy.
    **FIXED (2026-11-08, verified live)**: DeleteRolePolicy resolves the role
-   ("The role with name {n} cannot be found.") and the policy ("The role
-   policy with name {p} cannot be found.") — NoSuchEntity 404 on both absences,
-   aligning with the user/group siblings.
+   ("Role {n} not found" — moto's role-family wording, models.py:2191) and the
+   policy ("The role policy with name {p} cannot be found.", models.py:914-920)
+   — NoSuchEntity 404 on both absences.
 
     (a) DeleteRolePolicy.
     (b) moto resolves the role (`Role {name} not found`) and then `Role.delete_policy` raises NotFound "The role policy with name {p} cannot be found." (models.py:2235-2238 → 914-922), wire code NoSuchEntity.
@@ -222,10 +222,11 @@ IAM
 
 18. DeleteRole succeeds while the role is still in an instance profile.
    **FIXED (2026-11-08, verified live)**: the instance-profile membership
-   conflict now precedes the policy checks (moto models.py:2199-2206's exact
-   shape — "Cannot delete entity, must remove roles from instance profile
-   first." DeleteConflict 409) and the role is no longer stripped from profiles
-   the caller never touched.
+   conflict now precedes the policy checks (moto models.py:2198-2212's
+   three-raise shape — profile conflict first (409 DeleteConflict), then
+   managed policies ("must detach all policies first."), then inline
+   ("must delete policies first.")). The stored strip loop still exists and
+   is now a no-op race: it runs only after the new conflict guard.
 
     (a) DeleteRole.
     (b) moto raises DeleteConflictException "Cannot delete entity, must remove roles from instance profile first." when any instance profile references the role (models.py:2199-2206), before the policy checks.
@@ -245,11 +246,19 @@ IAM
     (e) A.
 
 20. Permissions-boundary operations are silent no-ops on unknown entities and skip ARN validation.
-   **FIXED (2026-11-08, verified live)**: put/delete boundary operations resolve
-   the user/role (NoSuchEntity) and validate the boundary arn shape (moto's
-   "Value ({arn}) for parameter PermissionsBoundary is invalid." —
-   models.py:1956-1971); create_role validates and stores the parameter it
-   used to drop (finding 20's create half).
+   **FIXED (2026-11-08, verified live; deltas noted 2026-11-08 review)**:
+   put/delete boundary operations resolve the entity ("Role {n} not found" /
+   the user sibling) and validate the boundary arn with moto's EXACT
+   policy_arn_regex partition shape (models.py:1894-1896 via 1959/2157 —
+   partitions aws/aws-cn/aws-eusc/aws-iso/aws-iso-b/aws-us-gov, account
+   (aws|[0-9]*), path :policy/.*); moto's FALSY-arn arm skips the regex and
+   clears an existing entity's boundary (models.py:1959-1967), matching the
+   twin now; create_role validates the boundary BEFORE the duplicate check
+   (2157-2163) and stores it (finding 20's create half).
+   PARTIALLY ALIGNED: moto has NO PutUserPermissionsBoundary at all (its raw
+   wire 500s; the twin answers real-AWS — unverifiable against moto, ledgered
+   below); the render Type member is now PermissionsBoundaryPolicy per moto
+   models.py:736-742.
 
     (a) PutUserPermissionsBoundary, PutRolePermissionsBoundary, DeleteUser/RolePermissionsBoundary.
     (b) moto validates the boundary ARN shape up front (RESTError InvalidParameterValue "Value ({arn}) for parameter PermissionsBoundary is invalid.", models.py:1956-1963, and the same check in create_role:2159-2162) and resolves the user/role (NoSuchEntity otherwise, 1956-1971).

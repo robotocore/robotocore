@@ -341,7 +341,7 @@ impl IamHandler {
         if include_boundary {
             if let Some(barn) = user.permissions_boundary.read().clone() {
                 s.push_str(&format!(
-                    "<PermissionsBoundary><PermissionsBoundaryType>PermissionsBoundary</PermissionsBoundaryType><PermissionsBoundaryArn>{}</PermissionsBoundaryArn></PermissionsBoundary>",
+                    "<PermissionsBoundary><PermissionsBoundaryType>PermissionsBoundaryPolicy</PermissionsBoundaryType><PermissionsBoundaryArn>{}</PermissionsBoundaryArn></PermissionsBoundary>",
                     xml_escape(&barn)
                 ));
             }
@@ -901,7 +901,7 @@ impl IamHandler {
         if include_boundary {
             if let Some(barn) = role.permissions_boundary.read().clone() {
                 s.push_str(&format!(
-                    "<PermissionsBoundary><PermissionsBoundaryType>PermissionsBoundary</PermissionsBoundaryType><PermissionsBoundaryArn>{}</PermissionsBoundaryArn></PermissionsBoundary>",
+                    "<PermissionsBoundary><PermissionsBoundaryType>PermissionsBoundaryPolicy</PermissionsBoundaryType><PermissionsBoundaryArn>{}</PermissionsBoundaryArn></PermissionsBoundary>",
                     xml_escape(&barn)
                 ));
             }
@@ -922,6 +922,18 @@ impl IamHandler {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(3600);
         let state = self.get_state(req.account);
+        // moto models.py:2157-2163 — the boundary-arn check PRECEDES the
+        // duplicate-role check, so a dup name + bad boundary answers
+        // InvalidParameterValue (the review's ordering wire probe).
+        if let Some(boundary) = get_param(req, "PermissionsBoundary") {
+            if !boundary.is_empty() && Self::validate_boundary_arn(&boundary).is_err() {
+                return err(
+                    400,
+                    "InvalidParameterValue",
+                    &format!("Value ({boundary}) for parameter PermissionsBoundary is invalid."),
+                );
+            }
+        }
         if state.get_role(&role_name).is_some() {
             return err(
                 409,
@@ -943,15 +955,6 @@ impl IamHandler {
         // stores it — the old twin dropped the parameter.
         if let Some(boundary) = get_param(req, "PermissionsBoundary") {
             if !boundary.is_empty() {
-                if Self::validate_boundary_arn(&boundary).is_err() {
-                    return err(
-                        400,
-                        "InvalidParameterValue",
-                        &format!(
-                            "Value ({boundary}) for parameter PermissionsBoundary is invalid."
-                        ),
-                    );
-                }
                 role.permissions_boundary = parking_lot::RwLock::new(Some(boundary));
             }
         }
@@ -998,13 +1001,18 @@ impl IamHandler {
                         "Cannot delete entity, must remove roles from instance profile first.",
                     );
                 }
-                if !role.attached_policies.read().is_empty()
-                    || !role.inline_policies.read().is_empty()
-                {
+                if !role.attached_policies.read().is_empty() {
                     return err(
                         409,
                         "DeleteConflict",
                         "Cannot delete entity, must detach all policies first.",
+                    );
+                }
+                if !role.inline_policies.read().is_empty() {
+                    return err(
+                        409,
+                        "DeleteConflict",
+                        "Cannot delete entity, must delete policies first.",
                     );
                 }
                 {
@@ -1267,11 +1275,7 @@ impl IamHandler {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let state = self.get_state(req.account);
         let Some(role) = state.get_role(&role_name) else {
-            return err(
-                404,
-                "NoSuchEntity",
-                &format!("The role with name {role_name} cannot be found."),
-            );
+            return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
         };
         if !role.inline_policies.read().contains(&policy_name) {
             return err(
@@ -3447,7 +3451,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {name} cannot be found"),
+                &format!("Instance profile {name} not found"),
             );
         };
         if !profile.is_empty() {
@@ -3461,7 +3465,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("Instance profile {name} cannot be found"),
+                &format!("Instance profile {name} not found"),
             );
         }
         AwsResponse::xml(200, "DeleteInstanceProfile", String::new())
@@ -4607,11 +4611,37 @@ impl IamHandler {
 
     // ---------------- Permissions boundaries ----------------
 
-    /// moto models.py:1956-1963: the boundary ARN must be a policy arn
-    /// (`arn:aws:iam::...:policy/...`) and the entity must resolve —
-    /// otherwise InvalidParameterValue / NoSuchEntity (finding 20).
+    /// moto's boundary arn check (models.py:1894-1896's
+    /// policy_arn_regex via 1959/2157): `arn:<partition>:iam::(aws|[0-9]*):
+    /// policy/.*` where the partition is one of moto's
+    /// utilities/utils.py REGION_PREFIX names. A FALSY value skips the
+    /// regex entirely (the caller still resolves the entity).
     fn validate_boundary_arn(arn: &str) -> Result<(), ()> {
-        let ok = arn.starts_with("arn:aws:iam::") && arn.contains(":policy/");
+        if arn.is_empty() {
+            return Ok(());
+        }
+        let partitions = [
+            "aws",
+            "aws-cn",
+            "aws-eusc",
+            "aws-iso",
+            "aws-iso-b",
+            "aws-us-gov",
+        ];
+        let Some(rest) = partitions
+            .iter()
+            .find_map(|p| arn.strip_prefix(&format!("arn:{p}:iam::")))
+        else {
+            return Err(());
+        };
+        // moto's account group: `aws` or a bare digit run (`[0-9]*`),
+        // followed by `:policy/`
+        let ok = if let Some(tail) = rest.strip_prefix("aws") {
+            tail.starts_with(":policy/")
+        } else {
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            rest[digits.len()..].starts_with(":policy/")
+        };
         if ok {
             Ok(())
         } else {
@@ -4622,6 +4652,30 @@ impl IamHandler {
     fn put_boundary(&self, req: &AwsRequest, user: bool) -> AwsResponse {
         let arn = get_param(req, "PermissionsBoundary").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto's falsy-arn arm skips the regex and still resolves the
+        // entity: an existing role answers 200 with the boundary cleared
+        // (models.py:1959-1967), a ghost role is NoSuchEntity.
+        if arn.is_empty() {
+            // moto's falsy arm still resolves the entity first
+            if user {
+                let name = get_param(req, "UserName").unwrap_or_default();
+                let Some(u) = state.get_user(&name) else {
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("The user with name {name} cannot be found."),
+                    );
+                };
+                *u.permissions_boundary.write() = None;
+                return AwsResponse::xml(200, "PutUserPermissionsBoundary", String::new());
+            }
+            let name = get_param(req, "RoleName").unwrap_or_default();
+            let Some(r) = state.get_role(&name) else {
+                return err(404, "NoSuchEntity", &format!("Role {name} not found"));
+            };
+            *r.permissions_boundary.write() = None;
+            return AwsResponse::xml(200, "PutRolePermissionsBoundary", String::new());
+        }
         if Self::validate_boundary_arn(arn.as_str()).is_err() {
             return err(
                 400,
@@ -4643,11 +4697,7 @@ impl IamHandler {
         }
         let name = get_param(req, "RoleName").unwrap_or_default();
         let Some(r) = state.get_role(&name) else {
-            return err(
-                404,
-                "NoSuchEntity",
-                &format!("The role with name {name} cannot be found."),
-            );
+            return err(404, "NoSuchEntity", &format!("Role {name} not found"));
         };
         *r.permissions_boundary.write() = Some(arn);
         AwsResponse::xml(200, "PutRolePermissionsBoundary", String::new())
@@ -4669,11 +4719,7 @@ impl IamHandler {
         }
         let name = get_param(req, "RoleName").unwrap_or_default();
         let Some(r) = state.get_role(&name) else {
-            return err(
-                404,
-                "NoSuchEntity",
-                &format!("The role with name {name} cannot be found."),
-            );
+            return err(404, "NoSuchEntity", &format!("Role {name} not found"));
         };
         *r.permissions_boundary.write() = None;
         AwsResponse::xml(200, "DeleteRolePermissionsBoundary", String::new())
