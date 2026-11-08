@@ -1,6 +1,6 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-11-08T01:57:27.643655+00:00",
+  "generated_at": "2026-11-08T20:01:48.927962+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/dynamodb.rs": "absent",
     "rotocore/src/services/dynamodb/": "absent",
