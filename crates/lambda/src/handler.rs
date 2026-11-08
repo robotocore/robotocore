@@ -1500,6 +1500,12 @@ impl LambdaHandler {
         // render time, exactly like moto's `"Enabled" if self.enabled
         // else "Disabled"` — a create/update bookkeeping mismatch can no
         // longer lie on the wire.
+        //
+        // `Tags` rides UNFILTERED (models.py:1431): `{}` is not None, so
+        // moto — and real AWS's EventSourceMappingConfiguration — always
+        // carry the member, empty or not. The terraform provider reads
+        // mapping tags via ListTags, so the drift oracle never caught
+        // the omission; the #461-review lane flagged it.
         let mut m = Map::new();
         m.insert("UUID".into(), json!(e.uuid));
         m.insert("BatchSize".into(), json!(e.batch_size));
@@ -1536,6 +1542,17 @@ impl LambdaHandler {
             m.insert("MaximumRetryAttempts".into(), json!(retry));
         }
         m.insert("LastProcessingResult".into(), Value::Null);
+
+        m.insert(
+            "Tags".into(),
+            json!(
+                e.tags
+                    .read()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                    .collect::<Map<_, _>>()
+            ),
+        );
         m.insert(
             "State".into(),
             json!(if e.enabled { "Enabled" } else { "Disabled" }),
@@ -4327,5 +4344,35 @@ mod tests {
             &format!("/2015-03-31/event-source-mappings/{uuid}"),
         ));
         assert_eq!(resp.status, 404, "body: {}", resp.body);
+    }
+
+    /// The ESM body carries the per-mapping tags UNFILTERED (moto's
+    /// get_configuration shares `Tags`, and `{}` survives its None-filter,
+    /// models.py:1431/1434). Pinned IN-PROCESS on purpose: botocore's
+    /// EventSourceMappingConfiguration model has no `Tags` member, so its
+    /// response parser silently drops it — no boto3-level test can
+    /// observe the member on either side.
+    #[test]
+    fn esm_wire_dict_carries_tags_member() {
+        let handler = LambdaHandler::new();
+        let fn_name = "esm-wire-fn";
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": fn_name, "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:wire-q",
+                   "FunctionName": fn_name,
+                   "Tags": {"team": "red"}}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let esm: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(esm["Tags"], json!({"team": "red"}), "create body: {}", resp.body);
+        let got = get_esm(&handler, esm["UUID"].as_str().unwrap());
+        assert_eq!(got.status, 200, "body: {}", got.body);
+        let got_value: Value = serde_json::from_str(&got.body).unwrap();
+        assert_eq!(got_value["Tags"], json!({"team": "red"}), "get body: {}", got.body);
     }
 }

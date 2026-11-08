@@ -62,6 +62,20 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda: ESM bodies carry the per-mapping `Tags` member.** moto's
+  get_configuration renders `Tags` UNFILTERED (awslambda/models.py:1429
+  — `{}` survives its None-filter), so all five ESM bodies (create/
+  update/delete/get/list) describe the mapping's tags, empty or not;
+  the twin's esm_dict omitted the member outright. (Real AWS's
+  documented EventSourceMappingConfiguration response does NOT — the
+  member rides only the request — and botocore's model mirrors that.)
+  The terraform provider reads mapping tags via
+  ListTags, so the drift oracle never caught the omission (#461
+  review-lane lead). Pinned IN-PROCESS ON PURPOSE:
+  lambda::handler::tests::esm_wire_dict_carries_tags_member — botocore's
+  EventSourceMappingConfiguration model has no `Tags` member, so its
+  response parser silently drops the member and no boto3-level test can
+  observe it on either side.
 - **Kinesis KeyId renders in both describe shapes.** moto renders the
   stored KeyId unconditionally (kinesis/models.py:449, 466 — null for a
   NONE stream, the configured ARN once StartStreamEncryption ran, null

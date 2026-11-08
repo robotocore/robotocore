@@ -215,6 +215,18 @@ Pins: TestEventSourceMappingTags (5 routing/shape tests plus the
 function tag path regression). event_pipeline drift now PASSES
 (1 passed live, 45s — the SQS create's 25s provider poll included).
 
+Follow-on from the same review pass: moto always renders `Tags` in the
+ESM body dict (models.py:1429; `{}` survives the None-filter at
+1433-1434) — the twin's esm_dict omitted the member. Rendered now;
+(real AWS's documented response shape does not carry it — botocore's
+model mirrors that and drops unmodeled members at parse time.)
+The pin is the crate's own unit test
+(esm_wire_dict_carries_tags_member) because botocore's
+EventSourceMappingConfiguration has no `Tags` member and its parser
+drops unmodeled members silently — no boto3-level test can see the
+member on either side. The terraform ESM refresh reads tags via
+ListTags, so no drift-stack surface changes either way.
+
 Follow-on from the #460 adversarial review: the same refresh also sets
 `kms_key_id` from the summary — moto renders the stored KeyId in BOTH
 describe shapes (kinesis/models.py:449, 466), the twin hardcoded null
