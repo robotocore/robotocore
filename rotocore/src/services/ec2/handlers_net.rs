@@ -798,6 +798,11 @@ fn modify_security_group_rules(req: &Request, params: &P) -> Response {
                             let desc = perm.ip_ranges.iter().map(|(_, d)| d.clone()).next();
                             perm.ip_ranges = vec![(c.clone(), desc.unwrap_or_default())];
                         }
+                        // NOTE (2026-11-08 live probe): moto's modify path
+                        // KEEPS FromPort/ToPort -1 on an all-protocol rule —
+                        // the #-1 port drop in SecurityGroupRule.__init__ is
+                        // the CREATE path's behavior only; the twin mirrors
+                        // the keep here.
                         break 'outer;
                     }
                 }
@@ -1783,7 +1788,11 @@ fn describe_route_tables(req: &Request, params: &P) -> Response {
                     .filter_map(|(_, s, _)| s.clone())
                     .collect(),
                 "association.route-table-id" => {
-                    rt2.associations.iter().map(|_| rt2.id.clone()).collect()
+                    // moto (route_tables.py:126-128) answers the id even for
+                    // an association-less route table — every table owns its
+                    // own id as a candidate; the provider's by-rt-id polling
+                    // relies on it.
+                    vec![rt2.id.clone()]
                 }
                 other => tag_candidates(&rt2.tags, other),
             }) {
