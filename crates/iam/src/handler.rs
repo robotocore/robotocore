@@ -1376,7 +1376,9 @@ impl IamHandler {
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name),
+                // moto get_group (models.py:2581), not delete_group's
+                // long sentence (2620-2626).
+                &format!("Group {group_name} not found"),
             ),
         }
     }
@@ -1466,24 +1468,25 @@ impl IamHandler {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the USER first, then the group (models.py:2818-2822).
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
+        }
         let group = match state.get_group(&group_name) {
             Some(g) => g,
             None => {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The group with name {} cannot be found.", group_name),
+                    &format!("Group {group_name} not found"),
                 )
             }
         };
         if !group.users.read().contains(&username) {
-            if state.get_user(&username).is_none() {
-                return err(
-                    404,
-                    "NoSuchEntity",
-                    &format!("The user with name {} cannot be found.", username),
-                );
-            }
             group.users.write().push(username.clone());
         }
         AwsResponse::xml(200, "AddUserToGroup", String::new())
@@ -1495,13 +1498,36 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_group(&group_name) {
             Some(group) => {
-                group.users.write().retain(|u| *u != username);
-                AwsResponse::xml(200, "RemoveUserFromGroup", String::new())
+                if state.get_user(&username).is_none() {
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("The user with name {} cannot be found.", username),
+                    );
+                }
+                // moto raises when the user is not a member
+                // (models.py:2825-2829), never a silent 200.
+                let member = group
+                    .users
+                    .write()
+                    .iter()
+                    .position(|u| u == &username)
+                    .is_some();
+                if member {
+                    group.users.write().retain(|u| u != &username);
+                    AwsResponse::xml(200, "RemoveUserFromGroup", String::new())
+                } else {
+                    err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("User {username} not in group {group_name}"),
+                    )
+                }
             }
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name),
+                &format!("Group {group_name} not found"),
             ),
         }
     }
@@ -1537,8 +1563,9 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The group with name {} cannot be found.", group_name),
-                )
+                    // moto routes through get_group (models.py:2581).
+                    &format!("Group {group_name} not found"),
+                );
             }
         };
         let usernames = group.users.read().clone();
@@ -1592,7 +1619,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The group with name {group_name} cannot be found."),
+                &format!("Group {group_name} not found"),
             );
         };
         let tags = group.tags.read().clone();
@@ -1653,7 +1680,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The group with name {group_name} cannot be found."),
+                &format!("Group {group_name} not found"),
             );
         };
         let policies = group.attached_policies.read().clone();
@@ -1704,7 +1731,7 @@ impl IamHandler {
                     &format!("The group policy with name {} cannot be found.", policy_name)),
             },
             None => err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+                &format!("Group {group_name} not found")),
         }
     }
 
@@ -1712,10 +1739,25 @@ impl IamHandler {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         let state = self.get_state(req.account);
-        if let Some(group) = state.get_group(&group_name) {
-            group.inline_policies.write().retain(|p| *p != policy_name);
-            group.policy_documents.write().remove(&policy_name);
+        // moto resolves the group first, then the policy
+        // (models.py:2611-2613 + the group delete_policy mixin) — never a
+        // silent 200 for either.
+        let Some(group) = state.get_group(&group_name) else {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Group {group_name} not found"),
+            );
+        };
+        if !group.inline_policies.read().contains(&policy_name) {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The group policy with name {policy_name} cannot be found."),
+            );
         }
+        group.inline_policies.write().retain(|p| *p != policy_name);
+        group.policy_documents.write().remove(&policy_name);
         AwsResponse::xml(200, "DeleteGroupPolicy", String::new())
     }
 
@@ -1726,7 +1768,7 @@ impl IamHandler {
             return err(
                 404,
                 "NoSuchEntity",
-                &format!("The group with name {group_name} cannot be found."),
+                &format!("Group {group_name} not found"),
             );
         };
         let policies = group.inline_policies.read().clone();
@@ -3720,6 +3762,15 @@ impl IamHandler {
         let key_id = get_param(req, "SSHPublicKeyId").unwrap_or_default();
         let status = get_param(req, "Status").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the user first, then the specific key
+        // (models.py:2942-2945, 1464-1471).
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
+        }
         let mut keys = state.ssh_keys.write();
         let key = keys
             .get_mut(&username)
@@ -3741,16 +3792,42 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let key_id = get_param(req, "SSHPublicKeyId").unwrap_or_default();
         let state = self.get_state(req.account);
-        let mut keys = state.ssh_keys.write();
-        if let Some(ks) = keys.get_mut(&username) {
-            ks.retain(|k| k.id != key_id);
+        // Same user-then-key resolution as Update (models.py:2948-2950).
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
+        let mut keys = state.ssh_keys.write();
+        let present = keys
+            .get_mut(&username)
+            .map(|ks| ks.iter().any(|k| k.id == key_id))
+            .unwrap_or(false);
+        if !present {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The SSH Public Key with id {} cannot be found", key_id),
+            );
+        }
+        keys.get_mut(&username).unwrap().retain(|k| k.id != key_id);
         AwsResponse::xml(200, "DeleteSSHPublicKey", String::new())
     }
 
     fn list_ssh_public_keys(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
+        // moto resolves the user first (models.py:2938-2940); the old twin
+        // answered an empty 200 for a nonexistent user.
+        if state.get_user(&username).is_none() {
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
+        }
         let keys = state
             .ssh_keys
             .read()
@@ -4021,9 +4098,15 @@ impl IamHandler {
         match user {
             Some(u) => {
                 let mut certs = u.signing_certs.write();
-                if let Some(c) = certs.iter_mut().find(|c| c.certificate_id == cert_id) {
-                    c.status = status;
-                }
+                let Some(c) = certs.iter_mut().find(|c| c.certificate_id == cert_id) else {
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        // moto models.py:2782-2786, trailing period.
+                        &format!("The Certificate with id {cert_id} cannot be found."),
+                    );
+                };
+                c.status = status;
                 AwsResponse::xml(200, "UpdateSigningCertificate", String::new())
             }
             None => err(
@@ -4041,6 +4124,20 @@ impl IamHandler {
         let user = state.get_user(&username);
         match user {
             Some(u) => {
+                // moto models.py:2762-2767: deleting a certificate id that
+                // is not on the user raises, never a silent 200.
+                if !u
+                    .signing_certs
+                    .read()
+                    .iter()
+                    .any(|c| c.certificate_id == cert_id)
+                {
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("The Certificate with id {cert_id} cannot be found."),
+                    );
+                }
                 u.signing_certs
                     .write()
                     .retain(|c| c.certificate_id != cert_id);
@@ -4057,10 +4154,18 @@ impl IamHandler {
     fn list_signing_certificates(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let certs = state
-            .get_user(&username)
-            .map(|u| u.signing_certs.read().clone())
-            .unwrap_or_default();
+        // moto resolves the user first (models.py:2769-2773); the old twin
+        // answered an empty 200 for a nonexistent user.
+        let certs = match state.get_user(&username) {
+            Some(u) => u.signing_certs.read().clone(),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The user with name {} cannot be found.", username),
+                );
+            }
+        };
         let mut body = String::from("<Certificates>");
         for c in &certs {
             body.push_str(&format!(

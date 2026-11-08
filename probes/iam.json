@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-08T01:02:06.897983+00:00",
+  "generated_at": "2026-11-08T01:43:22.687201+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "5c996387e97fe86eca0e039cd18046e66a7f61d553bdd62f04b3bb9c9760c2fe"
+    "crates/iam/src/": "c8b96e5c14ddb561b32ad5a9092bdf855a006e2af43fd027e8c83c3a65d18d11"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -163,7 +163,7 @@
     {
       "operation": "DeleteGroupPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteInstanceProfile",
@@ -213,7 +213,7 @@
     {
       "operation": "DeleteSSHPublicKey",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteServerCertificate",
@@ -478,17 +478,17 @@
     {
       "operation": "ListAttachedGroupPolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListAttachedRolePolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListAttachedUserPolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListDelegationRequests",
@@ -503,7 +503,7 @@
     {
       "operation": "ListGroupPolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListGroups",
@@ -568,7 +568,7 @@
     {
       "operation": "ListPolicyTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListPolicyVersions",
@@ -578,12 +578,12 @@
     {
       "operation": "ListRolePolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListRoleTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListRoles",
@@ -603,7 +603,7 @@
     {
       "operation": "ListSSHPublicKeys",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListServerCertificateTags",
@@ -623,17 +623,17 @@
     {
       "operation": "ListSigningCertificates",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListUserPolicies",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListUserTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "ListUsers",
