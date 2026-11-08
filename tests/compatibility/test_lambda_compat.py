@@ -2495,13 +2495,15 @@ class TestLambdaCodeSigningConfig:
         assert resp["CodeSigningConfigArn"] == csc_arn
 
     def test_delete_function_code_signing_config(self, lam, func):
-        """DeleteFunctionCodeSigningConfig removes the config."""
+        """DeleteFunctionCodeSigningConfig removes the config; the
+        no-config get answers moto's 200 {FunctionName} shape (the arn
+        member is ABSENT — moto live-probed)."""
         csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-del"
         lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
         lam.delete_function_code_signing_config(FunctionName=func)
-        with pytest.raises(lam.exceptions.ClientError) as exc_info:
-            lam.get_function_code_signing_config(FunctionName=func)
-        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        resp = lam.get_function_code_signing_config(FunctionName=func)
+        assert resp["FunctionName"] == func
+        assert "CodeSigningConfigArn" not in resp
 
     def test_get_code_signing_config_nonexistent(self, lam):
         """GetFunctionCodeSigningConfig on nonexistent function raises error."""

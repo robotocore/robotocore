@@ -1,10 +1,10 @@
 {
   "service": "lambda",
-  "generated_at": "2026-11-06T03:17:57.478463+00:00",
+  "generated_at": "2026-11-08T21:30:16.363484+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/lambda.rs": "absent",
     "rotocore/src/services/lambda/": "absent",
-    "crates/lambda/src/": "470782f7833e035642f638566af21be3a11da8e8c4914ba7fc90f4d123e28215"
+    "crates/lambda/src/": "4f3385bcd4c68f1ecff781775e2a122cc033d95aba9fdd0ec248f2f29ec32f28"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -158,7 +158,7 @@
     {
       "operation": "GetFunctionCodeSigningConfig",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetFunctionConcurrency",
