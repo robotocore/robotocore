@@ -1886,7 +1886,7 @@ impl IamHandler {
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn),
+                &format!("Policy {arn} not found"),
             ),
         }
     }
@@ -1902,7 +1902,7 @@ impl IamHandler {
             None => err(
                 404,
                 "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn),
+                &format!("Policy {arn} not found"),
             ),
         }
     }
@@ -1994,7 +1994,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };
@@ -2056,7 +2056,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };
@@ -2097,7 +2097,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };
@@ -2144,7 +2144,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };
@@ -2196,7 +2196,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };
@@ -2267,7 +2267,7 @@ impl IamHandler {
                 return err(
                     404,
                     "NoSuchEntity",
-                    &format!("The policy with ARN {} cannot be found.", arn),
+                    &format!("Policy {arn} not found"),
                 )
             }
         };

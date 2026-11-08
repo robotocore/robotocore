@@ -42,3 +42,22 @@ The AWS provider's refresh logic is the oracle — it names the exact field.
   readback omits or reshapes them).
 
 Run: `make drift` (after the twin is up).
+
+## Rerun (2026-11-08, tranche 16) — 7 failed / 2 passed, triage
+
+`make drift` after the #443-#445 wave: vpc_network + cicd_pipeline +
+monitoring + auth_stack + data_lake + event_pipeline + rest_api fail;
+the 2 passing stacks carry no SG/alarm/cognito surface. The corpus
+confirms the SAME open classes as above, with one new lead:
+
+- **The vpc_network failure is a phase-order gap, not a rule-match bug**:
+  the provider's refresh requires the DEFAULT all-egress rule to exist
+  so its inline-egress plan can revoke it; the twin's fresh SGs never
+  materialize that default rule, so `RevokeSecurityGroupEgress` answers
+  `InvalidPermission.NotFound` and terraform aborts. Next oracle: a
+  TF_LOG Go-SDK wire session against a minimal SG stack (create with no
+  inline blocks) diffed against boto3 on the same sg-id — timeboxed 2h
+  per the design.
+- Kinesis/Cognito `UnrecognizedClientException` unchanged (needs the
+  same Go-SDK signing-region session).
+- CloudWatch alarm readback + Cognito pool schema remainder unchanged.

@@ -62,6 +62,20 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **IAM policy-arn wording + DeletePolicyVersion contract.** Finding 23's
+  policy row of the moto audit and finding 22's close-out
+  (`docs/semantic-audit-2026-11-06/dynamodb-iam.md`): all eight
+  policy-arn ghost raises carry moto's "Policy {arn} not found";
+  DeletePolicyVersion stays regex-gate-free exactly like moto (a ghost
+  version answers the generic "Policy not found", junk ids included)
+  with the DeleteConflict 409 for the default version — every row
+  live-probed.
+- **Terraform drift rerun.** Tranche 16
+  (`docs/semantic-audit-2026-11-06/terraform-drift.md`): the vpc failure
+  traced to a phase-order gap — the twin never materializes the default
+  all-egress rule the provider's revoke requires; the Go-SDK-side
+  TF_LOG wire session remains the cheapest oracle for it and the
+  Kinesis/Cognito UnrecognizedClientException row.
 - **S3 bucket-level PUT validation.** Finding 15 of the moto audit
   (`docs/semantic-audit-2026-11-06/sqs-s3.md`): CreateBucket runs moto's
   region gate before any bucket resolution — us-east-1 rejects its own
