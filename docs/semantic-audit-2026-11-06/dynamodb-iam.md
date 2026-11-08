@@ -52,8 +52,11 @@ DYNAMODB
    ESK resume, filtered-out accrual, COUNT scans). One deliberate
    divergence inherited from the item-size work stands: Number values are
    sized with AWS's ceil(digits/2)+1 formula (moto #10176) instead of
-   moto's len(str()) — only a page boundary straddling a
-   number-sided-overrun item can cut one position differently.
+   moto's len(str()) — and NULLs weigh 1 byte vs moto's bytesize("true")
+   = 4 — so a boundary straddling a numeric-heavy item can cut the page
+   one-or-many items apart on an extreme corpus (live-probed: a
+   9,000×38-digit-N corpus cuts at 2 on moto, 4 on the twin); the twin is
+   real-AWS-preferred and the ledger records the skew.
 
 4. Empty-string keys, empty sets and NULL-typed GSI keys are accepted on writes.
    (a) PutItem, BatchWriteItem, TransactWriteItems Put/Update.

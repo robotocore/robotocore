@@ -277,11 +277,13 @@ pub fn number_value_size(n: &str) -> u64 {
 }
 
 /// Size in bytes of a single (typed) AttributeValue, mirroring moto's
-/// `DynamoType.size()` (except for Number values, see
-/// `number_value_size`): strings are UTF-8 byte lengths, binary values raw
-/// byte lengths, booleans/nulls 1 byte, lists sum their elements (index
-/// names are not counted), maps count each nested attribute name, sets sum
-/// element sizes without attribute names.
+/// `DynamoType.size()` with two deliberate divergences: Number values use
+/// AWS's formula (see `number_value_size`), and NULL values weigh 1 byte
+/// where moto counts `bytesize("true")` = 4 (dynamo_type.py) — relevant
+/// only within ~3 bytes of a page boundary. Strings are UTF-8 byte
+/// lengths, binary values raw byte lengths, booleans/nulls 1 byte, lists
+/// sum their elements (index names are not counted), maps count each
+/// nested attribute name, sets sum element sizes without attribute names.
 ///
 /// https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html
 pub fn attr_value_size(value: &AttrValue) -> u64 {
