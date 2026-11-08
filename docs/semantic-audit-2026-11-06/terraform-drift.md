@@ -165,3 +165,18 @@ Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
   diff). The twin now renders the INACTIVE default; pin
   TestDeletionProtectionRender.
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.
+
+
+## Cross-service lambda runner ImportModuleError (2026-11-08, root cause)
+
+28 cross-service tests failed with the handler import error naming the
+HANDLER module — the runner's `python3` was the daemon's PATH python
+(no boto3), and every user handler in the suite imports boto3. Fixed
+two ways:
+
+1. **find_python3 discovers the repo .venv python** (walks up from
+   current_exe to .venv/bin/python3, matching moto's runner-owns-deps
+   behavior); ROBOTOCORE_PY still wins when set.
+2. **The import error names the REAL missing module** — "Cannot find
+   module: boto3 (imported by <handler>)" instead of the misleading
+   handler name — so dep gaps read like real AWS's ImportModuleError.
