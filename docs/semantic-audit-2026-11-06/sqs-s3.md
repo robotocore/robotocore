@@ -38,13 +38,21 @@ SQS
    (e) High confidence.
 
 3. RedrivePolicy is stored but never validated (DLQ silently no-ops)
-   **FIXED (2026-11-08, verified live)**: _setup_dlq's full validation chain
-   (models.py:372-430): non-JSON / empty handling, missing
-   deadLetterTargetArn / maxReceiveCount (each with moto's exact
-   InvalidParameterValue wordings), the DLQ-arn existence lookup against
-   the account's own queues (AWS.SimpleQueueService.NonExistentQueue
-   "Could not find DLQ for {arn}"), and the FIFO/ non-FIFO DLQ mismatch
-   (InvalidParameterCombination). SetQueueAttributes validates too.
+   **FIXED (2026-11-08, verified live; wording corrected 2026-11-08 by
+   adversarial wire review)**: _setup_dlq's validation chain
+   (models.py:372-430) — with moto's exact shapes: non-JSON policies
+   CRASH moto above its dict checks (an unhandled JSONDecodeError
+   escaping the emptiness probe at models.py:373-377 = the werkzeug
+   plain-500 page, which the twin mirrors crash-faithfully — the ledger's
+   sqs_validation.create_rp_badjson row records the same); an empty
+   decoded policy ({} or []) books None silently; a non-empty non-object
+   policy answers "Redrive policy does not contain deadLetterTargetArn"
+   (its list-membership false); missing arn / maxReceiveCount each carry
+   moto's InvalidParameterValue sentence; the DLQ arn resolves against the
+   account's own queues ("Could not find DLQ for {arn}") and the
+   FIFO/ non-FIFO DLQ mismatch is InvalidParameterCombination.
+   SetQueueAttributes runs the same redrive setup (the only validation
+   moto's set path runs — its constructor checks live in __init__).
 
    (a) SetQueueAttributes/CreateQueue (RedrivePolicy) and redrive behavior.
    (b) moto M/sqs/models.py:372-424 — `_setup_dlq` raises InvalidParameterValue for non-JSON, missing deadLetterTargetArn, or missing maxReceiveCount; "AWS.SimpleQueueService.NonExistentQueue / Could not find DLQ for ..." when the target queue doesn't exist; InvalidParameterCombination "Fifo queues cannot use non fifo dead letter queues".

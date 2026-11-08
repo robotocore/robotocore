@@ -303,9 +303,9 @@ impl DefaultSqsHandler {
 
     /// moto's Queue constructor checks (models.py:288-299): FifoQueue=true
     /// requires a `.fifo` name and MaximumMessageSize stays inside
-    /// [1024, 1048576] (InvalidAttributeValue). SetQueueAttributes runs the
-    /// same checks — they live in _set_attributes' "Check some conditions"
-    /// block.
+    /// [1024, 1048576] (InvalidAttributeValue) — the checks live in
+    /// Queue.__init__ (models.py:291-298) and run on every call site that
+    /// builds a queue.
     fn validate_queue_shape_errors(queue_name: &str, attrs: &Value) -> Result<(), SqsError> {
         let Some(sent) = attrs.as_object() else {
             return Ok(());
@@ -355,20 +355,25 @@ impl DefaultSqsHandler {
         else {
             return Ok(());
         };
+        // moto's _setup_dlq JSON-decodes with an UNCAUGHT ValueError
+        // above its own dict checks (models.py:373-377: the emptiness
+        // probe len(json.loads(policy)) runs first) — non-JSON escapes
+        // the werkzeug handler as the recorded plain-500 page.
         let parsed: serde_json::Value = match serde_json::from_str(policy_str) {
             Ok(v) => v,
-            Err(_) => {
-                return Err(SqsError::InvalidParameterValue(
-                    "Redrive policy is not a dict or valid json".to_string(),
-                ));
-            }
+            Err(_) => return Err(SqsError::MotoCrash),
         };
-        let Some(entries) = parsed.as_object() else {
-            return Err(SqsError::InvalidParameterValue(
-                "Redrive policy is not a dict or valid json".to_string(),
-            ));
-        };
-        if entries.is_empty() {
+        // moto books None silently when the decoded policy is empty — but
+        // its emptiness probe is len(decoded) == 0, which also lets an
+        // EMPTY LIST through. Any pattern that is not an object falls into
+        // moto's membership branch: `"deadLetterTargetArn" not in <list>`
+        // is a false membership on values and answers "does not contain
+        // deadLetterTargetArn".
+        let empty_or_missing = parsed
+            .as_object()
+            .map(|m| m.is_empty())
+            .unwrap_or_else(|| parsed.as_array().is_some_and(|a| a.is_empty()));
+        if empty_or_missing {
             // moto: len==0 books None silently
             return Ok(());
         }
@@ -417,12 +422,25 @@ impl DefaultSqsHandler {
                 stored.message_retention_period == probe.message_retention_period
             }
             "Policy" => stored.policy == probe.policy,
-            "RedrivePolicy" => stored.redrive_policy == probe.redrive_policy,
+            "RedrivePolicy" => {
+                // moto compares json.dumps(parsed) on both sides — the
+                // canonical form, so equivalent-but-reformatted policies
+                // match.
+                let canonical = |raw: &Option<String>| -> Option<String> {
+                    raw.as_ref()
+                        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                        .map(|v| v.to_string())
+                };
+                canonical(&stored.redrive_policy) == canonical(&probe.redrive_policy)
+            }
             "FifoQueue" => stored.fifo_queue == probe.fifo_queue,
             "ContentBasedDeduplication" => {
                 stored.content_based_deduplication == probe.content_based_deduplication
             }
-            other => stored.extra.get(other) == probe.extra.get(other),
+            // moto's _set_attributes drops unknown attribute keys
+            // entirely: both queues read None and a re-create with an
+            // unknown key is a no-op.
+            _ => true,
         }
     }
 
@@ -451,13 +469,12 @@ impl DefaultSqsHandler {
                 .and_then(Value::as_str)
                 .is_some_and(|v| v == "true");
 
-        // moto's Queue constructor checks (models.py:288-299) + _setup_dlq
+        // moto's Queue constructor checks (models.py:291-298) + _setup_dlq
         // (372-430) run before any exists-comparison, against the account's
         // own queues.
-        Self::validate_queue_shape_errors(queue_name, &attributes_value)?;
-        Self::validate_redrive_policy(effective_fifo, &attributes_value, None)?;
-
         let store = self.get_store(account, region);
+        Self::validate_queue_shape_errors(queue_name, &attributes_value)?;
+        Self::validate_redrive_policy(effective_fifo, &attributes_value, Some(&store))?;
 
         // moto models.py:705-725 — a re-create compares ONLY the SENT
         // attributes (a fresh Queue's attributes over those keys) against
@@ -1342,7 +1359,11 @@ impl DefaultSqsHandler {
                             moved.visibility_until = None;
                             moved.available_at = None;
                             dl.send_message(moved);
-                            src.remove_by_receipt_handle(&msg.receipt_handle);
+                            // moto's redrive mutates _messages directly
+                            // (models.py:1047-1051) without walking
+                            // delete_message — no deleted-handle booking
+                            src.messages
+                                .retain(|m| m.receipt_handle != msg.receipt_handle);
                         } else {
                             stayed.push(msg);
                         }
@@ -1364,7 +1385,8 @@ impl DefaultSqsHandler {
                         let mut stayed = Vec::with_capacity(received.len());
                         for msg in received {
                             if msg.receive_count > max_receive {
-                                q.remove_by_receipt_handle(&msg.receipt_handle);
+                                q.messages
+                                    .retain(|m| m.receipt_handle != msg.receipt_handle);
                             } else {
                                 stayed.push(msg);
                             }
@@ -1878,6 +1900,23 @@ impl DefaultSqsHandler {
         })?;
 
         if let Some(attrs) = params.get("Attributes") {
+            // moto's set path runs ONLY the redrive setup (its
+            // constructor checks live in Queue.__init__, models.py:291-298,
+            // which set-attributes never re-runs); validation precedes the
+            // apply, so the stored queue stays consistent on error.
+            let params_attrs = attrs.clone();
+            Self::validate_redrive_policy(
+                {
+                    let q = queue_arc.read();
+                    let sent_fifo = params_attrs
+                        .get("FifoQueue")
+                        .and_then(Value::as_str)
+                        .map(|v| v == "true");
+                    sent_fifo.unwrap_or(q.attributes.fifo_queue)
+                },
+                &params_attrs,
+                Some(&store),
+            )?;
             let mut q = queue_arc.write();
             q.attributes.apply(attrs);
             q.last_modified = (Utc::now().timestamp_millis()) as u64;

@@ -25,7 +25,7 @@
  "sqs.receive": "twin-preferred: SenderId is the account id for account-style access keys (real AWS root-key behavior); moto reports a canned IAM user id for arbitrary keys",
  "sqs_validation.create_fifo_bad": "same-as-moto: both engines answer 400 InvalidParameterValue (Queue name must end in .fifo for FIFO queues) \u2014 pin",
  "sqs_validation.create_mms_low": "same-as-moto: 400 InvalidAttributeValue (Invalid value for the parameter MaximumMessageSize.)",
- "sqs_validation.create_rp_badjson": "same-as-moto: 400 InvalidParameterValue (Redrive policy is not a dict or valid json)",
+ "sqs_validation.create_rp_badjson": "crash-faithful: moto escapes an unhandled JSONDecodeError above the dict checks (models.py:373-377) and answers the werkzeug plain-500 page; the twin mirrors it via SqsError::MotoCrash (replaces the earlier same-as-moto wording, which papered over the wire mismatch the review caught)",
  "sqs_validation.create_rp_missing_arn": "same-as-moto: 400 InvalidParameterValue (Redrive policy does not contain deadLetterTargetArn)",
  "sqs_validation.create_rp_unknown_dlq": "same-as-moto: 400 AWS.SimpleQueueService.NonExistentQueue (Could not find DLQ for arn)"
 }
