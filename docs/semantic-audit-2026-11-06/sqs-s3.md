@@ -219,6 +219,28 @@ S3
     (d) Real AWS: enforces the location constraint, answers BucketAlreadyOwnedByYou (409) in non-us-east-1, and rejects an invalid versioning status (MalformedXML-ish 400) — moto's 404 and case-sensitivity are its own quirks. Rust diverges from both.
     (e) Medium confidence (real-AWS exact codes not re-checked in botocore models).
 
+    **FIXED (2026-11-08, verified live)**: CreateBucket now runs moto's
+    region gate before any bucket resolution — us-east-1 answers
+    InvalidLocationConstraint ("The specified location-constraint is not
+    valid") for its own explicit constraint while allowing other regions'
+    constraints (bucket_region stamped from the LC, responses.py:1104-1119);
+    every other region requires the constraint present and matching
+    (IllegalLocationConstraintException with moto's two sentences). Owned
+    recreation: idempotent ONLY for the us-east-1↔us-east-1 pair;
+    everything else answers BucketAlreadyOwnedByYou 409 ("Your previous
+    request to create the named bucket succeeded and you already own it.")
+    — one caveated row: the twin's state is per region-keyed store, so
+    moto's GLOBAL cross-region collision rows (bucket created under
+    region A's own client, recreated from region B with no constraint)
+    are unreachable here; documented twin-preferred architecture gap in
+    the ledger. PutBucketVersioning mirrors the `<Status>[A-Za-z]+</>`
+    regex: no match → moto's bare 404 (empty body, Code '404'); any
+    matched charset stores VERBATIM into a versioning_status slot that
+    GetBucketVersioning echoes ("Wibble"/"enabled"/"Disabled" all
+    round-trip at 200) while the internal Option<bool> feature flag stays
+    Enabled/Suspended-only, exactly like moto's is_versioned comparison.
+    Verified on the live moto matrix (LC 7 rows, versioning 6 rows).
+
 Follow-ups opened by the 2026-11-07 adversarial review of the multipart/DeleteObjects tranche (pre-existing, unchanged by it):
 
 - Bulk `delete_objects` fires no `s3:ObjectRemoved:Delete*` notifications (single `delete_object` does fire; moto fires per-entry at models.py:2956-2964/2994-3000).

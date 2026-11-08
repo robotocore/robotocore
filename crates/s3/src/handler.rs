@@ -1682,25 +1682,77 @@ impl S3Handler {
         }
 
         let state = self.get_state(req.account, &req.region);
-        if let Some(bucket) = state.get_bucket(&bucket_name) {
-            // Duplicate creation is idempotent; an object-lock flag can be upgraded.
-            if object_lock_requested(req) {
-                *bucket.object_lock_enabled.write() = true;
+        // moto s3/responses.py:1104-1148: the location constraint rides on
+        // the request region before any bucket resolution — us-east-1
+        // rejects its own explicit constraint and accepts creating OTHER
+        // regions' buckets; other regions require the constraint to be
+        // present and matching.
+        let body_str = String::from_utf8_lossy(&req.body).to_string();
+        let location_constraint = xml_sections(&body_str, "CreateBucketConfiguration")
+            .first()
+            .and_then(|section| xml_text(section, "LocationConstraint"));
+        let req_is_default = req.region == "us-east-1";
+        if req_is_default && location_constraint.as_deref() == Some("us-east-1") {
+            return AwsResponse::error(
+                400,
+                "InvalidLocationConstraint",
+                "The specified location-constraint is not valid",
+            );
+        }
+        if !req_is_default {
+            match location_constraint.as_deref() {
+                None | Some("") => {
+                    return AwsResponse::error(
+                        400,
+                        "IllegalLocationConstraintException",
+                        "The unspecified location constraint is incompatible for the \
+                         region specific endpoint this request was sent to.",
+                    );
+                }
+                Some(lc) if lc != req.region => {
+                    return AwsResponse::error(
+                        400,
+                        "IllegalLocationConstraintException",
+                        &format!(
+                            "The {lc} location constraint is incompatible for the region \
+                             specific endpoint this request was sent to."
+                        ),
+                    );
+                }
+                _ => {}
             }
-            // Real AWS/moto answer 200 with a Location header and an EMPTY
-            // body — the twin's fabricated CreateBucketResult XML broke
-            // strict parsers.
-            return AwsResponse {
-                status: 200,
-                headers: vec![
-                    ("Location".to_string(), format!("/{}", bucket.name)),
-                    ("x-amz-bucket-region".to_string(), req.region.clone()),
-                ],
-                body: Vec::new(),
-            };
+        }
+        // moto: bucket_region = the constraint when present, else the
+        // default region (responses.py:1115-1117).
+        let bucket_region = location_constraint.as_deref().unwrap_or("us-east-1");
+        if let Some(bucket) = state.get_bucket(&bucket_name) {
+            // moto's owned-recreate semantics (responses.py:1131-1147):
+            // idempotent only when BOTH the bucket and the request live in
+            // us-east-1; otherwise BucketAlreadyOwnedByYou. The twin's
+            // state is per-region, so cross-region name collisions that
+            // moto rejects globally are not visible here (ledgered).
+            if req_is_default && bucket.region == bucket_region && bucket_region == "us-east-1" {
+                if object_lock_requested(req) {
+                    *bucket.object_lock_enabled.write() = true;
+                }
+                return AwsResponse {
+                    status: 200,
+                    headers: vec![
+                        ("Location".to_string(), format!("/{}", bucket.name)),
+                        ("x-amz-bucket-region".to_string(), req.region.clone()),
+                    ],
+                    body: Vec::new(),
+                };
+            }
+            return AwsResponse::error(
+                409,
+                "BucketAlreadyOwnedByYou",
+                "Your previous request to create the named bucket succeeded and you \
+                 already own it.",
+            );
         }
 
-        let mut bucket = Bucket::new(bucket_name.clone(), req.region.clone());
+        let mut bucket = Bucket::new(bucket_name.clone(), bucket_region.to_string());
         bucket.directory = directory;
         let lock = object_lock_requested(req);
         *bucket.object_lock_enabled.write() = lock;
@@ -4240,12 +4292,41 @@ impl S3Handler {
             Err(e) => return e,
         };
         let body = String::from_utf8_lossy(&req.body).to_string();
-        let status = xml_text(&body, "Status").unwrap_or_default();
-        *bucket.versioning.write() = if status == "Enabled" {
+        // moto responses.py:1007-1011: the status regex is `<Status>([A-Za-z]+)</Status>`
+        // — no match answers a bare 404 with an empty body (verified live:
+        // botocore renders Code '404' / 'Not Found'), and ANY matched
+        // charset (junk casing, "Disabled", "Wibble") stores verbatim.
+        let status = match body.find("<Status>") {
+            Some(start) => {
+                let rest = &body[start + "<Status>".len()..];
+                match rest.find("</Status>") {
+                    Some(end)
+                        if !rest[..end].is_empty()
+                            && rest[..end].chars().all(|c| c.is_ascii_alphabetic()) =>
+                    {
+                        Some(rest[..end].to_string())
+                    }
+                    _ => None,
+                }
+            }
+            None => None,
+        };
+        let Some(raw) = status else {
+            // moto answers 404 with an EMPTY body (responses.py:1010-1011).
+            return AwsResponse {
+                status: 404,
+                headers: Vec::new(),
+                body: Vec::new(),
+            };
+        };
+        *bucket.versioning_status.write() = Some(raw.clone());
+        *bucket.versioning.write() = if raw == "Enabled" {
             Some(true)
-        } else if status == "Suspended" {
+        } else if raw == "Suspended" {
             Some(false)
         } else {
+            // junk casings: moto's is_versioned compares == "Enabled"
+            // exactly, so feature branches behave unversioned.
             None
         };
         AwsResponse::no_content(200)
@@ -4256,11 +4337,7 @@ impl S3Handler {
             Ok(p) => p,
             Err(e) => return e,
         };
-        let status = match *bucket.versioning.read() {
-            Some(true) => "Enabled",
-            Some(false) => "Suspended",
-            None => "",
-        };
+        let status = bucket.versioning_status.read().clone().unwrap_or_default();
         let status_elem = if status.is_empty() {
             String::new()
         } else {
@@ -9134,7 +9211,12 @@ mod catchup_fx5_object_attributes_tests {
     #[test]
     fn get_object_attributes_last_modified_is_an_http_date_header() {
         let handler = S3Handler::new();
-        let resp = handler.handle(make_req("CreateBucket", Some("fx5-attrs"), None, b""));
+        let resp = handler.handle(make_req(
+            "CreateBucket",
+            Some("fx5-attrs"),
+            None,
+            br#"<CreateBucketConfiguration><LocationConstraint>us-fx5-catchup</LocationConstraint></CreateBucketConfiguration>"#,
+        ));
         assert_eq!(resp.status, 200);
         let resp = handler.handle(make_req("PutObject", Some("fx5-attrs"), Some("k1"), b"x"));
         assert_eq!(resp.status, 200);
@@ -9175,7 +9257,12 @@ mod catchup_fx5_object_attributes_tests {
     #[test]
     fn options_preflight_uses_bucket_cors_rules() {
         let handler = S3Handler::new();
-        handler.handle(make_req("CreateBucket", Some("cors-bucket"), None, b""));
+        handler.handle(make_req(
+            "CreateBucket",
+            Some("cors-bucket"),
+            None,
+            br#"<CreateBucketConfiguration><LocationConstraint>us-fx5-catchup</LocationConstraint></CreateBucketConfiguration>"#,
+        ));
         let cors_req = make_req(
             "PutBucketCors",
             Some("cors-bucket"),
@@ -9236,7 +9323,12 @@ mod catchup_fx5_object_attributes_tests {
     #[test]
     fn cors_rule_response_headers_resolves_bucket_rules() {
         let handler = S3Handler::new();
-        handler.handle(make_req("CreateBucket", Some("cors-real"), None, b""));
+        handler.handle(make_req(
+            "CreateBucket",
+            Some("cors-real"),
+            None,
+            br#"<CreateBucketConfiguration><LocationConstraint>us-fx5-catchup</LocationConstraint></CreateBucketConfiguration>"#,
+        ));
         let with_rules = make_req(
             "PutBucketCors",
             Some("cors-real"),
@@ -9285,7 +9377,12 @@ mod catchup_fx5_object_attributes_tests {
                 "GET",
             )
             .is_none());
-        handler.handle(make_req("CreateBucket", Some("no-rules"), None, b""));
+        handler.handle(make_req(
+            "CreateBucket",
+            Some("no-rules"),
+            None,
+            br#"<CreateBucketConfiguration><LocationConstraint>us-fx5-catchup</LocationConstraint></CreateBucketConfiguration>"#,
+        ));
         assert!(handler
             .cors_rule_response_headers(
                 424242222222,
