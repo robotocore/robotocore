@@ -12044,7 +12044,6 @@ class TestSecurityGroupRowGroupingAndSgrView:
     even for the port-less seeded default (both live-probed). no
     ip-protocol filter exists on moto's sgr view — do not add one."""
 
-
     @pytest.fixture
     def ec2(self):
         return make_client("ec2")
