@@ -1498,3 +1498,44 @@ class TestDescribeStreamSummaryShape:
             assert full["EncryptionType"] == "NONE"
         finally:
             kinesis.delete_stream(StreamName=name)
+
+    def test_key_id_renders_in_both_describe_shapes(self, kinesis):
+        """moto renders the stored KeyId unconditionally
+        (kinesis/models.py:449, 466) — null for a NONE stream (botocore
+        drops null members at parse time, so the observable pin is
+        absence), the configured ARN once StartStreamEncryption ran,
+        absent again after Stop. The terraform kms_key_id refresh reads
+        the member when a key is configured."""
+        import time
+        import uuid
+
+        name = f"keyid-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        for _ in range(20):
+            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            if desc["StreamStatus"] == "ACTIVE":
+                break
+            time.sleep(0.5)
+        try:
+            summary = kinesis.describe_stream_summary(StreamName=name)["StreamDescriptionSummary"]
+            full = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            # KeyId:null on the raw wire (moto-faithful); parsed away.
+            assert "KeyId" not in summary
+            assert "KeyId" not in full
+
+            kinesis.start_stream_encryption(
+                StreamName=name, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+            )
+            summary = kinesis.describe_stream_summary(StreamName=name)["StreamDescriptionSummary"]
+            full = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            assert summary["KeyId"] == "alias/aws/kinesis"
+            assert full["KeyId"] == "alias/aws/kinesis"
+            assert summary["EncryptionType"] == "KMS"
+
+            kinesis.stop_stream_encryption(
+                StreamName=name, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+            )
+            summary = kinesis.describe_stream_summary(StreamName=name)["StreamDescriptionSummary"]
+            assert "KeyId" not in summary
+        finally:
+            kinesis.delete_stream(StreamName=name)

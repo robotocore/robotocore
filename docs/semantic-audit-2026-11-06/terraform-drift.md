@@ -214,3 +214,14 @@ ops on the ARN member, and 404s moto's message for an unknown uuid.
 Pins: TestEventSourceMappingTags (5 routing/shape tests plus the
 function tag path regression). event_pipeline drift now PASSES
 (1 passed live, 45s — the SQS create's 25s provider poll included).
+
+Follow-on from the #460 adversarial review: the same refresh also sets
+`kms_key_id` from the summary — moto renders the stored KeyId in BOTH
+describe shapes (kinesis/models.py:449, 466), the twin hardcoded null
+in the raw describe and omitted the member from the summary. A
+KMS-encrypted stream therefore ran the phantom-drift loop again. Both
+shapes now render the stored value (null ⇔ empty-string storage, the
+ARN once StartStreamEncryption ran). Pin:
+TestDescribeStreamSummaryShape.TestKeyIdRendersInBothDescribeShapes.
+No drift stack in the repo sets `encryption_type`, so the oracle can't
+drive this yet — the pin carries the live KMS round trip.

@@ -163,6 +163,18 @@ impl KinesisHandler {
         }
     }
 
+    /// moto renders `"KeyId": self.key_id` (kinesis/models.py:449, 466) —
+    /// `None` for an unconfigured stream serializes as JSON null; the twin
+    /// stores an empty string, which maps to the same null here.
+    fn key_id_value(key_id: &RwLock<String>) -> Value {
+        let key = key_id.read();
+        if key.is_empty() {
+            Value::Null
+        } else {
+            Value::String(key.clone())
+        }
+    }
+
     fn stream_describe_value(stream: &KinesisStream) -> Value {
         json!({
             "StreamName": stream.name,
@@ -172,7 +184,11 @@ impl KinesisHandler {
             "RetentionPeriodHours": *stream.retention_hours.read(),
             "EncryptionType": *stream.encryption_type.read(),
             "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
-            "KeyId": Option::<String>::None,
+            // moto renders the stored key id in both describe shapes
+            // (kinesis/models.py:449, 466) — null for a NONE stream
+            // (the twin stores ""), the configured ARN once
+            // StartStreamEncryption ran.
+            "KeyId": Self::key_id_value(&stream.key_id),
             "StreamCreationTimestamp": stream.created,
         })
     }
@@ -188,6 +204,10 @@ impl KinesisHandler {
             "EncryptionType": *stream.encryption_type.read(),
             "StreamCreationTimestamp": stream.created,
             "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
+            // moto's summary carries the stored KeyId too
+            // (kinesis/models.py:466) — this member forced the terraform
+            // kms_key_id refresh's phantom-drift path when absent.
+            "KeyId": Self::key_id_value(&stream.key_id),
             // OPEN shards only: closed shards (split/merge/update
             // parents) stay in the list for their history — the
             // open count remains the live-routing answer.
@@ -1482,7 +1502,7 @@ impl KinesisHandler {
                 200,
                 json!({
                     "EncryptionType": *stream.encryption_type.read(),
-                    "KeyId": *stream.key_id.read()
+                    "KeyId": Self::key_id_value(&stream.key_id)
                 }),
             ),
             None => AwsResponse::error(
