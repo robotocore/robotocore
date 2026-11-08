@@ -189,3 +189,12 @@ DisplayName attribute — moto and real AWS echo an EMPTY DisplayName
 instead. Fixed to unwrap_or_default; the drift stack now PASSES
 end-to-end. Pins: TestDisplayNameEcho (unset echoes empty;
 set-topic-attributes round trips).
+
+## terraform kinesis resource: DescribeStreamSummary EncryptionType (2026-11-08)
+
+The terraform kinesis resource refresh reads DescribeStreamSummary; the
+twin's summary omitted `EncryptionType` outright (the raw describe
+carried it after the sweep fix) while moto and real AWS always render
+it (default NONE). Both describe shapes now share the stream's stored
+value. Pin: TestDescribeStreamSummaryShape (summary == describe ==
+NONE).

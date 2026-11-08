@@ -62,6 +62,12 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Kinesis DescribeStreamSummary renders EncryptionType.** The
+  terraform kinesis refresh reads DescribeStreamSummary and the twin's
+  summary omitted the member entirely; moto and real AWS always carry
+  it (default NONE). Both describe shapes now share the stream's
+  stored encryption value; pinned
+  TestDescribeStreamSummaryShape.SummaryAndDescribeShareEncryptionType.
 - **SNS DisplayName echo.** GetTopicAttributes echoes DisplayName EMPTY
   when the topic has no display name (moto/real-AWS parity; live-probed)
   — the twin's fallback to the topic NAME made the terraform refresh
