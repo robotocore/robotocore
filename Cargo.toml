@@ -43,7 +43,7 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 # Utilities
 tracing = "0.1"
 tracing-subscriber = "0.3"
-thiserror = "1.0"
+thiserror = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
