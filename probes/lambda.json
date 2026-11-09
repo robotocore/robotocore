@@ -1,10 +1,10 @@
 {
   "service": "lambda",
-  "generated_at": "2026-11-09T21:06:27.094139+00:00",
+  "generated_at": "2026-11-09T21:33:34.318935+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/lambda.rs": "absent",
     "rotocore/src/services/lambda/": "absent",
-    "crates/lambda/src/": "47cb9a4478253620f9a6ee4648d652e5a4221fca7f747dacfb8b97a921338189"
+    "crates/lambda/src/": "517a6283265139e74fa921ea9c9a748722aa640659f18fcc2f54d7869eafa552"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
