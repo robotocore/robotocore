@@ -2323,6 +2323,16 @@ class TestS3TaggingVersioning:
             ("mid", "3"),
         ]
 
+    def test_header_duplicate_key_keeps_first_value(self, s3, versioned_tagged):
+        """moto's header path (parse_qs → values[0]) keeps the FIRST
+        duplicate key's value while the XML path keeps the LAST
+        (live-probed both) — per-path collapse, recorded in the #472
+        ledger edge."""
+        name, _ = versioned_tagged
+        s3.put_object(Bucket=name, Key="h", Body=b"x", Tagging="k=1&k=2")
+        got = s3.get_object_tagging(Bucket=name, Key="h")["TagSet"]
+        assert got == [{"Key": "k", "Value": "1"}]
+
     def test_header_tagging_validated_on_put_object(self, s3):
         """moto validates the x-amz-tagging header through the same shared
         validator on PutObject (live-probed)."""

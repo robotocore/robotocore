@@ -62,6 +62,15 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3: duplicate tag keys collapse per path — header FIRST value,
+  XML LAST value.** moto's two wire arrivals collapse differently
+  (live-probed both): the header path's `parse_qs → values[0]`
+  keeps the FIRST duplicate value ("k=1&k=2" stores 1) while the XML
+  path's dict re-assignment keeps the LAST ("a/v1 + a/v2" stores v2).
+  The twin ran last-value on both paths. collapse_tags now takes the
+  per-path policy (moto responses.py:2852-2867, #472 ledger edge closed).
+  Pin: TestS3TaggingVersioning.test_header_duplicate_key_keeps_first
+  _value.
 - **S3: GET TagSet renders storage (insertion) order.** moto's tagger
   iterates its dict in insertion order; the twin's GET TagSet rendered a
   HashMap iteration after the #472 ledger edge flagged it as
