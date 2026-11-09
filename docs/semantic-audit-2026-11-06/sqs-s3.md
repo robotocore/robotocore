@@ -208,17 +208,30 @@ S3
    Recorded edges around the same surface (raw SigV4-probed 2026-11-09 —
    probed raw because the empty-body members are unreachable through
    boto3, which enforces TagKey minLength 1; duplicate keys DO pass
-   through boto3): (a) a duplicate-Key TagSet stores
-   LAST-value into the collapsed map on both engines — but moto's XML
-   path keeps first-occurrence position while the twin's GET TagSet
-   renders the HashMap ITERATION (member order nondeterministic) —
-   CLOSED 2026-11-09: the stored set became an ordered pairs vec
-   (insertion order, first-position/last-value on duplicates) and GET
-   TagSet now renders member-for-member like moto's tagger
-   (live cross-check); snapshots restore both shapes; (b) an
+   through boto3): (a) a duplicate-Key TagSet stores LAST-value into
+   the collapsed map on both engines on the XML path — but the HEADER
+   path (parse_qs → values[0]) keeps the FIRST value ("k=1&k=2"
+   stores 1, live-probed); the twin's initial HashMap collapse always
+   kept last-value → CLOSED 2026-11-09 with a per-path collapse
+   (first-value header, last-value XML) after the stored set became
+   an ordered pairs vec (insertion order) and GET TagSet began
+   rendering member-for-member like moto's tagger (live cross-check);
+   snapshots restore both shapes; (b) an
    empty-TagSet body (`<Tagging></Tagging>`) and a `<Tag>` with an
    empty `<Key>` make moto HTTP 500 (a response-layer XML unpack and a
    backend None-subscript respectively — moto tagging-path crashes)
+
+   OPEN tape (same header surface, pre-existing, live-probed by the
+   #474 review): (c) `tags_list_from_header` does not decode '+' to a
+   space (moto "a=b+c" stores 'b c'; the twin stores 'b+c'); (d) it
+   decodes BEFORE splitting on '&' (moto parse_qs splits first, so
+   "a=1%26k=2" parses as ONE pair with Value "1&k=2" → InvalidTag; the
+   twin splits the decoded string into two clean pairs and accepts);
+   (e) CreateMultipartUpload parses x-amz-tagging (moto responses.py
+   :3137) and validates+applies it at CompleteMultipartUpload (moto
+   models.py:2744, stores values[0] per the header rule) — the twin
+   ignores the header on both MP surfaces. Any future MPU-tagging lane
+   must use keep_last=false.
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error

@@ -1687,18 +1687,22 @@ impl S3Handler {
 
     /// moto's tag wire arrival is a DICT, collapsed differently per path:
     /// xml `_tagging_from_xml` keeps the first-occurrence position and the
-    /// LAST value for a duplicate key; the HEADER path's parse_qs overwrites
-    /// a plain dict too but probes put the FIRST value in moto's store —
-    /// an unchanged pre-existing storage divergence (recorded in the
-    /// ledger) the count and compound-validation indexing never see.
-    /// Collapse BEFORE the count and compound validations, then index by
-    /// the collapsed position.
-    fn collapse_tags(tags: Vec<(String, String)>) -> Vec<(String, String)> {
+    /// LAST value for a duplicate key; the HEADER path's parse_qs puts the
+    /// FIRST value in moto's store — the pre-#474 twin ran last-value
+    /// everywhere (the ledger's #472 edge is closed). Collapse it before
+    /// the count and compound validations, index by the collapsed
+    /// position. The duplicate-value policy is PER PATH — live-probed:
+    /// header "k=1&k=2" stores 1; XML stores v2.
+    fn collapse_tags(tags: Vec<(String, String)>, keep_last: bool) -> Vec<(String, String)> {
         let mut collapsed: Vec<(String, String)> = Vec::new();
         let mut seen: HashMap<String, usize> = HashMap::new();
         for (k, v) in tags {
             match seen.get(&k) {
-                Some(&idx) => collapsed[idx].1 = v,
+                Some(&idx) => {
+                    if keep_last {
+                        collapsed[idx].1 = v;
+                    }
+                }
                 None => {
                     seen.insert(k.clone(), collapsed.len());
                     collapsed.push((k, v));
@@ -2025,6 +2029,7 @@ impl S3Handler {
                 .get("x-amz-tagging")
                 .map(|h| Self::tags_list_from_header(h))
                 .unwrap_or_default(),
+            false,
         );
         // moto's put_object STORES the key first and validates the tag
         // header after (responses.py:2322→2332, live-probed): a bad tag
@@ -2933,6 +2938,7 @@ impl S3Handler {
                     .get("x-amz-tagging")
                     .map(|h| Self::tags_list_from_header(h))
                     .unwrap_or_default(),
+                false,
             );
             Self::tagging_validation(&collapsed).map(|e| (e, collapsed))
         } else {
@@ -2945,7 +2951,7 @@ impl S3Handler {
         // failure leaves the copy carrying the copied source tags
         // (review-probed live on both engines: dst keeps src-tag through
         // the 400). A COPY directive ignores any header.
-        let tags = Self::collapse_tags(source.tags.clone());
+        let tags = Self::collapse_tags(source.tags.clone(), true);
         let metadata = if replace {
             Self::user_metadata(req)
         } else {
@@ -3055,6 +3061,7 @@ impl S3Handler {
                     .get("x-amz-tagging")
                     .map(|h| Self::tags_list_from_header(h))
                     .unwrap_or_default(),
+                false,
             );
             if let Some(entry) = dest.objects.write().get_mut(dest_key) {
                 if let Some(v) = entry.versions.last_mut() {
@@ -4277,6 +4284,7 @@ impl S3Handler {
                     (!k.is_empty()).then_some((k, v))
                 })
                 .collect(),
+            true,
         );
         if let Some(e) = Self::tagging_validation(&tag_list) {
             return e;
