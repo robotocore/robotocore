@@ -1479,22 +1479,37 @@ impl S3Handler {
     /// the shared validator — its compound error indexes tags.{n}.member.*
     /// by position).
     fn tags_list_from_header(header: &str) -> Vec<(String, String)> {
-        let decoded = urlencoding::decode(header).unwrap_or_default().into_owned();
+        // moto parses the Tagging header (live-probed against moto 5.2.5)
+        // as: split the RAW header on '&', split each pair on the first
+        // RAW '=', then unquote_plus each half ('+' → ' ' before percent
+        // decode; invalid escapes pass through; bad UTF-8 replaces to
+        // U+FFFD). Decoding the whole header first mis-splits at decoded
+        // '&' ("a=1%26k=2" became two tags where moto stores one — whose
+        // '&' then falls out of the tag charset and 400s) and keeps raw
+        // '+' literals ("a=b+c" must store "b c", also reachable via
+        // botocore, which passes '+' through unchanged).
         let mut tags = Vec::new();
-        for pair in decoded.split('&') {
+        for pair in header.split('&') {
             if pair.is_empty() {
                 continue;
             }
-            let (k, v) = match pair.split_once('=') {
-                Some(pair) => pair,
-                None => continue,
-            };
+            // A pair without '=' keeps the key with an empty value
+            // (wire "a" → {'a': ''} on moto).
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
             tags.push((
-                urlencoding::decode(k).unwrap_or_default().into_owned(),
-                urlencoding::decode(v).unwrap_or_default().into_owned(),
+                Self::tagging_header_decode(k),
+                Self::tagging_header_decode(v),
             ));
         }
         tags
+    }
+
+    /// urllib.parse.unquote_plus for a single Tagging half.
+    fn tagging_header_decode(raw: &str) -> String {
+        let plus_spaced = raw.replace('+', " ");
+        urlencoding::decode(&plus_spaced)
+            .map(|cow| cow.into_owned())
+            .unwrap_or_else(|_| "\u{fffd}".to_string())
     }
 
     /// Store object bytes, applying bucket versioning semantics.
@@ -9746,5 +9761,70 @@ mod catchup_fx5_object_attributes_tests {
                 "GET",
             )
             .is_none());
+    }
+
+    // moto's Tagging header parser contract, live-probed against moto
+    // 5.2.5 via wire-overridden PutObject (rawtag matrix this run).
+    #[test]
+    fn test_tags_list_from_header_raw_edges() {
+        // '+' → space before decode; botocore passes '+' on the wire
+        // unchanged, so this edge is reachable from a real client.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=b+c"),
+            vec![("a".into(), "b c".into())]
+        );
+        // Split on the RAW '&' then the first RAW '=': a decoded '&' in
+        // the value must not re-split (moto then 400s the '&' via the
+        // tag charset; the parse itself yields one pair).
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=1%26k=2"),
+            vec![("a".into(), "1&k=2".into())]
+        );
+        // '+' handling and %2B layering.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=b+c%2Bd"),
+            vec![("a".into(), "b c+d".into())]
+        );
+        // Encoded '=' never re-splits the pair.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=k%3D=v"),
+            vec![("a".into(), "k==v".into())]
+        );
+        // Duplicate keys: the parser keeps both; the caller collapses
+        // keep_last=false so the FIRST value survives.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=1&a=2"),
+            vec![("a".into(), "1".into()), ("a".into(), "2".into())]
+        );
+        assert_eq!(
+            S3Handler::collapse_tags(S3Handler::tags_list_from_header("a=1&a=2"), false),
+            vec![("a".into(), "1".into())]
+        );
+        // A pair without '=' keeps its key with an empty value.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a"),
+            vec![("a".into(), "".into())]
+        );
+        // Empty values are kept ('a=' on moto stores {'a': ''}).
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=&b=c"),
+            vec![("a".into(), "".into()), ("b".into(), "c".into())]
+        );
+        // Invalid escapes pass through literally; bad UTF-8 mirrors
+        // unquote_plus's errors='replace' (U+FFFD) which the tag charset
+        // then rejects — moto answers 400 for both.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=b%zz"),
+            vec![("a".into(), "b%zz".into())]
+        );
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=%ff"),
+            vec![("a".into(), "\u{fffd}".into())]
+        );
+        // Empty pair segments (wire "a=&&b=1") are skipped like moto.
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=&&b=1"),
+            vec![("a".into(), "".into()), ("b".into(), "1".into())]
+        );
     }
 }
