@@ -62,6 +62,18 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Kinesis KeyId renders in both describe shapes.** moto renders the
+  stored KeyId unconditionally (kinesis/models.py:449, 466 — null for a
+  NONE stream, the configured ARN once StartStreamEncryption ran, null
+  again after Stop); the twin hardcoded null in the raw describe and
+  omitted the member from the summary, so a KMS-encrypted stream made
+  the terraform kms_key_id refresh (which sets kms_key_id from the
+  summary) run the same phantom-drift loop the EncryptionType fix
+  closed. Pinned
+  TestDescribeStreamSummaryShape.test_key_id_renders_in_both_describe
+  _shapes (absence-pins for the null case — botocore drops null
+  members at parse time, so the null-on-wire claim rests on the
+  json! source, not the pin — plus the KMS round trip).
 - **Lambda: tag calls on an event-source-mapping ARN resolve the
   mapping, not a function.** moto's `_get_resource_by_arn`
   (awslambda/models.py:2447-2462) routes the `event-source-mapping`
