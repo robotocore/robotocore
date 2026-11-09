@@ -2120,9 +2120,15 @@ impl LambdaHandler {
                 event_source_arn
                     .as_ref()
                     .is_none_or(|arn| e.event_source_arn == *arn)
-                    && fn_name
-                        .as_ref()
-                        .is_none_or(|fn_name| e.function_arn.contains(fn_name))
+                    && fn_name.as_ref().is_none_or(|fn_name| {
+                        // moto filters on EXACT function-name equality
+                        // (lambda/models.py:2274-2275: `x.function_name ==
+                        // function_name`); a substring `contains` wrongly
+                        // matched full ARNs and prefixes — the #484
+                        // reviewer's live observation (full-ARN filter: 0
+                        // hits on moto, everything on the twin).
+                        esm_function_name(&e.function_arn).is_some_and(|name| name == fn_name)
+                    })
             })
             .cloned()
             .collect();
