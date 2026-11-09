@@ -277,6 +277,22 @@ pub struct EventSourceMapping {
     pub source_access_configurations: Option<Value>,
     #[serde(default)]
     pub document_db_config: Option<Value>,
+    /// Kafka/MQ members moto stores verbatim at create and never updates
+    /// (live-probed: botocore's UpdateEventSourceMapping rejects Topics +
+    /// SelfManagedEventSource client-side, and moto's update loop ignores
+    /// both `*EventSourceConfig` groups — so all four are create-immutable).
+    /// `SelfManagedKafkaEventSourceConfig` carries ConsumerGroupId and
+    /// SchemaRegistryConfig nested as passed. botocore's local lambda model
+    /// has no `LogFormat` in LoggingConfig and moto drops LoggingConfig on
+    /// ESMs entirely (both engines render nothing) — out of scope here.
+    #[serde(default)]
+    pub topics: Option<Value>,
+    #[serde(default)]
+    pub self_managed_event_source: Option<Value>,
+    #[serde(default)]
+    pub self_managed_kafka_event_source_config: Option<Value>,
+    #[serde(default)]
+    pub amazon_managed_kafka_event_source_config: Option<Value>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -331,6 +347,14 @@ impl Clone for EventSourceMapping {
             queues: self.queues.clone(),
             source_access_configurations: self.source_access_configurations.clone(),
             document_db_config: self.document_db_config.clone(),
+            topics: self.topics.clone(),
+            self_managed_event_source: self.self_managed_event_source.clone(),
+            self_managed_kafka_event_source_config: self
+                .self_managed_kafka_event_source_config
+                .clone(),
+            amazon_managed_kafka_event_source_config: self
+                .amazon_managed_kafka_event_source_config
+                .clone(),
             kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: self.ddb_attached_watermark.clone(),
         }

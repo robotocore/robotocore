@@ -1585,6 +1585,18 @@ impl LambdaHandler {
         if let Some(ddb) = &e.document_db_config {
             m.insert("DocumentDBEventSourceConfig".into(), ddb.clone());
         }
+        if let Some(topics) = &e.topics {
+            m.insert("Topics".into(), topics.clone());
+        }
+        if let Some(smes) = &e.self_managed_event_source {
+            m.insert("SelfManagedEventSource".into(), smes.clone());
+        }
+        if let Some(cfg) = &e.self_managed_kafka_event_source_config {
+            m.insert("SelfManagedKafkaEventSourceConfig".into(), cfg.clone());
+        }
+        if let Some(cfg) = &e.amazon_managed_kafka_event_source_config {
+            m.insert("AmazonManagedKafkaEventSourceConfig".into(), cfg.clone());
+        }
         // LastProcessingResult stays ABSENT: moto stores None-here and its
         // None-filter drops the member (models.py:1407 → 1433-1434); the
         // twin's null insert was a wire-visible (Go-SDK) phantom.
@@ -1806,6 +1818,26 @@ impl LambdaHandler {
                 .get("DocumentDBEventSourceConfig")
                 .cloned()
                 .filter(|v| !v.is_null()),
+            // Kafka/MQ members: moto stores them verbatim at create
+            // (lambda/models.py spec dict) and its update loop has no
+            // handler for any of them — create-immutable like
+            // StartingPositionTimestamp (live-probed both engines).
+            topics: req.params.get("Topics").cloned().filter(|v| !v.is_null()),
+            self_managed_event_source: req
+                .params
+                .get("SelfManagedEventSource")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            self_managed_kafka_event_source_config: req
+                .params
+                .get("SelfManagedKafkaEventSourceConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            amazon_managed_kafka_event_source_config: req
+                .params
+                .get("AmazonManagedKafkaEventSourceConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
             // Attach-time LATEST binding for kinesis mappings (moto registers
             // the ESM on its source synchronously, so a LATEST mapping never
             // misses records that the poller merely observes late).
@@ -1958,7 +1990,18 @@ impl LambdaHandler {
             // (models.py:2238-2260); StartingPositionTimestamp has NO
             // update handler in moto either (create-immutable — botocore
             // omits it from the update input), so the stored value rides.
+            // Same for the Kafka/MQ members below: botocore rejects
+            // Topics/SelfManagedEventSource in the update input and
+            // moto's loop has no *EventSourceConfig case (live-probed).
             starting_position_timestamp: em.starting_position_timestamp,
+            topics: em.topics.clone(),
+            self_managed_event_source: em.self_managed_event_source.clone(),
+            self_managed_kafka_event_source_config: em
+                .self_managed_kafka_event_source_config
+                .clone(),
+            amazon_managed_kafka_event_source_config: em
+                .amazon_managed_kafka_event_source_config
+                .clone(),
             parallelization_factor: req
                 .params
                 .get("ParallelizationFactor")
@@ -4030,6 +4073,97 @@ mod tests {
         assert!(
             ignored.get("StartingPositionTimestamp").is_none(),
             "still absent after an update attempt: {ignored}"
+        );
+    }
+
+    #[test]
+    fn esm_kafka_mq_members_verbatim_and_create_immutable() {
+        // Live-probed moto 5.2.5: Topics, SelfManagedEventSource,
+        // SelfManagedKafkaEventSourceConfig (with nested
+        // SchemaRegistryConfig) and AmazonManagedKafkaEventSourceConfig are
+        // stored verbatim at create and rendered member-for-member; none is
+        // updatable (botocore rejects Topics/SelfManagedEventSource in the
+        // update input; moto's update loop ignores both *EventSourceConfig
+        // groups), so the twin must freeze them too.
+        let handler = LambdaHandler::new();
+        let fn_name = "esm-km-fn";
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": fn_name, "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+
+        let desktop = json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:km-q",
+            "FunctionName": fn_name, "StartingPosition": "LATEST",
+            "Topics": ["t1", "t2"],
+            "SelfManagedEventSource": {"Endpoints": {"KAFKA_BOOTSTRAP_SERVERS": ["broker:9092"]}},
+            "SelfManagedKafkaEventSourceConfig": {
+                "ConsumerGroupId": "cg-self",
+                "SchemaRegistryConfig": {"SchemaRegistryURI": "https://reg:8081"}},
+            "AmazonManagedKafkaEventSourceConfig": {"ConsumerGroupId": "cg-amz"}});
+        let resp = create_esm(&handler, desktop);
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let created: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(created["Topics"], json!(["t1", "t2"]));
+        assert_eq!(
+            created["SelfManagedEventSource"],
+            json!({"Endpoints": {"KAFKA_BOOTSTRAP_SERVERS": ["broker:9092"]}})
+        );
+        assert_eq!(
+            created["SelfManagedKafkaEventSourceConfig"],
+            json!({"ConsumerGroupId": "cg-self",
+                   "SchemaRegistryConfig": {"SchemaRegistryURI": "https://reg:8081"}})
+        );
+        assert_eq!(
+            created["AmazonManagedKafkaEventSourceConfig"],
+            json!({"ConsumerGroupId": "cg-amz"})
+        );
+
+        // GET renders the same members.
+        let uuid = created["UUID"].as_str().unwrap().to_string();
+        let resp = get_esm(&handler, &uuid);
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let got: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(got["Topics"], json!(["t1", "t2"]));
+        assert_eq!(
+            got["AmazonManagedKafkaEventSourceConfig"],
+            json!({"ConsumerGroupId": "cg-amz"})
+        );
+
+        // Update calls DO NOT mutate any of the four (moto's update loop
+        // has no case; configs ride the update shape only botocore-side).
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"AmazonManagedKafkaEventSourceConfig": {"ConsumerGroupId": "hack"}}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let after: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            after["AmazonManagedKafkaEventSourceConfig"],
+            json!({"ConsumerGroupId": "cg-amz"})
+        );
+
+        // Absent on a mapping created without them (moto renders nothing).
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:km-plain",
+                   "FunctionName": fn_name, "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let plain: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(plain.get("Topics").is_none(), ": {}", plain);
+        assert!(
+            plain.get("SelfManagedEventSource").is_none(),
+            "plain esm had SelfManagedEventSource: {plain}"
+        );
+        assert!(
+            plain.get("SelfManagedKafkaEventSourceConfig").is_none(),
+            "plain esm had Self-managed config: {plain}"
+        );
+        assert!(
+            plain.get("AmazonManagedKafkaEventSourceConfig").is_none(),
+            "plain esm had Amazon-managed config: {plain}"
         );
     }
 

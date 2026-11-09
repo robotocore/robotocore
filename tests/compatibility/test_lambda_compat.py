@@ -1983,6 +1983,81 @@ class TestLambdaEventSourceMappingExtended:
             lam.delete_function(FunctionName=fname)
             sqs.delete_queue(QueueUrl=q_url)
 
+    def test_esm_kafka_mq_members_verbatim(self, lam, role):
+        """Kafka/MQ members store verbatim at create and render.
+
+        Live-probed moto 5.2.5: Topics, SelfManagedEventSource,
+        SelfManagedKafkaEventSourceConfig (incl. nested
+        SchemaRegistryConfig) and AmazonManagedKafkaEventSourceConfig are
+        leniently stored on any event source; none is updatable (botocore
+        rejects Topics/SelfManagedEventSource in the update input and
+        moto's update loop ignores the *EventSourceConfig groups).
+        """
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-km-q-{suffix}"
+        fname = f"esm-km-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuid = None
+        try:
+            resp = lam.create_event_source_mapping(
+                EventSourceArn=q_arn,
+                FunctionName=fname,
+                StartingPosition="LATEST",
+                Topics=["orders", "payments"],
+                SelfManagedEventSource={"Endpoints": {"KAFKA_BOOTSTRAP_SERVERS": ["broker:9092"]}},
+                SelfManagedKafkaEventSourceConfig={
+                    "ConsumerGroupId": "cg-self",
+                    "SchemaRegistryConfig": {"SchemaRegistryURI": "https://reg:8081"},
+                },
+                AmazonManagedKafkaEventSourceConfig={"ConsumerGroupId": "cg-amz"},
+            )
+            esm_uuid = resp["UUID"]
+            assert resp["Topics"] == ["orders", "payments"]
+            assert resp["SelfManagedEventSource"] == {
+                "Endpoints": {"KAFKA_BOOTSTRAP_SERVERS": ["broker:9092"]}
+            }
+            assert resp["SelfManagedKafkaEventSourceConfig"] == {
+                "ConsumerGroupId": "cg-self",
+                "SchemaRegistryConfig": {"SchemaRegistryURI": "https://reg:8081"},
+            }
+            assert resp["AmazonManagedKafkaEventSourceConfig"] == {"ConsumerGroupId": "cg-amz"}
+
+            got = lam.get_event_source_mapping(UUID=esm_uuid)
+            assert got["Topics"] == ["orders", "payments"]
+            assert got["SelfManagedKafkaEventSourceConfig"]["ConsumerGroupId"] == "cg-self"
+            assert got["AmazonManagedKafkaEventSourceConfig"] == {"ConsumerGroupId": "cg-amz"}
+
+            # create-immutable: an update carrying the member changes nothing.
+            upd = lam.update_event_source_mapping(
+                UUID=esm_uuid,
+                BatchSize=5,
+                AmazonManagedKafkaEventSourceConfig={"ConsumerGroupId": "hack"},
+            )
+            assert upd["BatchSize"] == 5
+            assert upd["AmazonManagedKafkaEventSourceConfig"] == {"ConsumerGroupId": "cg-amz"}
+
+            got = lam.get_event_source_mapping(UUID=esm_uuid)
+            assert got["Topics"] == ["orders", "payments"]
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
     def test_list_event_source_mappings_all(self, lam, role):
         """ListEventSourceMappings without function filter returns all mappings."""
         sqs = make_client("sqs")
