@@ -1632,3 +1632,57 @@ class TestDeletionProtectionRender:
             assert got["DeletionProtection"] == "INACTIVE"
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_create_stores_deletion_protection(self, cognito):
+        """CreateUserPool carries DeletionProtection (botocore models it on
+        the input + UserPoolType output; moto ignores it). The terraform
+        aws_cognito_user_pool resource sets deletion_protection = ACTIVE on
+        new pools — the stored value must back the describe render."""
+        import uuid
+
+        pool_id = cognito.create_user_pool(
+            PoolName=f"dp-store-{uuid.uuid4().hex[:8]}",
+            DeletionProtection="ACTIVE",
+        )["UserPool"]["Id"]
+        try:
+            got = cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]
+            assert got["DeletionProtection"] == "ACTIVE"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_flips_and_resets_deletion_protection(self, cognito):
+        """UpdateUserPool mutates DeletionProtection, and RESETS omitted
+        members to their defaults — botocore's UpdateUserPool doc: "if you
+        don't provide a value for an attribute, Amazon Cognito sets it to
+        its default value"; moto matches (cognitoidp/models.py:470-472,
+        extended_config rebuild — an omitted member vanishes). Sequenced
+        after the flip leg: with ACTIVE stored, an unrelated update must
+        land the pool back on the INACTIVE default (red pre-fix — the old
+        update was a no-op, so the flip leg asserted on INACTIVE and the
+        reset leg was unreachable)."""
+        import uuid
+
+        pool_id = cognito.create_user_pool(PoolName=f"dp-flip-{uuid.uuid4().hex[:8]}")["UserPool"][
+            "Id"
+        ]
+        try:
+            # create default: INACTIVE → flip to ACTIVE
+            cognito.update_user_pool(UserPoolId=pool_id, DeletionProtection="ACTIVE")
+            assert (
+                cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]["DeletionProtection"]
+                == "ACTIVE"
+            )
+            # an update that omits the member resets to the default
+            cognito.update_user_pool(UserPoolId=pool_id, Policies={})
+            assert (
+                cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]["DeletionProtection"]
+                == "INACTIVE"
+            )
+            # and INACTIVE writes back round-trip
+            cognito.update_user_pool(UserPoolId=pool_id, DeletionProtection="INACTIVE")
+            assert (
+                cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]["DeletionProtection"]
+                == "INACTIVE"
+            )
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
