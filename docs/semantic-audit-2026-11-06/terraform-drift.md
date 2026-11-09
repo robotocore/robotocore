@@ -287,3 +287,32 @@ the refused delete; the error message string is twin-authored (the
 recorded oracle pins the code, not the text). Pins:
 TestDeletionProtectionRender.DeleteGuardBlocksActivePool +
 DeleteWithoutMemberStillWorks.
+
+## lambda ESM optional configuration members (2026-11-09)
+
+moto stores `StartingPositionTimestamp`, `ParallelizationFactor`,
+`DestinationConfig`, `ScalingConfig` and `TumblingWindowInSeconds` via
+`spec.get` (awslambda/models.py:1327-1350) and renders FOUR of them
+through its None-filtered configuration dict (1413-1431 — the dict
+has NO `StartingPositionTimestamp` key at all; raw-HTTP-verified by
+the #467 review) — the twin dropped them on the floor. The terraform
+`aws_lambda_event_source_mapping` provider schema carries
+parallelization_factor and scaling_config as attributes, so mappings
+configured with them phantom-re-planned forever (no drift stack sets
+them, so the oracle never caught it — the #463 review's shape-gap
+list). Create stores the wire values; update follows moto's elif loop
+(models.py:2238-2260 — provided members mutate, omitted members
+preserve); StartingPositionTimestamp is create-immutable (botocore
+omits it from UpdateEventSourceMapping input; moto has no update
+handler) and stored-but-never-rendered (moto-mirror; the real-AWS
+render is a recorded model-derived divergence — no drift stack sets
+it). Raw-only caveat (recorded, unreachable via boto3): an update that
+carries an explicit null or a wrong type makes moto MUTATE to
+None/raw (member vanishes or junk renders), while the twin preserves
+the old value; the pre-existing FilterCriteria slot stores explicit
+nulls verbatim — three behaviors, all SDK-invisible. Pins:
+TestEventSourceMappingOptionalConfig (boto3-visible, unlike the Tags
+member) and the crate's
+esm_optional_config_members_store_render_and_update (the AT_TIMESTAMP
+store-without-render + immutability case). MetricsConfig / Queues /
+SourceAccessConfigurations / provisioned poller members stay parked.

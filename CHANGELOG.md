@@ -75,6 +75,35 @@ under *Changelog discipline*.
   TestDeletionProtectionRender (DeleteGuardBlocksActivePool:
   refuse → pool survives → deactivate → delete → 404;
   DeleteWithoutMemberStillWorks anchor).
+- **Lambda: ESM bodies carry the five optional configuration members.**
+  moto stores `StartingPositionTimestamp`, `ParallelizationFactor`,
+  `DestinationConfig`, `ScalingConfig` and `TumblingWindowInSeconds` via
+  `spec.get` (awslambda/models.py:1327-1350) and renders FOUR of them
+  through its None-filtered configuration dict (1413-1431 — the dict has
+  no `StartingPositionTimestamp` key at all; raw-HTTP-verified by the
+  #467 review); the twin dropped them on the floor — a terraform-managed
+  mapping carrying any of them (parallelization_factor and scaling
+  _config are provider schema attributes for
+  aws_lambda_event_source_mapping) phantom-re-planned those attributes
+  forever. Create stores the wire values; moto's elif-loop update
+  semantics (models.py:2238-2260): provided members mutate, omitted
+  members are preserved; StartingPositionTimestamp is create-immutable
+  (botocore omits it from the update input; moto has no update handler)
+  and stored-but-never-rendered in the twin (moto-mirror; the real-AWS
+  render is a recorded model-derived divergence under the moto-is
+  -oracle policy — no drift stack sets it). botocore MODELS all five on
+  the output shape, so the pins are boto3-level:
+  TestEventSourceMappingOptionalConfig (render + absent-when-unset;
+  update-overrides-provided) plus the crate's
+  esm_optional_config_members_store_render_and_update (the
+  AT_TIMESTAMP store-without-render + immutability case). Raw-only
+  caveat (recorded, unreachable via boto3): moto's update assigns the
+  raw spec value on an explicit null or a wrong type (floatfactor,
+  string scaling config) — the twin preserves the old value for those
+  instead of mutating to moto's drop-the-member state; the pre-existing
+  FilterCriteria slot stores explicit nulls verbatim (neither matches
+  moto's third behavior); all three are invisible to SDK clients.
+  MetricsConfig/Queues/others stay parked.
 - **Lambda: ESM bodies drop the phantom `LastProcessingResult`
   member.** moto stores the member as `None` (awslambda/models.py:1407)
   and its None-filter (1433-1434) drops it outright — moto bodies never

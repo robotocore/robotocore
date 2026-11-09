@@ -1549,6 +1549,24 @@ impl LambdaHandler {
         if let Some(retry) = e.maximum_retry_attempts {
             m.insert("MaximumRetryAttempts".into(), json!(retry));
         }
+        // StartingPositionTimestamp stays ABSENT even when stored: moto's
+        // get_configuration dict simply has no key for it
+        // (models.py:1327 stores via spec.get; 1413-1431 renders the rest
+        // — no StartingPositionTimestamp member; raw-HTTP-verified by the
+        // #467-review lane). real AWS reportedly renders it — the moto-is
+        // -oracle policy records the divergence rather than inverting it.
+        if let Some(pf) = e.parallelization_factor {
+            m.insert("ParallelizationFactor".into(), json!(pf));
+        }
+        if let Some(dc) = &e.destination_config {
+            m.insert("DestinationConfig".into(), dc.clone());
+        }
+        if let Some(sc) = &e.scaling_config {
+            m.insert("ScalingConfig".into(), sc.clone());
+        }
+        if let Some(tw) = e.tumbling_window_in_seconds {
+            m.insert("TumblingWindowInSeconds".into(), json!(tw));
+        }
         // LastProcessingResult stays ABSENT: moto stores None-here and its
         // None-filter drops the member (models.py:1407 → 1433-1434); the
         // twin's null insert was a wire-visible (Go-SDK) phantom.
@@ -1723,6 +1741,28 @@ impl LambdaHandler {
                 .params
                 .get("MaximumRecordAgeInSeconds")
                 .and_then(Value::as_i64),
+            starting_position_timestamp: req
+                .params
+                .get("StartingPositionTimestamp")
+                .and_then(Value::as_f64),
+            parallelization_factor: req
+                .params
+                .get("ParallelizationFactor")
+                .and_then(Value::as_i64),
+            destination_config: req
+                .params
+                .get("DestinationConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            scaling_config: req
+                .params
+                .get("ScalingConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            tumbling_window_in_seconds: req
+                .params
+                .get("TumblingWindowInSeconds")
+                .and_then(Value::as_u64),
             // Attach-time LATEST binding for kinesis mappings (moto registers
             // the ESM on its source synchronously, so a LATEST mapping never
             // misses records that the poller merely observes late).
@@ -1871,6 +1911,33 @@ impl LambdaHandler {
                 .get("MaximumRecordAgeInSeconds")
                 .and_then(Value::as_i64)
                 .or(em.maximum_record_age_in_seconds),
+            // moto's update loop mutates these only when provided
+            // (models.py:2238-2260); StartingPositionTimestamp has NO
+            // update handler in moto either (create-immutable — botocore
+            // omits it from the update input), so the stored value rides.
+            starting_position_timestamp: em.starting_position_timestamp,
+            parallelization_factor: req
+                .params
+                .get("ParallelizationFactor")
+                .and_then(Value::as_i64)
+                .or(em.parallelization_factor),
+            destination_config: req
+                .params
+                .get("DestinationConfig")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.destination_config.clone()),
+            scaling_config: req
+                .params
+                .get("ScalingConfig")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.scaling_config.clone()),
+            tumbling_window_in_seconds: req
+                .params
+                .get("TumblingWindowInSeconds")
+                .and_then(Value::as_u64)
+                .or(em.tumbling_window_in_seconds),
             // The attach-time binding survives updates; a FunctionName
             // re-point swaps only the function side (the watermarks are
             // keyed by source shard).
@@ -3763,6 +3830,100 @@ mod tests {
         assert_eq!(resp.status, 202);
         let deleted: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(deleted["State"], json!("Deleting"));
+    }
+
+    /// The optional configuration members moto carries via `spec.get` and
+    /// its None-filtered configuration dict (models.py:1327-1350,
+    /// 1413-1431): ParallelizationFactor, DestinationConfig, ScalingConfig,
+    /// TumblingWindowInSeconds — and StartingPositionTimestamp, which moto
+    /// STORES (models.py:1327) but whose member its configuration dict
+    /// simply lacks (1413-1431; raw-HTTP-verified by the #467 review) —
+    /// so the twin stores it for snapshots but renders nothing. moto's
+    /// update loop (models.py:2238-2260) mutates the four updatable ones
+    /// only when provided and preserves them otherwise;
+    /// StartingPositionTimestamp has NO update handler (botocore's update
+    /// input omits it) — create-immutable.
+    #[test]
+    fn esm_optional_config_members_store_render_and_update() {
+        let handler = LambdaHandler::new();
+        let fn_name = "esm-optional-fn";
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": fn_name, "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let dest = json!({"OnFailure": {"Destination": "arn:aws:sqs:us-east-1:123456789012:dlq-x"}});
+        let scaling = json!({"MaximumConcurrency": 5});
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/optional-stream",
+                   "FunctionName": fn_name, "StartingPosition": "LATEST",
+                   "ParallelizationFactor": 7,
+                   "TumblingWindowInSeconds": 60,
+                   "DestinationConfig": dest,
+                   "ScalingConfig": scaling}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let created: Value = serde_json::from_str(&resp.body).unwrap();
+        let uuid = created["UUID"].as_str().unwrap().to_string();
+        assert_eq!(created["ParallelizationFactor"], json!(7));
+        assert_eq!(created["TumblingWindowInSeconds"], json!(60));
+        assert_eq!(created["DestinationConfig"], dest);
+        assert_eq!(created["ScalingConfig"], scaling);
+        assert!(
+            created.get("StartingPositionTimestamp").is_none(),
+            "no timestamp without AT_TIMESTAMP: {created}"
+        );
+
+        // update: provided members mutate; omitted members are preserved
+        // (moto's elif loop); StartingPositionTimestamp rides regardless
+        // of what the update carries (create-immutable).
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"ParallelizationFactor": 8}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let updated: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(updated["ParallelizationFactor"], json!(8));
+        assert_eq!(updated["TumblingWindowInSeconds"], json!(60));
+        assert_eq!(updated["DestinationConfig"], dest);
+        assert_eq!(updated["ScalingConfig"], scaling);
+        assert!(updated.get("StartingPositionTimestamp").is_none());
+
+        // an AT_TIMESTAMP create: moto STORES the timestamp (models.py:1327
+        // spec.get) but its configuration dict has no member for it —
+        // moto bodies (raw-HTTP-verified by the #467 review) never render
+        //StartingPositionTimestamp, so the twin renders nothing either
+        // (storage still backs state snapshots; the update call below
+        // cannot mutate it — botocore omits the member from the update
+        // input and moto has no handler).
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/attime-stream",
+                   "FunctionName": fn_name, "StartingPosition": "AT_TIMESTAMP",
+                   "StartingPositionTimestamp": 1_700_000_000.0}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let at: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(
+            at.get("StartingPositionTimestamp").is_none(),
+            "moto's configuration dict never carries the member: {at}"
+        );
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"StartingPositionTimestamp": 1_800_000_000.0}),
+            &format!(
+                "/2015-03-31/event-source-mappings/{}",
+                at["UUID"].as_str().unwrap()
+            ),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let ignored: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(
+            ignored.get("StartingPositionTimestamp").is_none(),
+            "still absent after an update attempt: {ignored}"
+        );
     }
 
     #[test]

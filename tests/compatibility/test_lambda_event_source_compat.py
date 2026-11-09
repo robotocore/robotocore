@@ -412,3 +412,74 @@ class TestEventSourceMappingTags:
                 sqs.delete_queue(QueueUrl=q_url)
             except Exception:
                 pass  # best-effort cleanup
+
+
+class TestEventSourceMappingOptionalConfig:
+    """The optional configuration members moto carries via `spec.get`
+    (ParallelizationFactor, DestinationConfig, ScalingConfig,
+    TumblingWindowInSeconds; StartingPositionTimestamp only on
+    AT_TIMESTAMP creates) are stored and rendered; botocore MODELS all of
+    them, so boto3 sees them (unlike Tags). moto's update overrides
+    provided members and preserves the rest."""
+
+    @pytest.fixture
+    def lam(self):
+        return make_client("lambda")
+
+    @pytest.fixture
+    def sqs(self):
+        return make_client("sqs")
+
+    @pytest.fixture
+    def mapping(self, lam, sqs, role):
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"opt-esm-queue-{suffix}"
+        queue_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=f"opt-esm-func-{suffix}",
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=queue_arn,
+            FunctionName=f"opt-esm-func-{suffix}",
+            ScalingConfig={"MaximumConcurrency": 5},
+            DestinationConfig={
+                "OnFailure": {"Destination": f"{queue_arn.rsplit(':', 1)[0]}:dlq-x"}
+            },
+        )
+        yield esm
+        for fn in [
+            lambda: lam.delete_event_source_mapping(UUID=esm["UUID"]),
+            lambda: lam.delete_function(FunctionName=f"opt-esm-func-{suffix}"),
+            lambda: sqs.delete_queue(QueueUrl=queue_url),
+        ]:
+            try:
+                fn()
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_members_render_and_absent_when_unset(self, lam, mapping):
+        got = lam.get_event_source_mapping(UUID=mapping["UUID"])
+        assert got["ScalingConfig"] == {"MaximumConcurrency": 5}
+        assert got["DestinationConfig"] == {
+            "OnFailure": {"Destination": got["EventSourceArn"].rsplit(":", 1)[0] + ":dlq-x"}
+        }
+        assert "TumblingWindowInSeconds" not in got
+        assert "ParallelizationFactor" not in got
+        assert "StartingPositionTimestamp" not in got
+
+    def test_update_overrides_provided_and_preserves_rest(self, lam, mapping):
+        updated = lam.update_event_source_mapping(
+            UUID=mapping["UUID"],
+            ScalingConfig={"MaximumConcurrency": 9},
+        )
+        assert updated["ScalingConfig"] == {"MaximumConcurrency": 9}
+        # the omitted member is preserved (moto's elif-only loop)
+        assert updated["DestinationConfig"] == mapping["DestinationConfig"]
