@@ -249,9 +249,14 @@ S3
    and untagged (live-verified via a subscribed SQS queue both
    engines), and the success path delivers Put +
    CompleteMultipartUpload (moto's two events; the twin previously
-   sent only Complete). Recorded lead (out-of-lane): completed
-   multipart objects do not reach maybe_replicate — replication on
-   the complete path is a pre-existing gap.
+   sent only Complete). Delivered in moto's ORDER after the sqs
+   bridge's drain_pending was reversed-walked (it pushed matches
+   back-to-front, so two same-tick events reached the queue
+   Complete-first; crates/sqs/src/bridge.rs now drains the pending
+   Vec forward and removes right-to-left — live-verified Put-then-
+   Complete). Recorded lead (out-of-lane): completed multipart
+   objects do not reach maybe_replicate — replication on the
+   complete path is a pre-existing gap.
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error
