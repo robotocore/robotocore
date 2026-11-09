@@ -21,14 +21,18 @@ pub fn xml_escape(text: &str) -> String {
 
 /// moto's per-envelope RequestId: 52 random [A-Za-z0-9] chars
 /// (live-probed: fresh per request, 52 bytes, base62-ish alphabet).
-/// Built from uuid v4 words — the crate has no rng dependency.
+/// FNV-1a mixing over the uuid words indexed by position: the naive
+/// `b[i % 16]` cycle repeats every 16 chars (a wire-visible fingerprint
+/// of the kind this campaign hunts — review #491 note 1).
 pub fn fresh_request_id() -> String {
     const ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let uuid = uuid::Uuid::new_v4();
+    let bytes = uuid::Uuid::new_v4().as_bytes().to_owned();
+    let mut hash: u32 = 0x811C9DC5;
     (0..52)
         .map(|i| {
-            let alen = ALPHA.len() as u8;
-            ALPHA[(uuid.as_bytes()[i % 16] % alen) as usize] as char
+            hash = hash.wrapping_mul(0x01000193)
+                ^ (bytes[i % 16] as u32).wrapping_add(i as u32).rotate_left(3);
+            ALPHA[(hash % (ALPHA.len() as u32)) as usize] as char
         })
         .collect()
 }
