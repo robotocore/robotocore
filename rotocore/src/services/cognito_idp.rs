@@ -922,7 +922,13 @@ fn delete_user_pool(s: &mut State, p: &Value) -> Response {
     // Deactivation is the UpdateUserPool INACTIVE write. moto deletes
     // unconditionally (recorded known diff). Absent = the INACTIVE
     // default (#456), so pools created without the member delete fine.
-    if s.pools[idx].1.pool.get("DeletionProtection").and_then(Value::as_str) == Some("ACTIVE") {
+    if s.pools[idx]
+        .1
+        .pool
+        .get("DeletionProtection")
+        .and_then(Value::as_str)
+        == Some("ACTIVE")
+    {
         return err(
             "InvalidParameterException",
             &format!(
@@ -983,7 +989,10 @@ fn update_user_pool(s: &mut State, p: &Value) -> Response {
     // oracles. The describe path renders the INACTIVE default for an
     // un-stored member (#456) — the same observable state real AWS yields
     // after the reset.
-    if p.get("DeletionProtection").filter(|v| !v.is_null()).is_none() {
+    if p.get("DeletionProtection")
+        .filter(|v| !v.is_null())
+        .is_none()
+    {
         if let Some(map) = pl.pool.as_object_mut() {
             map.remove("DeletionProtection");
         }
