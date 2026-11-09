@@ -198,3 +198,19 @@ carried it after the sweep fix) while moto and real AWS always render
 it (default NONE). Both describe shapes now share the stream's stored
 value. Pin: TestDescribeStreamSummaryShape (summary == describe ==
 NONE).
+
+## event_pipeline stack: ListTags on the mapping ARN (2026-11-08, probed)
+
+The drift apply died mid-run: the provider's lambda ESM refresh calls
+ListTags on the mapping ARN
+(`arn:aws:lambda:<region>:<account>:event-source-mapping:<uuid>`) and
+the twin's ListTags routed the ARN through the function resolver —
+"Function not found" — aborting the whole apply. moto resolves the ARN
+member by uuid against its `_event_source_mappings` store
+(awslambda/models.py:2447-2462) and stores create-time Tags
+(models.py:1348). The twin now carries per-mapping tags behind a
+RwLock (manual Clone like LambdaFunction), dispatches the three tag
+ops on the ARN member, and 404s moto's message for an unknown uuid.
+Pins: TestEventSourceMappingTags (5 routing/shape tests plus the
+function tag path regression). event_pipeline drift now PASSES
+(1 passed live, 45s — the SQS create's 25s provider poll included).

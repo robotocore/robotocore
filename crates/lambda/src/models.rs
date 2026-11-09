@@ -193,7 +193,7 @@ pub struct LambdaAlias {
 }
 
 /// An event source mapping (native store mirroring the Python provider keys).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EventSourceMapping {
     pub uuid: String,
     pub function_arn: String,
@@ -222,6 +222,11 @@ pub struct EventSourceMapping {
     /// never give up rides through and renders like moto's stored value).
     #[serde(default)]
     pub maximum_retry_attempts: Option<i64>,
+    /// Per-mapping tags (moto stores them; the TF provider refresh lists
+    /// tags on the mapping resource). Snapshot serialized via the shared
+    /// rw helper like the other thread-map fields.
+    #[serde(default, with = "crate::snapshot::rw")]
+    pub tags: RwLock<HashMap<String, String>>,
     /// `MaximumBatchingWindowInSeconds` when the caller configured one —
     /// omitted from the wire dict when un-set (moto shape-filters the
     /// 0-valued members out of the details dict).
@@ -252,6 +257,33 @@ pub struct EventSourceMapping {
     /// delivers nothing for new mappings until a write happens.
     #[serde(default)]
     pub ddb_attached_watermark: Option<String>,
+}
+
+impl Clone for EventSourceMapping {
+    /// Manual clone like LambdaFunction: the tags map lives behind a
+    /// RwLock, so derive(Clone) can't apply — clone through the read guard.
+    fn clone(&self) -> Self {
+        Self {
+            uuid: self.uuid.clone(),
+            function_arn: self.function_arn.clone(),
+            event_source_arn: self.event_source_arn.clone(),
+            state: self.state.clone(),
+            state_transition_reason: self.state_transition_reason.clone(),
+            last_modified: self.last_modified,
+            batch_size: self.batch_size,
+            enabled: self.enabled,
+            starting_position: self.starting_position.clone(),
+            filter_criteria: self.filter_criteria.clone(),
+            function_response_types: self.function_response_types.clone(),
+            bisect_batch_on_function_error: self.bisect_batch_on_function_error,
+            maximum_retry_attempts: self.maximum_retry_attempts,
+            tags: RwLock::new(self.tags.read().clone()),
+            maximum_batching_window_in_seconds: self.maximum_batching_window_in_seconds,
+            maximum_record_age_in_seconds: self.maximum_record_age_in_seconds,
+            kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
+            ddb_attached_watermark: self.ddb_attached_watermark.clone(),
+        }
+    }
 }
 
 /// One stored ESM as seen by the gateway's engine thread, tagged with the

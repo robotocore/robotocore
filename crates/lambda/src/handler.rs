@@ -1648,6 +1648,19 @@ impl LambdaHandler {
             state: "Enabled".to_string(),
             state_transition_reason: "User initiated".to_string(),
             last_modified: epoch_now(),
+            // moto's spec dict carries Tags on create too
+            // (models.py:1348 `self.tags = spec.get("Tags") or {}`).
+            tags: RwLock::new(
+                req.params
+                    .get("Tags")
+                    .and_then(Value::as_object)
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                            .collect::<HashMap<String, String>>()
+                    })
+                    .unwrap_or_default(),
+            ),
             batch_size,
             enabled: req
                 .params
@@ -1790,6 +1803,7 @@ impl LambdaHandler {
             state: em_state,
             state_transition_reason: em.state_transition_reason.clone(),
             last_modified: epoch_now(),
+            tags: RwLock::new(em.tags.read().clone()),
             batch_size,
             enabled,
             starting_position: em.starting_position.clone(),
@@ -1981,8 +1995,57 @@ impl LambdaHandler {
     // Tags
     // ---------------------------------------------------------------
 
+    /// moto's `_get_resource_by_arn` (awslambda/models.py:2447-2462): a
+    /// tag-call ARN whose second-to-last member is `event-source-mapping`
+    /// names a stored mapping by uuid — resolve it in the ESM store, where
+    /// the function resolver would misread the uuid as a function name and
+    /// 404 "Function not found" (this 404 aborts the terraform provider's
+    /// drift refresh, which ListTags-es a mapping mid-apply). Missing uuid
+    /// → moto's RESTError 404. `Ok(None)` = the ARN is not a mapping; the
+    /// caller falls through to the function path.
+    fn tag_esm(
+        state: &LambdaState,
+        arn: &str,
+    ) -> Result<Option<Arc<crate::models::EventSourceMapping>>, AwsResponse> {
+        // moto keys the family off the ARN's second-to-last member; the
+        // twin's substring check answers the same for every constructible
+        // ARN (uuid tails only), but the segment check keeps the parity
+        // exact for multi-segment tails too.
+        let segments: Vec<&str> = arn.split(':').collect();
+        if segments.len() < 2 || segments[segments.len() - 2] != "event-source-mapping" {
+            return Ok(None);
+        }
+        let uuid = segments[segments.len() - 1];
+        state
+            .event_source_mappings
+            .read()
+            .get(uuid)
+            .cloned()
+            .map(Some)
+            .ok_or_else(|| {
+                AwsResponse::error(
+                    404,
+                    "ResourceNotFoundException",
+                    &format!("Event source mapping {uuid} not found."),
+                )
+            })
+    }
+
     fn list_tags(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let arn = req.tags_arn();
+        match Self::tag_esm(state, &arn) {
+            Err(resp) => return resp,
+            Ok(Some(em)) => {
+                let tags = em
+                    .tags
+                    .read()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                    .collect::<Map<_, _>>();
+                return AwsResponse::json(200, json!({ "Tags": tags }));
+            }
+            Ok(None) => {}
+        }
         let func = match resolve_fn(state, req, &arn) {
             Ok(f) => f,
             Err(resp) => return resp,
@@ -1998,6 +2061,19 @@ impl LambdaHandler {
 
     fn tag_resource(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let arn = req.tags_arn();
+        match Self::tag_esm(state, &arn) {
+            Err(resp) => return resp,
+            Ok(Some(em)) => {
+                if let Some(tags) = req.params.get("Tags").and_then(Value::as_object) {
+                    let mut map = em.tags.write();
+                    for (k, v) in tags {
+                        map.insert(k.clone(), v.as_str().unwrap_or("").to_string());
+                    }
+                }
+                return AwsResponse::empty(204);
+            }
+            Ok(None) => {}
+        }
         let func = match resolve_fn(state, req, &arn) {
             Ok(f) => f,
             Err(resp) => return resp,
@@ -2013,6 +2089,15 @@ impl LambdaHandler {
 
     fn untag_resource(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let arn = req.tags_arn();
+        match Self::tag_esm(state, &arn) {
+            Err(resp) => return resp,
+            Ok(Some(em)) => {
+                let keys = req.query_list("tagKeys");
+                em.tags.write().retain(|k, _| !keys.contains(k));
+                return AwsResponse::empty(204);
+            }
+            Ok(None) => {}
+        }
         let func = match resolve_fn(state, req, &arn) {
             Ok(f) => f,
             Err(resp) => return resp,
