@@ -139,6 +139,13 @@ pub struct MultipartUpload {
     /// there and the completed object inherits it).
     #[serde(default)]
     pub storage_class: String,
+    /// x-amz-tagging captured (collapsed, first-value) at
+    /// CreateMultipartUpload (moto responses.py:3137 stores it raw on the
+    /// multipart); validated and applied at CompleteMultipartUpload
+    /// (models.py:2744 routes through put_object_tagging) — the create
+    /// itself does NOT validate.
+    #[serde(default)]
+    pub pending_tags: Vec<(String, String)>,
 }
 
 impl MultipartUpload {
@@ -151,6 +158,7 @@ impl MultipartUpload {
             content_type,
             storage_class: "STANDARD".to_string(),
             metadata: HashMap::new(),
+            pending_tags: Vec::new(),
         }
     }
 }
