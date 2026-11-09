@@ -5690,13 +5690,42 @@ impl S3Handler {
     // Replication
     // ------------------------------------------------------------------
 
+    /// moto's GET REBUILDS the rules (responses.py:1419-1437): it renders
+    /// ID/Priority/Status/Destination only, FORCES DeleteMarkerReplication
+    /// {"Status": "Disabled"} and Filter: {"Prefix": ""} — dropping the
+    /// user's stored prefix and delete-marker setting (both live-probed).
+    /// The STORED copy keeps them for the engine (maybe_replicate reads
+    /// the prefix).
     fn get_bucket_replication(&self, req: &AwsRequest) -> AwsResponse {
         let (_state, bucket) = match self.with_bucket(req) {
             Ok(p) => p,
             Err(e) => return e,
         };
         let stored = bucket.replication_xml.read().clone();
-        match stored {
+        let rebuilt = stored.as_ref().map(|body| {
+            let role = xml_text(body, "Role").unwrap_or_default();
+            let mut rules_xml = Vec::new();
+            for rule in xml_sections(body, "Rule") {
+                let dest = xml_sections(&rule, "Destination")
+                    .pop()
+                    .map(|inner| format!("<Destination>{}</Destination>", inner))
+                    .unwrap_or_else(|| "<Destination></Destination>".to_string());
+                rules_xml.push(format!(
+                    "<Rule><ID>{}</ID><Priority>{}</Priority><Status>{}</Status><DeleteMarkerReplication><Status>Disabled</Status></DeleteMarkerReplication><Filter><Prefix/></Filter>{}</Rule>",
+                    xml_escape(&xml_child_text(&rule, "ID").unwrap_or_default()),
+                    xml_escape(&xml_child_text(&rule, "Priority").unwrap_or_else(|| "1".to_string())),
+                    xml_escape(&xml_child_text(&rule, "Status").unwrap_or_default()),
+                    dest
+                ));
+            }
+            format!(
+                "<ReplicationConfiguration xmlns=\"{ns}\"><Role>{role}</Role>{rules}</ReplicationConfiguration>",
+                ns = S3_NS,
+                role = xml_escape(&role),
+                rules = rules_xml.join("")
+            )
+        });
+        match rebuilt.or(stored) {
             Some(body) => AwsResponse::xml(200, body),
             None => AwsResponse::error(
                 404,
@@ -5707,33 +5736,79 @@ impl S3Handler {
     }
 
     fn put_bucket_replication(&self, req: &AwsRequest) -> AwsResponse {
-        let (state, bucket) = match self.with_bucket(req) {
+        let (_state, bucket) = match self.with_bucket(req) {
             Ok(p) => p,
             Err(e) => return e,
         };
         let body = String::from_utf8_lossy(&req.body).to_string();
-        let rules = Self::parse_replication_rules(&body);
 
-        // Validation: source bucket must be versioned and destinations exist.
+        // Validation mirrors moto responses.py:1084-1090: the source
+        // bucket must be versioned; a missing destination bucket is NOT
+        // validated (moto accepts it — #478-reviewed divergence).
         if !bucket.is_versioned() {
             return AwsResponse::error(
                 400,
                 "InvalidRequest",
-                "Versioning must be 'Enabled' on the source bucket",
+                "Versioning must be 'Enabled' on the bucket to apply a replication configuration",
             );
         }
-        for rule in &rules {
-            if let Some(dest) = &rule.dest_bucket {
-                if state.get_bucket(dest).is_none() {
-                    return AwsResponse::error(
-                        400,
-                        "InvalidRequest",
-                        "The destination bucket does not exist",
-                    );
-                }
-            }
+        // moto models.py:2233-2247 normalizes each rule at PUT: Priority
+        // defaults to 1 and the ID is a random 30-char alnum when absent.
+        let role = xml_text(&body, "Role").unwrap_or_default();
+        let mut rule_xmls = Vec::new();
+        for rule in xml_sections(&body, "Rule") {
+            let id = xml_child_text(&rule, "ID")
+                .filter(|id| !id.is_empty())
+                .unwrap_or_else(|| {
+                    // moto models.py:2239-2244 mints a random 30-char
+                    // alnum ID; uuid v4 simple() is 32 hex chars — take
+                    // its first 30 (same charset family, same length).
+                    uuid::Uuid::new_v4().simple().to_string()[..30].to_string()
+                });
+            let priority = xml_child_text(&rule, "Priority").unwrap_or_else(|| "1".to_string());
+            let status = xml_child_text(&rule, "Status").unwrap_or_else(|| "Disabled".to_string());
+            let dest = xml_sections(&rule, "Destination")
+                .pop()
+                .map(|inner| format!("<Destination>{}</Destination>", inner))
+                .unwrap_or_else(|| "<Destination></Destination>".to_string());
+            // The STORED copy keeps the user's Prefix/DMR (the engine
+            // reads them via parse_replication_rules); the GET render
+            // strips them — moto's GET rebuild (responses.py:1419-1437)
+            // prints only ID/Priority/Status/Destination, forcing
+            // DeleteMarkerReplication Disabled + empty Filter.
+            let dmr = xml_sections(&rule, "DeleteMarkerReplication")
+                .pop()
+                .map(|i| format!("<DeleteMarkerReplication>{}</DeleteMarkerReplication>", i))
+                .unwrap_or_default();
+            let prefix = xml_child_text(&rule, "Prefix")
+                .or_else(|| {
+                    xml_sections(&rule, "Filter")
+                        .pop()
+                        .and_then(|f| xml_child_text(&f, "Prefix"))
+                })
+                .map(|p| format!("<Prefix>{}</Prefix>", xml_escape(&p)))
+                .unwrap_or_default();
+            rule_xmls.push(format!(
+                "<Rule><ID>{}</ID><Priority>{}</Priority><Status>{}</Status>{}{}{}</Rule>",
+                xml_escape(&id),
+                xml_escape(&priority),
+                xml_escape(&status),
+                prefix,
+                dest,
+                dmr
+            ));
         }
-        *bucket.replication_xml.write() = Some(body);
+        // The rule elements nest DIRECTLY under ReplicationConfiguration
+        // (botocore's ReplicationConfiguration.Rules member is flattened
+        // with locationName Rule — a plural <Rules> wrapper is dropped by
+        // botocore's parse; moto's wire shows bare <Rule> elements).
+        let normalized = format!(
+            "<ReplicationConfiguration xmlns=\"{ns}\"><Role>{role}</Role>{rules}</ReplicationConfiguration>",
+            ns = S3_NS,
+            role = xml_escape(&role),
+            rules = rule_xmls.join("")
+        );
+        *bucket.replication_xml.write() = Some(normalized);
         AwsResponse::no_content(200)
     }
 
