@@ -237,6 +237,27 @@ pub struct EventSourceMapping {
     /// conditional shape as the batching window above.
     #[serde(default)]
     pub maximum_record_age_in_seconds: Option<i64>,
+    /// `StartingPositionTimestamp` when the caller passed one
+    /// (AT_TIMESTAMP mappings; botocore carries the member on create +
+    /// output but NOT on update — moto's update loop has no handler for
+    /// it, so it is create-immutable, matching both oracles).
+    #[serde(default)]
+    pub starting_position_timestamp: Option<f64>,
+    /// `ParallelizationFactor` for kinesis mappings (real-AWS range
+    /// 1..=100000; nothing in moto or the twin validates it — moto
+    /// `spec.get` pass-through like the sibling ratio fields).
+    #[serde(default)]
+    pub parallelization_factor: Option<i64>,
+    /// `DestinationConfig` on-failure destination as passed (moto
+    /// `spec.get`; the twin renders the stored shape unvalidated).
+    #[serde(default)]
+    pub destination_config: Option<Value>,
+    /// `ScalingConfig` as passed (SQS mappings; moto `spec.get`).
+    #[serde(default)]
+    pub scaling_config: Option<Value>,
+    /// `TumblingWindowInSeconds` when configured (kinesis; moto `spec.get`).
+    #[serde(default)]
+    pub tumbling_window_in_seconds: Option<u64>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -280,6 +301,11 @@ impl Clone for EventSourceMapping {
             tags: RwLock::new(self.tags.read().clone()),
             maximum_batching_window_in_seconds: self.maximum_batching_window_in_seconds,
             maximum_record_age_in_seconds: self.maximum_record_age_in_seconds,
+            starting_position_timestamp: self.starting_position_timestamp,
+            parallelization_factor: self.parallelization_factor,
+            destination_config: self.destination_config.clone(),
+            scaling_config: self.scaling_config.clone(),
+            tumbling_window_in_seconds: self.tumbling_window_in_seconds,
             kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: self.ddb_attached_watermark.clone(),
         }
