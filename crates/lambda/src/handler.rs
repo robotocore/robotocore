@@ -1591,13 +1591,12 @@ impl LambdaHandler {
 
         m.insert(
             "Tags".into(),
-            json!(
-                e.tags
-                    .read()
-                    .iter()
-                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-                    .collect::<Map<_, _>>()
-            ),
+            json!(e
+                .tags
+                .read()
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect::<Map<_, _>>()),
         );
         m.insert(
             "State".into(),
@@ -1796,11 +1795,7 @@ impl LambdaHandler {
                 .get("ProvisionedPollerConfig")
                 .cloned()
                 .filter(|v| !v.is_null()),
-            queues: req
-                .params
-                .get("Queues")
-                .cloned()
-                .filter(|v| !v.is_null()),
+            queues: req.params.get("Queues").cloned().filter(|v| !v.is_null()),
             source_access_configurations: req
                 .params
                 .get("SourceAccessConfigurations")
@@ -3936,7 +3931,8 @@ mod tests {
             json!({"FunctionName": fn_name, "Runtime": "python3.12", "Handler": "index.handler"}),
             "/2015-03-31/functions",
         ));
-        let dest = json!({"OnFailure": {"Destination": "arn:aws:sqs:us-east-1:123456789012:dlq-x"}});
+        let dest =
+            json!({"OnFailure": {"Destination": "arn:aws:sqs:us-east-1:123456789012:dlq-x"}});
         let scaling = json!({"MaximumConcurrency": 5});
         let resp = create_esm(
             &handler,
@@ -3957,7 +3953,10 @@ mod tests {
         assert_eq!(created["TumblingWindowInSeconds"], json!(60));
         assert_eq!(created["DestinationConfig"], dest);
         assert_eq!(created["ScalingConfig"], scaling);
-        assert_eq!(created["KMSKeyArn"], json!("arn:aws:kms:us-east-1:123456789012:key/k1"));
+        assert_eq!(
+            created["KMSKeyArn"],
+            json!("arn:aws:kms:us-east-1:123456789012:key/k1")
+        );
         assert_eq!(created["MetricsConfig"], json!({"Metrics": ["EventCount"]}));
         assert_eq!(created["Queues"], json!(["mq-q"]));
         assert!(
@@ -3992,7 +3991,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 202, "body: {}", resp.body);
         let wave2: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(wave2["KMSKeyArn"], json!("arn:aws:kms:us-east-1:123456789012:key/k2"));
+        assert_eq!(
+            wave2["KMSKeyArn"],
+            json!("arn:aws:kms:us-east-1:123456789012:key/k2")
+        );
         assert_eq!(wave2["MetricsConfig"], json!({"Metrics": []}));
         assert_eq!(wave2["Queues"], json!(["mq-q"]));
 
@@ -4645,10 +4647,20 @@ mod tests {
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
         let esm: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(esm["Tags"], json!({"team": "red"}), "create body: {}", resp.body);
+        assert_eq!(
+            esm["Tags"],
+            json!({"team": "red"}),
+            "create body: {}",
+            resp.body
+        );
         let got = get_esm(&handler, esm["UUID"].as_str().unwrap());
         assert_eq!(got.status, 200, "body: {}", got.body);
         let got_value: Value = serde_json::from_str(&got.body).unwrap();
-        assert_eq!(got_value["Tags"], json!({"team": "red"}), "get body: {}", got.body);
+        assert_eq!(
+            got_value["Tags"],
+            json!({"team": "red"}),
+            "get body: {}",
+            got.body
+        );
     }
 }
