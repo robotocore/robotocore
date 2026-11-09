@@ -180,7 +180,8 @@ Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
   TestDeletionProtectionRender (create-store, flip → unrelated update
   → reset, INACTIVE write-back). Junk-enum values echo as stored (moto
   does the same pass-through); the real-AWS Delete-guard on an ACTIVE
-  pool remains unimplemented — unrecorded real-AWS-side lead.
+  pool is implemented too — closed in the 2026-11-09 cognito Delete
+  UserPool guard section below.
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.
 
 
@@ -270,3 +271,19 @@ Dropped to moto parity; the dict-contract unit test pins the absence
 output.LastProcessingResult)`), but aws-sdk-go-v2 decodes JSON null and
 absent into the same nil pointer, so the refreshed state is the empty
 string either way and no plan diff can form.
+
+## cognito: DeleteUserPool guard on a DeletionProtection=ACTIVE pool (2026-11-09)
+
+real AWS refuses to delete a deletion-protected pool — botocore's
+UserPoolType.DeletionProtection doc: "When you try to delete a
+protected user pool in a DeleteUserPool API request, Amazon Cognito
+returns an InvalidParameterException error. To delete a protected user
+pool, send a new DeleteUserPool request after you deactivate deletion
+protection in an UpdateUserPool API request." moto deletes
+unconditionally (recorded known diff); the twin is real-AWS-preferred
+on this surface since #456. The guard claims only an EXPLICIT stored
+ACTIVE member (absent = the INACTIVE default) and the pool SURVIVES
+the refused delete; the error message string is twin-authored (the
+recorded oracle pins the code, not the text). Pins:
+TestDeletionProtectionRender.DeleteGuardBlocksActivePool +
+DeleteWithoutMemberStillWorks.
