@@ -62,6 +62,22 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Kinesis: PutRecord/PutRecords carry the stream's live
+  EncryptionType.** AWS's own put captures (CLI reference put-record /
+  put-records outputs on KMS streams) carry
+  `"EncryptionType": "KMS"`; the botocore model lists the member only
+  as OPTIONAL, and whether real AWS renders it on a PLAIN stream is an
+  open real-AWS observation — the twin echoed the constant
+  `"EncryptionType": "NONE"` unconditionally, which was already stale
+  on KMS streams once StartStreamEncryption ran (review lead O2 from
+  the #460-era kinesis pass). Both put responses now render the
+  stream's stored value (NONE after Stop) — moto's put responses omit
+  the member entirely (kinesis/responses.py:108-123, KMS streams
+  included while moto's describe renders KMS — recorded known diff;
+  the member follows the describe shapes' real-AWS preference and the
+  standing presence pins). 2 pins tightened from presence-only to the
+  live round trip — NONE → KMS → NONE on BOTH surfaces (put_record and
+  put_records, stop leg included).
 - **Cognito: DeleteUserPool refuses a DeletionProtection=ACTIVE pool.**
   real AWS: "When you try to delete a protected user pool in a
   DeleteUserPool API request, Amazon Cognito returns an

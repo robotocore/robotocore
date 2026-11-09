@@ -447,7 +447,20 @@ impl KinesisHandler {
                     json!({
                         "ShardId": shard.shard_id,
                         "SequenceNumber": record.sequence_number,
-                        "EncryptionType": "NONE",
+                        // The stream's LIVE encryption type, not a constant:
+                        // real AWS put captures carry the member
+                        // (AWS CLI reference put-record/put-records show
+                        // "EncryptionType": "KMS" outputs on KMS streams;
+                        // the botocore model lists the member as OPTIONAL,
+                        // and the NONE-on-plain-stream leg is an open
+                        // real-AWS observation) — an always-NONE echo lied
+                        // on KMS streams. moto's put responses omit the
+                        // member entirely (responses.py:108-123 — KMS
+                        // streams included, while moto's describe renders
+                        // KMS) — recorded known diff; the member follows
+                        // the describe shapes' real-AWS preference and the
+                        // standing surface pins.
+                        "EncryptionType": *stream.encryption_type.read(),
                     }),
                 )
             }
@@ -563,7 +576,11 @@ impl KinesisHandler {
             200,
             json!({
                 "FailedRecordCount": 0,
-                "EncryptionType": "NONE",
+                // The stream's LIVE encryption type — same evidence basis
+                // as put_record above (real-AWS capture-anchored on KMS;
+                // moto's put_records response omits the member — recorded
+                // known diff).
+                "EncryptionType": *stream.encryption_type.read(),
                 "Records": result_records
             }),
         )

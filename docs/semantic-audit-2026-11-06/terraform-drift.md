@@ -316,3 +316,23 @@ member) and the crate's
 esm_optional_config_members_store_render_and_update (the AT_TIMESTAMP
 store-without-render + immutability case). MetricsConfig / Queues /
 SourceAccessConfigurations / provisioned poller members stay parked.
+
+## kinesis: PutRecord/PutRecords live EncryptionType (2026-11-09)
+
+The KMS leg is capture-anchored: AWS's own put captures (CLI reference
+put-record / put-records outputs on KMS streams) carry
+`"EncryptionType": "KMS"` — the botocore model lists the member as
+OPTIONAL in both outputs (required lists carry none of it), and
+whether real AWS renders the member on a PLAIN stream is an open
+real-AWS observation. The twin echoed the constant "NONE" — stale on
+KMS streams once StartStreamEncryption ran (review lead O2 from the
+#466-era kinesis pass, flagging that the constant made the put
+surfaces half-honest next to the describe shapes). Both put responses
+now render the stream's stored type (NONE after Stop). moto's put
+responses OMIT the member entirely (kinesis/responses.py:108-123
+put_record returns SequenceNumber+ShardId only) on plain AND KMS
+streams (moto's describe still renders KMS — recorded asymmetry) — a
+recorded known diff: the member follows the describe shapes' real-AWS
+preference (and the standing presence pins). 2 compat pins tightened
+to the live round trip (NONE → KMS → NONE, stop leg on both
+surfaces).
