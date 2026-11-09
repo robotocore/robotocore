@@ -1485,7 +1485,7 @@ impl S3Handler {
         data: Vec<u8>,
         content_type: String,
         metadata: HashMap<String, String>,
-        tags: HashMap<String, String>,
+        tags: &[(String, String)],
         storage_class: String,
     ) -> (String, String) {
         let version_id = if bucket.is_versioned() {
@@ -1497,7 +1497,7 @@ impl S3Handler {
         version.version_id = version_id.clone();
         version.seq = bucket.next_seq();
         version.metadata = metadata;
-        version.tags = tags;
+        version.tags = tags.to_vec();
         version.storage_class = storage_class;
         version.last_modified = chrono::Utc::now().timestamp() as u64;
         let etag = version.etag.clone();
@@ -2020,11 +2020,12 @@ impl S3Handler {
                 "The storage class you specified is not valid",
             );
         }
-        let tag_list = Self::collapse_tags(req
-            .headers
-            .get("x-amz-tagging")
-            .map(|h| Self::tags_list_from_header(h))
-            .unwrap_or_default());
+        let tag_list = Self::collapse_tags(
+            req.headers
+                .get("x-amz-tagging")
+                .map(|h| Self::tags_list_from_header(h))
+                .unwrap_or_default(),
+        );
         // moto's put_object STORES the key first and validates the tag
         // header after (responses.py:2322→2332, live-probed): a bad tag
         // still answers 400 but leaves the object present and UNTAGGED.
@@ -2037,7 +2038,7 @@ impl S3Handler {
             req.body.to_vec(),
             content_type,
             Self::user_metadata(req),
-            HashMap::new(),
+            &[],
             storage_class.clone(),
         );
 
@@ -2053,7 +2054,6 @@ impl S3Handler {
             self.maybe_replicate(req, &state, &bucket, &key, req.body.to_vec());
             return e;
         }
-        let tags: HashMap<String, String> = tag_list.into_iter().collect();
         {
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
@@ -2062,7 +2062,7 @@ impl S3Handler {
                     .iter_mut()
                     .find(|v| v.version_id == version_id)
                 {
-                    v.tags = tags;
+                    v.tags = tag_list;
                 }
             }
         }
@@ -2305,7 +2305,7 @@ impl S3Handler {
             file.to_vec(),
             content_type,
             metadata,
-            HashMap::new(),
+            &[],
             storage_class,
         );
 
@@ -2928,11 +2928,12 @@ impl S3Handler {
             .map(|s| s == "REPLACE")
             .unwrap_or(false);
         let validation_error = if td_replace {
-            let collapsed = Self::collapse_tags(req
-                .headers
-                .get("x-amz-tagging")
-                .map(|h| Self::tags_list_from_header(h))
-                .unwrap_or_default());
+            let collapsed = Self::collapse_tags(
+                req.headers
+                    .get("x-amz-tagging")
+                    .map(|h| Self::tags_list_from_header(h))
+                    .unwrap_or_default(),
+            );
             Self::tagging_validation(&collapsed).map(|e| (e, collapsed))
         } else {
             None
@@ -2944,11 +2945,7 @@ impl S3Handler {
         // failure leaves the copy carrying the copied source tags
         // (review-probed live on both engines: dst keeps src-tag through
         // the 400). A COPY directive ignores any header.
-        let tags: HashMap<String, String> = Self::collapse_tags(
-            source.tags.clone().into_iter().collect(),
-        )
-        .into_iter()
-        .collect();
+        let tags = Self::collapse_tags(source.tags.clone());
         let metadata = if replace {
             Self::user_metadata(req)
         } else {
@@ -3032,7 +3029,7 @@ impl S3Handler {
             source.data.clone(),
             content_type,
             metadata,
-            tags,
+            &tags,
             storage_class,
         );
         // moto's copy STORES first and routes REPLACE through the backend's
@@ -3053,14 +3050,15 @@ impl S3Handler {
                 );
                 return e;
             }
-            let good = Self::collapse_tags(req
-                .headers
-                .get("x-amz-tagging")
-                .map(|h| Self::tags_list_from_header(h))
-                .unwrap_or_default());
+            let good = Self::collapse_tags(
+                req.headers
+                    .get("x-amz-tagging")
+                    .map(|h| Self::tags_list_from_header(h))
+                    .unwrap_or_default(),
+            );
             if let Some(entry) = dest.objects.write().get_mut(dest_key) {
                 if let Some(v) = entry.versions.last_mut() {
-                    v.tags = good.into_iter().collect();
+                    v.tags = good;
                 }
             }
         }
@@ -4283,7 +4281,6 @@ impl S3Handler {
         if let Some(e) = Self::tagging_validation(&tag_list) {
             return e;
         }
-        let tags: HashMap<String, String> = tag_list.into_iter().collect();
         {
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
@@ -4292,7 +4289,7 @@ impl S3Handler {
                     .get("versionId")
                     .and_then(|vid| entry.versions.iter().position(|v| v.version_id == *vid))
                     .unwrap_or(0);
-                entry.versions[idx].tags = tags;
+                entry.versions[idx].tags = tag_list;
             }
         }
         AwsResponse::no_content(200)
@@ -4325,7 +4322,7 @@ impl S3Handler {
                         .unwrap_or(0);
                     entry.versions[idx].tags.clone()
                 }
-                None => HashMap::new(),
+                None => Vec::new(),
             }
         };
         let mut tag_xml = String::new();
@@ -4368,7 +4365,7 @@ impl S3Handler {
                     .get("versionId")
                     .and_then(|vid| entry.versions.iter().position(|v| v.version_id == *vid))
                     .unwrap_or(0);
-                entry.versions[idx].tags = HashMap::new();
+                entry.versions[idx].tags = Vec::new();
             }
         }
         AwsResponse::no_content(204)
@@ -4894,7 +4891,7 @@ impl S3Handler {
             combined,
             content_type,
             Self::user_metadata(req),
-            HashMap::new(),
+            &[],
             mp_storage_class,
         );
         // Override the stored etag with the AWS multipart composite format.
@@ -5742,7 +5739,7 @@ impl S3Handler {
                     data.clone(),
                     source.content_type.clone(),
                     source.metadata.clone(),
-                    source.tags.clone(),
+                    &source.tags,
                     source.storage_class.clone(),
                 );
             }

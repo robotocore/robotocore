@@ -2300,6 +2300,29 @@ class TestS3TaggingVersioning:
         assert "at 'tags.1.member.key'" in msg and "at 'tags.1.member.value'" in msg
         assert "regular expression pattern" in msg
 
+    def test_get_tagging_preserves_insertion_order(self, s3, versioned_tagged):
+        """moto's tagger renders storage (insertion) order — GET TagSet
+        must not depend on HashMap iteration (the twin stored a HashMap
+        before this fix; recorded in the #472 ledger edge)."""
+        name, _ = versioned_tagged
+        s3.put_object_tagging(
+            Bucket=name,
+            Key="doc",
+            Tagging={
+                "TagSet": [
+                    {"Key": "zeta", "Value": "1"},
+                    {"Key": "alpha", "Value": "2"},
+                    {"Key": "mid", "Value": "3"},
+                ]
+            },
+        )
+        got = s3.get_object_tagging(Bucket=name, Key="doc")["TagSet"]
+        assert [(t["Key"], t["Value"]) for t in got] == [
+            ("zeta", "1"),
+            ("alpha", "2"),
+            ("mid", "3"),
+        ]
+
     def test_header_tagging_validated_on_put_object(self, s3):
         """moto validates the x-amz-tagging header through the same shared
         validator on PutObject (live-probed)."""

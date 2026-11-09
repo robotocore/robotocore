@@ -211,8 +211,11 @@ S3
    through boto3): (a) a duplicate-Key TagSet stores
    LAST-value into the collapsed map on both engines — but moto's XML
    path keeps first-occurrence position while the twin's GET TagSet
-   renders the HashMap ITERATION (member order nondeterministic;
-   moto-faithful insertion order is the open question); (b) an
+   renders the HashMap ITERATION (member order nondeterministic) —
+   CLOSED 2026-11-09: the stored set became an ordered pairs vec
+   (insertion order, first-position/last-value on duplicates) and GET
+   TagSet now renders member-for-member like moto's tagger
+   (live cross-check); snapshots restore both shapes; (b) an
    empty-TagSet body (`<Tagging></Tagging>`) and a `<Tag>` with an
    empty `<Key>` make moto HTTP 500 (a response-layer XML unpack and a
    backend None-subscript respectively — moto tagging-path crashes)
