@@ -314,8 +314,19 @@ nulls verbatim — three behaviors, all SDK-invisible. Pins:
 TestEventSourceMappingOptionalConfig (boto3-visible, unlike the Tags
 member) and the crate's
 esm_optional_config_members_store_render_and_update (the AT_TIMESTAMP
-store-without-render + immutability case). MetricsConfig / Queues /
-SourceAccessConfigurations / provisioned poller members stay parked.
+store-without-render + immutability case).
+
+Wave 2 (same day): `KMSKeyArn`, `MetricsConfig`,
+`ProvisionedPollerConfig`, `Queues`, `SourceAccessConfigurations` and
+`DocumentDBEventSourceConfig` landed through the same spec.get shape —
+models.py:1331-1347 store, 1414-1428 render; update elifs at
+models.py:2238-2264 for all but `Queues` (create-immutable: botocore
+itself rejects Queues on UpdateEventSourceMapping). Pins:
+TestEventSourceMappingOptionalConfig.test_wave2_members_render + the
+extended crate test. SelfManagedEventSource /
+SelfManagedKafkaEventSourceConfig / AmazonManagedKafkaEventSourceConfig
+/ LoggingConfig / Topics stay parked (Kafka/MQ family members, no
+provider arg reaches them via the twin's supported test surface).
 
 ## kinesis: PutRecord/PutRecords live EncryptionType (2026-11-09)
 

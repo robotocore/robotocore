@@ -78,6 +78,21 @@ under *Changelog discipline*.
   standing presence pins). 2 pins tightened from presence-only to the
   live round trip — NONE → KMS → NONE on BOTH surfaces (put_record and
   put_records, stop leg included).
+- **Lambda: ESM bodies carry the wave-2 `spec.get` members.** moto
+  stores `KMSKeyArn`, `MetricsConfig`, `ProvisionedPollerConfig`,
+  `Queues`, `SourceAccessConfigurations` and
+  `DocumentDBEventSourceConfig` (awslambda/models.py:1331-1347) and
+  renders them through the configuration dict (1414-1428); the twin
+  dropped them on the floor (the #463 review's shape-gap list,
+  wave 2). Create stores; moto's elif loop (models.py:2238-2264)
+  mutates the five updateable ones — provided mutates, omitted
+  preserves; `Queues` has no update handler (botocore itself rejects
+  Queues on UpdateEventSourceMapping) and is create-immutable. Raw
+  null/wrong-type caveat inherited from #467 (recorded, SDK-invisible).
+  Pins: TestEventSourceMappingOptionalConfig.test_wave2_members_render
+  (boto3) plus the crate's extended
+  esm_optional_config_members_store_render_and_update (KMSKeyArn/
+  MetricsConfig mutation + Queues immutability).
 - **Cognito: DeleteUserPool refuses a DeletionProtection=ACTIVE pool.**
   real AWS: "When you try to delete a protected user pool in a
   DeleteUserPool API request, Amazon Cognito returns an

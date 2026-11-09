@@ -1567,6 +1567,24 @@ impl LambdaHandler {
         if let Some(tw) = e.tumbling_window_in_seconds {
             m.insert("TumblingWindowInSeconds".into(), json!(tw));
         }
+        if let Some(k) = &e.kms_key_arn {
+            m.insert("KMSKeyArn".into(), json!(k));
+        }
+        if let Some(mc) = &e.metrics_config {
+            m.insert("MetricsConfig".into(), mc.clone());
+        }
+        if let Some(pc) = &e.provisioned_poller_config {
+            m.insert("ProvisionedPollerConfig".into(), pc.clone());
+        }
+        if let Some(q) = &e.queues {
+            m.insert("Queues".into(), q.clone());
+        }
+        if let Some(sac) = &e.source_access_configurations {
+            m.insert("SourceAccessConfigurations".into(), sac.clone());
+        }
+        if let Some(ddb) = &e.document_db_config {
+            m.insert("DocumentDBEventSourceConfig".into(), ddb.clone());
+        }
         // LastProcessingResult stays ABSENT: moto stores None-here and its
         // None-filter drops the member (models.py:1407 → 1433-1434); the
         // twin's null insert was a wire-visible (Go-SDK) phantom.
@@ -1763,6 +1781,36 @@ impl LambdaHandler {
                 .params
                 .get("TumblingWindowInSeconds")
                 .and_then(Value::as_u64),
+            kms_key_arn: req
+                .params
+                .get("KMSKeyArn")
+                .and_then(Value::as_str)
+                .map(String::from),
+            metrics_config: req
+                .params
+                .get("MetricsConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            provisioned_poller_config: req
+                .params
+                .get("ProvisionedPollerConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            queues: req
+                .params
+                .get("Queues")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            source_access_configurations: req
+                .params
+                .get("SourceAccessConfigurations")
+                .cloned()
+                .filter(|v| !v.is_null()),
+            document_db_config: req
+                .params
+                .get("DocumentDBEventSourceConfig")
+                .cloned()
+                .filter(|v| !v.is_null()),
             // Attach-time LATEST binding for kinesis mappings (moto registers
             // the ESM on its source synchronously, so a LATEST mapping never
             // misses records that the poller merely observes late).
@@ -1938,6 +1986,42 @@ impl LambdaHandler {
                 .get("TumblingWindowInSeconds")
                 .and_then(Value::as_u64)
                 .or(em.tumbling_window_in_seconds),
+            // Wave-2 elif handlers (moto models.py:2260+): KMSKeyArn,
+            // MetricsConfig, ProvisionedPollerConfig,
+            // SourceAccessConfigurations, DocumentDBEventSourceConfig
+            // mutate when provided; Queues has NO update handler
+            // (botocore omits it from the update input) — rides.
+            kms_key_arn: req
+                .params
+                .get("KMSKeyArn")
+                .and_then(Value::as_str)
+                .map(String::from)
+                .or(em.kms_key_arn.clone()),
+            metrics_config: req
+                .params
+                .get("MetricsConfig")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.metrics_config.clone()),
+            provisioned_poller_config: req
+                .params
+                .get("ProvisionedPollerConfig")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.provisioned_poller_config.clone()),
+            queues: em.queues.clone(),
+            source_access_configurations: req
+                .params
+                .get("SourceAccessConfigurations")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.source_access_configurations.clone()),
+            document_db_config: req
+                .params
+                .get("DocumentDBEventSourceConfig")
+                .cloned()
+                .filter(|v| !v.is_null())
+                .or(em.document_db_config.clone()),
             // The attach-time binding survives updates; a FunctionName
             // re-point swaps only the function side (the watermarks are
             // keyed by source shard).
@@ -3861,7 +3945,10 @@ mod tests {
                    "ParallelizationFactor": 7,
                    "TumblingWindowInSeconds": 60,
                    "DestinationConfig": dest,
-                   "ScalingConfig": scaling}),
+                   "ScalingConfig": scaling,
+                   "KMSKeyArn": "arn:aws:kms:us-east-1:123456789012:key/k1",
+                   "MetricsConfig": {"Metrics": ["EventCount"]},
+                   "Queues": ["mq-q"]}),
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
         let created: Value = serde_json::from_str(&resp.body).unwrap();
@@ -3870,6 +3957,9 @@ mod tests {
         assert_eq!(created["TumblingWindowInSeconds"], json!(60));
         assert_eq!(created["DestinationConfig"], dest);
         assert_eq!(created["ScalingConfig"], scaling);
+        assert_eq!(created["KMSKeyArn"], json!("arn:aws:kms:us-east-1:123456789012:key/k1"));
+        assert_eq!(created["MetricsConfig"], json!({"Metrics": ["EventCount"]}));
+        assert_eq!(created["Queues"], json!(["mq-q"]));
         assert!(
             created.get("StartingPositionTimestamp").is_none(),
             "no timestamp without AT_TIMESTAMP: {created}"
@@ -3889,7 +3979,22 @@ mod tests {
         assert_eq!(updated["TumblingWindowInSeconds"], json!(60));
         assert_eq!(updated["DestinationConfig"], dest);
         assert_eq!(updated["ScalingConfig"], scaling);
+        // wave-2: KMSKeyArn + MetricsConfig mutate when provided; Queues
+        // has no moto update handler (create-immutable) — the wire value
+        // is ignored and the stored one rides.
         assert!(updated.get("StartingPositionTimestamp").is_none());
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"KMSKeyArn": "arn:aws:kms:us-east-1:123456789012:key/k2",
+                   "MetricsConfig": {"Metrics": []},
+                   "Queues": ["other-q"]}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let wave2: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(wave2["KMSKeyArn"], json!("arn:aws:kms:us-east-1:123456789012:key/k2"));
+        assert_eq!(wave2["MetricsConfig"], json!({"Metrics": []}));
+        assert_eq!(wave2["Queues"], json!(["mq-q"]));
 
         // an AT_TIMESTAMP create: moto STORES the timestamp (models.py:1327
         // spec.get) but its configuration dict has no member for it —
