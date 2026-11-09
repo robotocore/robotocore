@@ -2254,6 +2254,7 @@ class TestLambdaEventSourceMappingExtended:
         finally:
             if esm_uuid:
                 lam.delete_event_source_mapping(UUID=esm_uuid)
+            # best-effort cleanup: the qualifier leg may not have run
             try:
                 lam.delete_event_source_mapping(UUID=qual_uuid)
             except Exception:
