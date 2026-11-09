@@ -2140,6 +2140,62 @@ class TestLambdaEventSourceMappingExtended:
             for u in q_urls:
                 sqs.delete_queue(QueueUrl=u)
 
+    def test_list_event_source_mappings_fnname_exact(self, lam, role):
+        """ListEventSourceMappings FunctionName filter is exact equality.
+
+        moto filters `x.function_name == function_name` (lambda/
+        models.py:2274-2275): a short name matches its own mappings, a
+        FULL ARN matches NOTHING, a prefix matches nothing. The twin's
+        substring `contains` wrongly matched full ARNs and prefixes —
+        live-observed by the #484 reviewer on the pre-fix twin.
+        """
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-fnf-q-{suffix}"
+        fname = f"esm-fnf-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuid = None
+        try:
+            esm_uuid = lam.create_event_source_mapping(
+                EventSourceArn=q_arn, FunctionName=fname, StartingPosition="LATEST"
+            )["UUID"]
+
+            # short name: exact match
+            got = lam.list_event_source_mappings(FunctionName=fname)
+            assert len(got["EventSourceMappings"]) == 1
+            assert got["EventSourceMappings"][0]["UUID"] == esm_uuid
+
+            # full ARN: moto answers nothing
+            fn_arn = lam.get_function(FunctionName=fname)["Configuration"]["FunctionArn"]
+            got = lam.list_event_source_mappings(FunctionName=fn_arn)
+            assert got["EventSourceMappings"] == [], f"full ARN must not match: {got}"
+
+            # prefix: moto answers nothing
+            got = lam.list_event_source_mappings(FunctionName=fname[:-1])
+            assert got["EventSourceMappings"] == [], f"prefix must not match: {got}"
+
+            # unrelated name: empty
+            got = lam.list_event_source_mappings(FunctionName="no-such-fn")
+            assert got["EventSourceMappings"] == []
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
 
 class TestLambdaLayerDeletion:
     """Tests for layer version deletion."""
