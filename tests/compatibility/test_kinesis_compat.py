@@ -902,17 +902,46 @@ class TestKinesisExtended:
         assert summary["OpenShardCount"] >= 1
 
     def test_put_record_returns_encryption_type(self, kinesis, stream):
-        """PutRecord response includes EncryptionType field."""
+        """PutRecord response includes EncryptionType field, carrying the
+        STREAM's live value: NONE for a plain stream, KMS once
+        StartStreamEncryption ran (real AWS always carries the member;
+        moto's put responses omit it — recorded known diff)."""
         resp = kinesis.put_record(StreamName=stream, Data=b"enc-test", PartitionKey="pk1")
         assert "EncryptionType" in resp
-        assert resp["EncryptionType"] in ("NONE", "KMS")
+        assert resp["EncryptionType"] == "NONE"
+        kinesis.start_stream_encryption(
+            StreamName=stream, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+        )
+        resp = kinesis.put_record(StreamName=stream, Data=b"enc-test-kms", PartitionKey="pk1")
+        assert resp["EncryptionType"] == "KMS"
+        kinesis.stop_stream_encryption(
+            StreamName=stream, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+        )
+        resp = kinesis.put_record(StreamName=stream, Data=b"enc-test-off", PartitionKey="pk1")
+        assert resp["EncryptionType"] == "NONE"
 
     def test_put_records_returns_encryption_type(self, kinesis, stream):
-        """PutRecords response includes EncryptionType field."""
+        """PutRecords response includes EncryptionType field, carrying the
+        STREAM's live value (see test_put_record_returns_encryption_type;
+        both legs live-verified)."""
         records = [{"Data": b"enc-batch", "PartitionKey": "pk1"}]
         resp = kinesis.put_records(StreamName=stream, Records=records)
         assert "EncryptionType" in resp
-        assert resp["EncryptionType"] in ("NONE", "KMS")
+        assert resp["EncryptionType"] == "NONE"
+        kinesis.start_stream_encryption(
+            StreamName=stream, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+        )
+        resp = kinesis.put_records(
+            StreamName=stream, Records=[{"Data": b"enc-batch-kms", "PartitionKey": "pk2"}]
+        )
+        assert resp["EncryptionType"] == "KMS"
+        kinesis.stop_stream_encryption(
+            StreamName=stream, EncryptionType="KMS", KeyId="alias/aws/kinesis"
+        )
+        resp = kinesis.put_records(
+            StreamName=stream, Records=[{"Data": b"enc-batch-off", "PartitionKey": "pk3"}]
+        )
+        assert resp["EncryptionType"] == "NONE"
 
     def test_shard_hash_key_range_covers_full_space(self, kinesis):
         """Shard hash key ranges cover the full 0 to 2^128-1 space."""
