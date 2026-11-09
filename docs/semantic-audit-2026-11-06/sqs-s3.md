@@ -232,6 +232,26 @@ S3
    models.py:2744, stores values[0] per the header rule) — the twin
    ignores the header on both MP surfaces. Any future MPU-tagging lane
    must use keep_last=false.
+
+   MPU lane CLOSED (2026-11-09): CreateMultipartUpload captures the
+   collapsed first-value header tags without validating (moto
+   responses.py:3137 stores raw) and CompleteMultipartUpload routes
+   them through put_object_tagging AFTER the object stores (moto
+   models.py:2744) — a bad set fails the complete with the compound
+   InvalidTag and leaves the stored object UNTAGGED (live-verified
+   both engines: object persists, TagSet empty); a good set applies
+   with first-value collapse ("m=1&m=2" stores m=1). Pin:
+   TestS3TaggingVersioning.test_mpu_tag_lane.
+
+   Event parity (added after the #475 review's objection #1): moto's
+   put_object fires ObjectCreated:Put BEFORE the tagging raise — the
+   failed complete now delivers the Put event with the object present
+   and untagged (live-verified via a subscribed SQS queue both
+   engines), and the success path delivers Put +
+   CompleteMultipartUpload (moto's two events; the twin previously
+   sent only Complete). Recorded lead (out-of-lane): completed
+   multipart objects do not reach maybe_replicate — replication on
+   the complete path is a pre-existing gap.
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error

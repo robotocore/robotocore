@@ -62,6 +62,17 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3: the multipart tag lane.** moto parses x-amz-tagging at
+  CreateMultipartUpload (responses.py:3137 — NOT validated at create)
+  and routes the stored pending tags through put_object_tagging at
+  CompleteMultipartUpload (models.py:2744): a bad set fails the
+  complete AFTER the object stores (present, untagged) while the
+  ObjectCreated:Put event — moto's put_object fires it before the
+  tagging raise (review-probed live) — is already out; the success
+  path fires BOTH Put and CompleteMultipartUpload. The twin ignored
+  the header on both MP surfaces. The #474 OPEN tape's MPU
+  lane is closed with this (the '+'-decoding and decode-before-split
+  raw edges stay parked).
 - **S3: duplicate tag keys collapse per path — header FIRST value,
   XML LAST value.** moto's two wire arrivals collapse differently
   (live-probed both): the header path's `parse_qs → values[0]`

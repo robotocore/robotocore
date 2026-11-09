@@ -2323,6 +2323,52 @@ class TestS3TaggingVersioning:
             ("mid", "3"),
         ]
 
+    def test_mpu_tag_lane(self, s3):
+        """moto's multipart tag lane (responses.py:3137 → models.py:2744):
+        CreateMultipartUpload captures x-amz-tagging without validating;
+        CompleteMultipartUpload routes the pending tags through
+        put_object_tagging — a bad set fails the complete AFTER the object
+        stores (present, untagged), a good set applies with the header's
+        first-value collapse."""
+        name = f"mpu-tag-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        u1 = s3.create_multipart_upload(Bucket=name, Key="bad", Tagging="k(x)=v")["UploadId"]
+        p1 = s3.upload_part(
+            Bucket=name,
+            Key="bad",
+            UploadId=u1,
+            PartNumber=1,
+            Body=b"A" * (5 * 1024 * 1024),
+        )
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=name,
+                Key="bad",
+                UploadId=u1,
+                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": p1["ETag"]}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert "tags.1.member.key" in exc.value.response["Error"]["Message"]
+        assert s3.get_object(Bucket=name, Key="bad")["Body"].read() == b"A" * (5 * 1024 * 1024)
+        assert s3.get_object_tagging(Bucket=name, Key="bad")["TagSet"] == []
+
+        u2 = s3.create_multipart_upload(Bucket=name, Key="good", Tagging="m=1&m=2")["UploadId"]
+        p2 = s3.upload_part(
+            Bucket=name,
+            Key="good",
+            UploadId=u2,
+            PartNumber=1,
+            Body=b"B" * (5 * 1024 * 1024),
+        )
+        s3.complete_multipart_upload(
+            Bucket=name,
+            Key="good",
+            UploadId=u2,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": p2["ETag"]}]},
+        )
+        tags = s3.get_object_tagging(Bucket=name, Key="good")["TagSet"]
+        assert tags == [{"Key": "m", "Value": "1"}]
+
     def test_header_duplicate_key_keeps_first_value(self, s3, versioned_tagged):
         """moto's header path (parse_qs → values[0]) keeps the FIRST
         duplicate key's value while the XML path keeps the LAST

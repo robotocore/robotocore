@@ -4587,6 +4587,16 @@ impl S3Handler {
 
         let mut upload = crate::models::MultipartUpload::new(key.clone(), content_type);
         upload.storage_class = mp_storage_class;
+        // moto parses x-amz-tagging at create (responses.py:3137) WITHOUT
+        // validating — validation happens at complete via put_object_tagging
+        // (models.py:2744). Collapse per the header rule (first-value).
+        upload.pending_tags = Self::collapse_tags(
+            req.headers
+                .get("x-amz-tagging")
+                .map(|h| Self::tags_list_from_header(h))
+                .unwrap_or_default(),
+            false,
+        );
         let upload_id = upload.upload_id.clone();
         bucket
             .multipart_uploads
@@ -4803,7 +4813,7 @@ impl S3Handler {
             .get("uploadId")
             .cloned()
             .unwrap_or_default();
-        let (content_type, mp_storage_class, stored) = {
+        let (content_type, mp_storage_class, stored, pending_tags) = {
             let uploads = bucket.multipart_uploads.read();
             match uploads.get(&upload_id) {
                 Some(u) => (
@@ -4814,6 +4824,7 @@ impl S3Handler {
                         u.storage_class.clone()
                     },
                     u.parts.read().clone(),
+                    u.pending_tags.clone(),
                 ),
                 None => {
                     return AwsResponse::error(
@@ -4900,7 +4911,7 @@ impl S3Handler {
             content_type,
             Self::user_metadata(req),
             &[],
-            mp_storage_class,
+            mp_storage_class.clone(),
         );
         // Override the stored etag with the AWS multipart composite format.
         if let Some(entry) = bucket.objects.write().get_mut(&key) {
@@ -4909,6 +4920,28 @@ impl S3Handler {
             }
         }
         bucket.multipart_uploads.write().remove(&upload_id);
+        // moto models.py:2726-2735: put_object fires ObjectCreated:Put
+        // BEFORE models.py:2744 routes the pending tags through
+        // put_object_tagging — a failed validation answers 400 and leaves
+        // the completed object UNTAGGED, but the Put event is already out
+        // (review-probed live, #475 objection #1). The success path fires
+        // BOTH Put and CompleteMultipartUpload, matching moto's two events.
+        Self::fire_event(
+            req,
+            &bucket,
+            &key,
+            "s3:ObjectCreated:Put",
+            total_size,
+            &etag,
+        );
+        if let Some(e) = Self::tagging_validation(&pending_tags) {
+            return e;
+        }
+        if !pending_tags.is_empty() {
+            if let Some(entry) = bucket.objects.write().get_mut(&key) {
+                entry.versions[0].tags = pending_tags;
+            }
+        }
 
         Self::fire_event(
             req,
