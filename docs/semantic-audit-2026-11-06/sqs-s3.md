@@ -180,8 +180,32 @@ S3
    "aws"-prefixed key → InvalidTag "Your TagKey cannot be prefixed with
    aws:", matching moto's startswith("aws") check). Still open: moto's shared
    tagger.validate_tags also rejects 129-char keys, `k(x)`-shaped keys,
-   257-char values and `v(x)` values (InvalidTag) — the twin accepts those
-   (probes recorded in review 438).
+   257-char values and `v(x)` values (InvalidTag) — the twin accepted
+   those (probes recorded in review 438).
+
+   **FIXED (2026-11-09, live-probed against moto 5.2.5):** the shared
+   validator (utilities/tagging_service.py:109-169) is mirrored —
+   per-member key/value length caps (128/256) and character classes
+   (`^(?!aws:)[{a-zA-Z0-9 }_.://=+-@%]*$` for keys; no lookahead in the
+   Rust regex crate, so the prefix + class check is by hand; moto's
+   message text preserved verbatim), collected into ONE compound
+   InvalidTag ("N validation errors detected: ...", indexed by TagSet
+   position). moto's custom checks (>10; aws: prefix) raise before the
+   compound. The x-amz-tagging HEADER path validates on PutObject too
+   (live-probed: moto PutObject Tagging="k(x)=v" answers the same
+   compound). The wire arrival is a DICT — duplicates collapse
+   first-position/last-value before the count and compound validators.
+   Order-of-operations mirrors moto (review-probed live on both
+   engines): PutObject stores first, the header validates after — a
+   failure leaves the object present and UNTAGGED; CopyObject's
+   x-amz-tagging-directive REPLACE runs the header list through the
+   same validator after the copy stores — the failed copy keeps the
+   COPIED source tags and a tag-only self-copy still answers
+   InvalidRequest (moto's must-change condition does not count the
+   tagging directive). put_object_tagging parses an ordered vec before
+   folding into the stored map. 6 pins in TestS3TaggingVersioning
+   (129-char key; k(x) key regex; 257-char value; compound two-error
+   message; header-path validation; clean header still stores).
     (a) PutObjectTagging / GetObjectTagging / DeleteObjectTagging (+ GetObject tag-count header).
     (b) moto M/s3/responses.py:2496-2515 — honors `versionId`, raises MethodNotAllowed (405) on a delete marker, MissingKey/MissingVersion otherwise; M/s3/models.py:2517-2545 — rejects > 10 tags ("Object tags cannot be greater than 10") and `aws:`-prefixed keys; models.py:357 — GET/HEAD emits header `x-amz-tagging-count`.
     (c) R/s3/src/handler.rs:3377-3404 — always tags the LATEST version, ignores versionId, no tag-count/system-tag validation; 3406-3427 — GetObjectTagging on a nonexistent key returns 200 with an empty TagSet (no existence check); the GET/HEAD tag header is emitted as `x-amz-tag-count` (handler.rs:2627-2629, 2706-2708) — a name no SDK recognizes.
