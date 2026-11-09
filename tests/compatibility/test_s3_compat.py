@@ -978,6 +978,26 @@ class TestS3ObjectTagging:
         finally:
             s3.delete_object(Bucket=bucket, Key="inline-tag.txt")
 
+    def test_put_object_tagging_plus_decodes_space(self, s3, bucket):
+        """'+' in the Tagging header decodes to a space.
+
+        botocore passes '+' through serialization unchanged, so the
+        wire header really carries 'a=b+c'; moto (parse_qs /
+        unquote_plus) stores 'b c' (live-probed via wire-override).
+        """
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="plus-tag.txt",
+                Body=b"data",
+                Tagging="a=b+c",
+            )
+            resp = s3.get_object_tagging(Bucket=bucket, Key="plus-tag.txt")
+            tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+            assert tags == {"a": "b c"}
+        finally:
+            s3.delete_object(Bucket=bucket, Key="plus-tag.txt")
+
 
 class TestS3BucketTagging:
     """PutBucketTagging, GetBucketTagging, DeleteBucketTagging."""
