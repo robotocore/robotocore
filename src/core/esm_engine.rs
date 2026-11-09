@@ -1971,6 +1971,7 @@ mod tests {
             self_managed_event_source: None,
             self_managed_kafka_event_source_config: None,
             amazon_managed_kafka_event_source_config: None,
+            created_seq: 0,
             tags: parking_lot::RwLock::new(std::collections::HashMap::new()),
             kinesis_bound_watermarks: None,
             ddb_attached_watermark: None,

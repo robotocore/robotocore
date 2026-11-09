@@ -2094,6 +2094,50 @@ class TestLambdaEventSourceMappingExtended:
             lam.delete_function(FunctionName=fname)
             sqs.delete_queue(QueueUrl=q_url)
 
+    def test_list_event_source_mappings_insertion_order(self, lam, role):
+        """ListEventSourceMappings returns mappings in create order.
+
+        moto's backend dict keeps insertion order (live-probed), while
+        the twin's HashMap iteration was random — a cross-engine list
+        compare flakes on order otherwise. created_seq restores it.
+        """
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_names = [f"esm-ord-{suffix}-{i}" for i in range(5)]
+        fname = f"esm-ord-fn-{suffix}"
+
+        q_urls = [sqs.create_queue(QueueName=q)["QueueUrl"] for q in queue_names]
+        q_arns = [
+            sqs.get_queue_attributes(QueueUrl=u, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+            for u in q_urls
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuids = []
+        try:
+            for arn in q_arns:
+                r = lam.create_event_source_mapping(
+                    EventSourceArn=arn, FunctionName=fname, StartingPosition="LATEST"
+                )
+                esm_uuids.append(r["UUID"])
+            got = lam.list_event_source_mappings(FunctionName=fname, MaxItems=50)
+            listed = [m["EventSourceArn"] for m in got["EventSourceMappings"]]
+            assert listed == q_arns, f"insertion order mismatch: {listed}"
+            assert [m["UUID"] for m in got["EventSourceMappings"]] == esm_uuids
+        finally:
+            for u in esm_uuids:
+                lam.delete_event_source_mapping(UUID=u)
+            lam.delete_function(FunctionName=fname)
+            for u in q_urls:
+                sqs.delete_queue(QueueUrl=u)
+
 
 class TestLambdaLayerDeletion:
     """Tests for layer version deletion."""

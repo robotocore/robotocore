@@ -1623,6 +1623,14 @@ impl LambdaHandler {
     }
 
     fn create_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        // Insertion-order source for list_event_source_mappings: moto's
+        // backend dict keeps insertion order (live-probed alpha..echo
+        // listed back in create order); the twin's HashMap is unordered,
+        // which a cross-engine list-compare reviewer hit live (#483).
+        // Process-lifetime AtomicU64 keeps fresh creates above any
+        // restored-snapshot seqs.
+        static ESM_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let created_seq = ESM_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let fn_name = req.param_str("FunctionName").unwrap_or_default();
         let func = match resolve_fn(state, req, &fn_name) {
             Ok(f) => f,
@@ -1722,6 +1730,7 @@ impl LambdaHandler {
             state: "Enabled".to_string(),
             state_transition_reason: "User initiated".to_string(),
             last_modified: epoch_now(),
+            created_seq,
             // moto's spec dict carries Tags on create too
             // (models.py:1348 `self.tags = spec.get("Tags") or {}`).
             tags: RwLock::new(
@@ -1945,6 +1954,7 @@ impl LambdaHandler {
             state: em_state,
             state_transition_reason: em.state_transition_reason.clone(),
             last_modified: epoch_now(),
+            created_seq: em.created_seq,
             tags: RwLock::new(em.tags.read().clone()),
             batch_size,
             enabled,
@@ -2096,7 +2106,10 @@ impl LambdaHandler {
     fn list_event_source_mappings(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let event_source_arn = req.query_param("EventSourceArn");
         let fn_name = req.query_param("FunctionName");
-        let ems: Vec<Value> = state
+        // moto's backend dict iterates in insertion order; sort the
+        // HashMap's items by the create-time seq so the LIST matches
+        // moto's ordering (live-probed).
+        let mut pairs: Vec<Arc<crate::models::EventSourceMapping>> = state
             .event_source_mappings
             .read()
             .values()
@@ -2108,8 +2121,10 @@ impl LambdaHandler {
                         .as_ref()
                         .is_none_or(|fn_name| e.function_arn.contains(fn_name))
             })
-            .map(|e| Self::esm_dict(e))
+            .cloned()
             .collect();
+        pairs.sort_by_key(|e| e.created_seq);
+        let ems: Vec<Value> = pairs.iter().map(|e| Self::esm_dict(e)).collect();
         AwsResponse::json(200, json!({ "EventSourceMappings": ems }))
     }
 
@@ -3940,6 +3955,105 @@ mod tests {
             "unconfigured windows must be omitted: {bare}"
         );
         assert_eq!(bare["StartingPosition"], json!("LATEST"));
+
+        // (f) list_event_source_mappings walks INSERTION order like moto's
+        // ordered backend dict (live-probed alpha..echo listed back in
+        // create order); the twin's HashMap iteration was random and a
+        // cross-engine list-compare reviewer hit it live (#483's note).
+        // The tail-4 are fresh creations; their order must match.
+        for q in ["alpha", "bravo", "charlie", "delta"] {
+            let resp = create_esm(
+                &handler,
+                json!({"EventSourceArn": format!("arn:aws:kinesis:us-east-1:123456789012:stream/{q}"),
+                       "FunctionName": fn_name, "StartingPosition": "LATEST"}),
+            );
+            assert_eq!(resp.status, 201, "body: {}", resp.body);
+        }
+        let req = AwsRequest {
+            service: "lambda".to_string(),
+            operation: String::new(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params: json!({}),
+            body: Bytes::new(),
+            method: "GET".to_string(),
+            path: "/2015-03-31/event-source-mappings".to_string(),
+            query_string: "FunctionName=esm-fn".to_string(),
+            headers: std::collections::HashMap::new(),
+        };
+        let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
+        let names: Vec<String> = listed["EventSourceMappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                e["EventSourceArn"]
+                    .as_str()
+                    .unwrap()
+                    .rsplit('/')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            &names[names.len() - 4..],
+            &[
+                "alpha".to_string(),
+                "bravo".to_string(),
+                "charlie".to_string(),
+                "delta".to_string()
+            ]
+        );
+        // Update the middle one of the tail (bravo): moto's update does
+        // not re-insert into the dict, so the order holds and the patch
+        // lands in-place (BatchSize kinesis max allows 7).
+        let bravo_uuid = listed["EventSourceMappings"][names.len() - 3]["UUID"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"BatchSize": 7}),
+            &format!("/2015-03-31/event-source-mappings/{bravo_uuid}"),
+        ));
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let req = AwsRequest {
+            service: "lambda".to_string(),
+            operation: String::new(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params: json!({}),
+            body: Bytes::new(),
+            method: "GET".to_string(),
+            path: "/2015-03-31/event-source-mappings".to_string(),
+            query_string: "FunctionName=esm-fn".to_string(),
+            headers: std::collections::HashMap::new(),
+        };
+        let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
+        let names2: Vec<String> = listed["EventSourceMappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                e["EventSourceArn"]
+                    .as_str()
+                    .unwrap()
+                    .rsplit('/')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            names2, names,
+            "update must not reorder the list: {names2:?} vs {names:?}"
+        );
+        assert_eq!(
+            listed["EventSourceMappings"][names.len() - 3]["BatchSize"],
+            json!(7)
+        );
+
         // And the delete path returns the same shape filters.
         let resp = handler.handle(make_req(
             "DELETE",
@@ -4166,6 +4280,11 @@ mod tests {
             "plain esm had Amazon-managed config: {plain}"
         );
     }
+
+    // NOTE for future ESM tests: the global kinesis/dynamodb source probes
+    // are process-global and their registrations override each other, so
+    // every probe-dependent assertion lives in the sole-registrant test
+    // above. The list-ordering legs below live in it too for that reason.
 
     #[test]
     fn esm_snapshot_carries_the_execution_role() {
