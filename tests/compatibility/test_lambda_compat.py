@@ -2108,7 +2108,9 @@ class TestLambdaEventSourceMappingExtended:
 
         q_urls = [sqs.create_queue(QueueName=q)["QueueUrl"] for q in queue_names]
         q_arns = [
-            sqs.get_queue_attributes(QueueUrl=u, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+            sqs.get_queue_attributes(QueueUrl=u, AttributeNames=["QueueArn"])["Attributes"][
+                "QueueArn"
+            ]
             for u in q_urls
         ]
 
