@@ -203,7 +203,21 @@ S3
    COPIED source tags and a tag-only self-copy still answers
    InvalidRequest (moto's must-change condition does not count the
    tagging directive). put_object_tagging parses an ordered vec before
-   folding into the stored map. 6 pins in TestS3TaggingVersioning
+   folding into the stored map.
+
+   Recorded edges around the same surface (raw SigV4-probed 2026-11-09 —
+   probed raw because the empty-body members are unreachable through
+   boto3, which enforces TagKey minLength 1; duplicate keys DO pass
+   through boto3): (a) a duplicate-Key TagSet stores
+   LAST-value into the collapsed map on both engines — but moto's XML
+   path keeps first-occurrence position while the twin's GET TagSet
+   renders the HashMap ITERATION (member order nondeterministic;
+   moto-faithful insertion order is the open question); (b) an
+   empty-TagSet body (`<Tagging></Tagging>`) and a `<Tag>` with an
+   empty `<Key>` make moto HTTP 500 (a response-layer XML unpack and a
+   backend None-subscript respectively — moto tagging-path crashes)
+   where the twin answers 200 with the member dropped — twin-preferred,
+   recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error
    message; header-path validation; clean header still stores).
     (a) PutObjectTagging / GetObjectTagging / DeleteObjectTagging (+ GetObject tag-count header).
