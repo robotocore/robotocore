@@ -1,6 +1,6 @@
 {
   "service": "lambda",
-  "generated_at": "2026-11-09T20:19:32.253155+00:00",
+  "generated_at": "2026-11-09T21:06:27.094139+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/lambda.rs": "absent",
     "rotocore/src/services/lambda/": "absent",
