@@ -297,8 +297,10 @@ pub struct EventSourceMapping {
     /// ONLY ordering source for list_event_source_mappings, mirroring
     /// moto's insertion-ordered backend dict (live-probed: moto lists
     /// alpha..echo in create order; the twin's HashMap iteration is
-    /// random). serde-default 0 keeps old snapshots loadable at the
-    /// head of the order; fresh creates always sort above them.
+    /// random). serde-default 0 for pre-PR snapshots; fresh creates
+    /// start at 1 so they sort above them. Restore-ordering is honest
+    /// for same-version snapshots (true seqs); cross-version restore
+    /// sorts at no worse than the pre-PR random order.
     #[serde(default)]
     pub created_seq: u64,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:

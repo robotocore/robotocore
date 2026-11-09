@@ -1627,10 +1627,13 @@ impl LambdaHandler {
         // backend dict keeps insertion order (live-probed alpha..echo
         // listed back in create order); the twin's HashMap is unordered,
         // which a cross-engine list-compare reviewer hit live (#483).
-        // Process-lifetime AtomicU64 keeps fresh creates above any
-        // restored-snapshot seqs.
+        // Process-lifetime monotonic counter; failed creates may burn a
+        // number without affecting the invariant. Starts at 1 so fresh
+        // creates sort above serde-default-0 seqs loaded from pre-PR
+        // snapshots (post-PR snapshots carry true seqs; cross-version
+        // restore only ever ties nothing).
         static ESM_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let created_seq = ESM_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let created_seq = ESM_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         let fn_name = req.param_str("FunctionName").unwrap_or_default();
         let func = match resolve_fn(state, req, &fn_name) {
             Ok(f) => f,
