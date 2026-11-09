@@ -62,6 +62,32 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3: object-tag deep validation (the shared tagger mirror).** moto's
+  PutObjectTagging runs the s3-custom checks (>10 tags → BadRequest;
+  aws:-prefixed keys → InvalidTag) and then the SHARED validator
+  (utilities/tagging_service.py:109-169, live-probed): per-member
+  key/value length caps (128/256), the `^(?!aws:)[{a-zA-Z0-9
+  }_.://=+-@%]*$` key class and the value class — all collected into
+  ONE compound InvalidTag ("N validation errors detected: ...",
+  indexed by TagSet position). The twin stopped at >10 + the prefix;
+  129-char keys, `k(x)`-shaped keys, 257-char values and `v(x)` values
+  were accepted. The x-amz-tagging HEADER path validates on PutObject
+  too (live-probed on moto). The Rust regex crate has no lookahead —
+  the aws:-prefix + character-class check is by hand with moto's
+  message text preserved verbatim. moto's wire arrival is a DICT —
+  duplicates collapse first-position/last-value BEFORE the count and
+  compound validators (11 members / 10 unique keys with one dup is
+  accepted; the compound indexes the collapsed position) — the twin
+  collapses the same way. The member validations are INDEPENDENT ifs
+  (one member can answer length + regex errors at once). Order-of-
+  operations mirrors moto: PutObject stores the object first, then the
+  tag header validates — a failed header leaves the object present and
+  UNTAGGED (review-probed live); CopyObject's x-amz-tagging-directive =
+  REPLACE runs the header's collapsed list through the same validator
+  after the copy stores — the failed copy keeps the COPIED (source)
+  tags, and a tag-only self-copy still answers InvalidRequest (moto's
+  must-change condition does not count the tagging directive;
+  live-probed).
 - **Kinesis: PutRecord/PutRecords carry the stream's live
   EncryptionType.** AWS's own put captures (CLI reference put-record /
   put-records outputs on KMS streams) carry

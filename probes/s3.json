@@ -1,10 +1,10 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-02T11:04:36.557137+00:00",
+  "generated_at": "2026-11-09T06:30:35.856397+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "5c0abfb2a1f2ca29b3be2a5043ff98b80e349b7dd6254e2aacc610a8bb4bb38d"
+    "crates/s3/src/": "f75715155a25f7e4f552c0706aa535c76b1a979f84c21cb5f28fdc49f1e13bc9"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -488,7 +488,7 @@
     {
       "operation": "PutObject",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "PutObjectAcl",
@@ -498,7 +498,7 @@
     {
       "operation": "PutObjectLegalHold",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "PutObjectLockConfiguration",
@@ -508,12 +508,12 @@
     {
       "operation": "PutObjectRetention",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "PutObjectTagging",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchVersion: The specified version does not exist.)"
     },
     {
       "operation": "PutPublicAccessBlock",
@@ -528,12 +528,12 @@
     {
       "operation": "RestoreObject",
       "status": "working",
-      "message": "likely implemented (InvalidObjectState: The operation is not valid for the object's storage class)"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "SelectObjectContent",
       "status": "working",
-      "message": "likely implemented (UnsupportedSQLOperation: The provided SQL expression is not supported)"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "UpdateBucketMetadataInventoryTableConfiguration",
@@ -548,7 +548,7 @@
     {
       "operation": "UpdateObjectEncryption",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
     },
     {
       "operation": "UploadPart",

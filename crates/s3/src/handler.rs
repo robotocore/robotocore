@@ -1455,9 +1455,12 @@ impl S3Handler {
             .collect()
     }
 
-    fn tags_from_header(header: &str) -> HashMap<String, String> {
+    /// The ORDERED header-tag list (moto validates the list order through
+    /// the shared validator — its compound error indexes tags.{n}.member.*
+    /// by position).
+    fn tags_list_from_header(header: &str) -> Vec<(String, String)> {
         let decoded = urlencoding::decode(header).unwrap_or_default().into_owned();
-        let mut tags = HashMap::new();
+        let mut tags = Vec::new();
         for pair in decoded.split('&') {
             if pair.is_empty() {
                 continue;
@@ -1466,10 +1469,10 @@ impl S3Handler {
                 Some(pair) => pair,
                 None => continue,
             };
-            tags.insert(
+            tags.push((
                 urlencoding::decode(k).unwrap_or_default().into_owned(),
                 urlencoding::decode(v).unwrap_or_default().into_owned(),
-            );
+            ));
         }
         tags
     }
@@ -1610,8 +1613,15 @@ impl S3Handler {
     }
 
     /// moto's tag-set validation (models.py:2528-2536): at most ten tags
-    /// (moto's BadRequest) and no key prefixed with "aws" (its InvalidTag).
-    fn tagging_validation(tags: &HashMap<String, String>) -> Option<AwsResponse> {
+    /// (moto's BadRequest) and no key prefixed with "aws" (its InvalidTag),
+    /// then the SHARED validator (utilities/tagging_service.py:109-169,
+    /// live-probed): per-member key/value length caps (128/256) and
+    /// character class (`^(?!aws:)[{a-zA-Z0-9 }_.://=+-@%]*$` for keys) —
+    /// moto collects all member errors into ONE compound InvalidTag.
+    /// moto's custom checks raise BEFORE the compound, in order. The Rust
+    /// regex crate has no lookahead, so the key check is the aws:-prefix +
+    /// class test done by hand (moto's message text keeps its regex form).
+    fn tagging_validation(tags: &[(String, String)]) -> Option<AwsResponse> {
         if tags.len() > 10 {
             return Some(AwsResponse::error(
                 400,
@@ -1619,14 +1629,83 @@ impl S3Handler {
                 "Object tags cannot be greater than 10",
             ));
         }
-        if tags.keys().any(|k| k.starts_with("aws")) {
+        if tags.iter().any(|(k, _)| k.starts_with("aws")) {
             return Some(AwsResponse::error(
                 400,
                 "InvalidTag",
                 "Your TagKey cannot be prefixed with aws:",
             ));
         }
-        None
+        let member_ok = |c: char| {
+            c.is_alphanumeric()
+                || c.is_whitespace()
+                // CPython isspace also treats file/unit/record/par
+                // separators (\x1c-\x1f) as whitespace; moto's compiled
+                // class accepts them (review-probed).
+                || ('\u{1c}'..='\u{1f}').contains(&c)
+                || "_.:/=+-@".contains(c)
+        };
+        let mut errors: Vec<String> = Vec::new();
+        for (idx, (k, v)) in tags.iter().enumerate() {
+            let n = idx + 1;
+            if k.chars().count() > 128 {
+                errors.push(format!(
+                    "Value '{k}' at 'tags.{n}.member.key' failed to satisfy constraint: Member must have length less than or equal to 128"
+                ));
+            }
+            if k.starts_with("aws:") || !k.chars().all(member_ok) {
+                errors.push(format!(
+                    "Value '{k}' at 'tags.{n}.member.key' failed to satisfy constraint: Member must satisfy regular expression pattern: ^(?!aws:)[{{a-zA-Z0-9 }}_.://=+-@%]*$"
+                ));
+            }
+            if v.chars().count() > 256 {
+                errors.push(format!(
+                    "Value '{v}' at 'tags.{n}.member.value' failed to satisfy constraint: Member must have length less than or equal to 256"
+                ));
+            }
+            if !v.chars().all(member_ok) {
+                errors.push(format!(
+                    "Value '{v}' at 'tags.{n}.member.value' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[{{a-zA-Z0-9 }}_.://=+-@%]*$"
+                ));
+            }
+        }
+        if errors.is_empty() {
+            return None;
+        }
+        let plural = if errors.len() > 1 { "errors" } else { "error" };
+        Some(AwsResponse::error(
+            400,
+            "InvalidTag",
+            &format!(
+                "{} validation {} detected: {}",
+                errors.len(),
+                plural,
+                errors.join("; ")
+            ),
+        ))
+    }
+
+    /// moto's tag wire arrival is a DICT, collapsed differently per path:
+    /// xml `_tagging_from_xml` keeps the first-occurrence position and the
+    /// LAST value for a duplicate key; the HEADER path's parse_qs overwrites
+    /// a plain dict too but probes put the FIRST value in moto's store —
+    /// an unchanged pre-existing storage divergence (recorded in the
+    /// ledger) the count and compound-validation indexing never see.
+    /// Collapse BEFORE the count and compound validations, then index by
+    /// the collapsed position.
+    fn collapse_tags(tags: Vec<(String, String)>) -> Vec<(String, String)> {
+        let mut collapsed: Vec<(String, String)> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (k, v) in tags {
+            match seen.get(&k) {
+                Some(&idx) => collapsed[idx].1 = v,
+                None => {
+                    seen.insert(k.clone(), collapsed.len());
+                    collapsed.push((k, v));
+                }
+            }
+        }
+        collapsed
     }
 
     /// True when the key has at least one stored record.
@@ -1941,21 +2020,52 @@ impl S3Handler {
                 "The storage class you specified is not valid",
             );
         }
-        let tags = req
+        let tag_list = Self::collapse_tags(req
             .headers
             .get("x-amz-tagging")
-            .map(|h| Self::tags_from_header(h))
-            .unwrap_or_default();
-
+            .map(|h| Self::tags_list_from_header(h))
+            .unwrap_or_default());
+        // moto's put_object STORES the key first and validates the tag
+        // header after (responses.py:2322→2332, live-probed): a bad tag
+        // still answers 400 but leaves the object present and UNTAGGED.
+        // Mirror that order — store with an empty map, validate, then
+        // graft the tags onto the just-stored version only when they were
+        // legal.
         let (version_id, etag) = Self::store_bytes(
             &bucket,
             &key,
             req.body.to_vec(),
             content_type,
             Self::user_metadata(req),
-            tags,
-            storage_class,
+            HashMap::new(),
+            storage_class.clone(),
         );
+
+        if let Some(e) = Self::tagging_validation(&tag_list) {
+            Self::fire_event(
+                req,
+                &bucket,
+                &key,
+                "s3:ObjectCreated:Put",
+                req.body.len(),
+                &etag,
+            );
+            self.maybe_replicate(req, &state, &bucket, &key, req.body.to_vec());
+            return e;
+        }
+        let tags: HashMap<String, String> = tag_list.into_iter().collect();
+        {
+            let mut objects = bucket.objects.write();
+            if let Some(entry) = objects.get_mut(&key) {
+                if let Some(v) = entry
+                    .versions
+                    .iter_mut()
+                    .find(|v| v.version_id == version_id)
+                {
+                    v.tags = tags;
+                }
+            }
+        }
 
         Self::fire_event(
             req,
@@ -2805,11 +2915,40 @@ impl S3Handler {
         } else {
             source.content_type.clone()
         };
-        let tags = req
+        // moto's tagging directive rides x-amz-tagging-directive separate
+        // from the metadata `replace` (responses.py:2442-2445): REPLACE
+        // runs the collapsed header list through the validating backend
+        // put_object_tagging AFTER the copy stores — the failed copy keeps
+        // the copied source tags (review-probed live on both engines);
+        // success replaces them (REPLACE with no header clears); a COPY
+        // directive ignores any header.
+        let td_replace = req
             .headers
-            .get("x-amz-tagging")
-            .map(|h| Self::tags_from_header(h))
-            .unwrap_or_else(|| source.tags.clone());
+            .get("x-amz-tagging-directive")
+            .map(|s| s == "REPLACE")
+            .unwrap_or(false);
+        let validation_error = if td_replace {
+            let collapsed = Self::collapse_tags(req
+                .headers
+                .get("x-amz-tagging")
+                .map(|h| Self::tags_list_from_header(h))
+                .unwrap_or_default());
+            Self::tagging_validation(&collapsed).map(|e| (e, collapsed))
+        } else {
+            None
+        };
+        // The store itself always carries the COPIED (source) tags — moto
+        // copies first (responses.py:2432-2441), then routes REPLACE
+        // through the validating backend put_object_tagging
+        // (2442-2445): success overwrites with the header's list, a
+        // failure leaves the copy carrying the copied source tags
+        // (review-probed live on both engines: dst keeps src-tag through
+        // the 400). A COPY directive ignores any header.
+        let tags: HashMap<String, String> = Self::collapse_tags(
+            source.tags.clone().into_iter().collect(),
+        )
+        .into_iter()
+        .collect();
         let metadata = if replace {
             Self::user_metadata(req)
         } else {
@@ -2896,6 +3035,35 @@ impl S3Handler {
             tags,
             storage_class,
         );
+        // moto's copy STORES first and routes REPLACE through the backend's
+        // put_object_tagging after (responses.py:2442-2445): the failed
+        // validation leaves the copied object carrying the COPIED (source)
+        // tags — review-probed live on both engines (dst keeps src-tag
+        // through the 400); a valid REPLACE overwrites with the header's
+        // collapsed list.
+        if td_replace {
+            if let Some((e, _)) = validation_error {
+                Self::fire_event(
+                    req,
+                    dest,
+                    dest_key,
+                    "s3:ObjectCreated:Copy",
+                    source.size,
+                    &etag,
+                );
+                return e;
+            }
+            let good = Self::collapse_tags(req
+                .headers
+                .get("x-amz-tagging")
+                .map(|h| Self::tags_list_from_header(h))
+                .unwrap_or_default());
+            if let Some(entry) = dest.objects.write().get_mut(dest_key) {
+                if let Some(v) = entry.versions.last_mut() {
+                    v.tags = good.into_iter().collect();
+                }
+            }
+        }
 
         Self::fire_event(
             req,
@@ -4099,17 +4267,23 @@ impl S3Handler {
             return e;
         }
         let body = String::from_utf8_lossy(&req.body).to_string();
-        let mut tags = HashMap::new();
-        for tag_section in xml_sections(&body, "Tag") {
-            let k = xml_text(&tag_section, "Key").unwrap_or_default();
-            let v = xml_text(&tag_section, "Value").unwrap_or_default();
-            if !k.is_empty() {
-                tags.insert(k, v);
-            }
-        }
-        if let Some(e) = Self::tagging_validation(&tags) {
+        // moto validates the DICT the XML collapses to (_tagging_from_xml:
+        // first-occurrence position, last value) — the compound error
+        // indexes tags.{n}.member.* by the collapsed position.
+        let tag_list: Vec<(String, String)> = Self::collapse_tags(
+            xml_sections(&body, "Tag")
+                .into_iter()
+                .filter_map(|tag_section| {
+                    let k = xml_text(&tag_section, "Key").unwrap_or_default();
+                    let v = xml_text(&tag_section, "Value").unwrap_or_default();
+                    (!k.is_empty()).then_some((k, v))
+                })
+                .collect(),
+        );
+        if let Some(e) = Self::tagging_validation(&tag_list) {
             return e;
         }
+        let tags: HashMap<String, String> = tag_list.into_iter().collect();
         {
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {

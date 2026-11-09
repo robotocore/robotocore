@@ -2236,6 +2236,84 @@ class TestS3TaggingVersioning:
             "Your TagKey cannot be prefixed with aws:"
         )
 
+    def test_long_tag_key_rejected(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="doc",
+                Tagging={"TagSet": [{"Key": "k" * 129, "Value": "v"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert exc.value.response["Error"]["Message"] == (
+            "1 validation error detected: Value '"
+            + "k" * 129
+            + "' at 'tags.1.member.key' failed to satisfy constraint: "
+            "Member must have length less than or equal to 128"
+        )
+
+    def test_tag_key_regex_rejected(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="doc",
+                Tagging={"TagSet": [{"Key": "k(x)", "Value": "v"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert exc.value.response["Error"]["Message"] == (
+            "1 validation error detected: Value 'k(x)' at 'tags.1.member.key' "
+            "failed to satisfy constraint: Member must satisfy regular "
+            "expression pattern: ^(?!aws:)[{a-zA-Z0-9 }_.://=+-@%]*$"
+        )
+
+    def test_long_tag_value_rejected(self, s3, versioned_tagged):
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="doc",
+                Tagging={"TagSet": [{"Key": "kk", "Value": "v" * 257}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert exc.value.response["Error"]["Message"] == (
+            "1 validation error detected: Value '"
+            + "v" * 257
+            + "' at 'tags.1.member.value' failed to satisfy constraint: "
+            "Member must have length less than or equal to 256"
+        )
+
+    def test_compound_tag_errors_message(self, s3, versioned_tagged):
+        """moto's shared validator collects member errors into ONE
+        InvalidTag (utilities/tagging_service.py:109-169) — two bad
+        members produce '2 validation errors detected: k...; v...'."""
+        name, _ = versioned_tagged
+        with pytest.raises(ClientError) as exc:
+            s3.put_object_tagging(
+                Bucket=name,
+                Key="doc",
+                Tagging={"TagSet": [{"Key": "k(x)", "Value": "v(x)"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        msg = exc.value.response["Error"]["Message"]
+        assert msg.startswith("2 validation errors detected: ")
+        assert "at 'tags.1.member.key'" in msg and "at 'tags.1.member.value'" in msg
+        assert "regular expression pattern" in msg
+
+    def test_header_tagging_validated_on_put_object(self, s3):
+        """moto validates the x-amz-tagging header through the same shared
+        validator on PutObject (live-probed)."""
+        name = f"hdr-tag-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        with pytest.raises(ClientError) as exc:
+            s3.put_object(Bucket=name, Key="h", Body=b"x", Tagging="k(x)=v")
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert "tags.1.member.key" in exc.value.response["Error"]["Message"]
+        # a clean header stores fine
+        s3.put_object(Bucket=name, Key="ok", Body=b"x", Tagging="a=b")
+        tags = s3.get_object_tagging(Bucket=name, Key="ok")["TagSet"]
+        assert tags == [{"Key": "a", "Value": "b"}]
+
     def test_get_tagging_on_missing_key_404(self, s3, versioned_tagged):
         name, _ = versioned_tagged
         with pytest.raises(ClientError) as exc:
