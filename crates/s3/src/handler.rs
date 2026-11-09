@@ -4907,7 +4907,7 @@ impl S3Handler {
         let (version_id, _stored_etag) = Self::store_bytes(
             &bucket,
             &key,
-            combined,
+            combined.clone(),
             content_type,
             Self::user_metadata(req),
             &[],
@@ -4935,6 +4935,9 @@ impl S3Handler {
             &etag,
         );
         if let Some(e) = Self::tagging_validation(&pending_tags) {
+            // the put paths replicate in the invalid branch (untagged,
+            // handler.rs put_object error-return) — mirror exactly.
+            self.maybe_replicate(req, &state, &bucket, &key, combined.clone());
             return e;
         }
         if !pending_tags.is_empty() {
@@ -4951,6 +4954,11 @@ impl S3Handler {
             total_size,
             &etag,
         );
+        // Replication rides the complete path like it rides the direct
+        // put paths (the twin's replication engine mirrors the store
+        // semantics on every store; the MPU-completed object previously
+        // missed it — #475-review lead).
+        self.maybe_replicate(req, &state, &bucket, &key, combined);
 
         let location = format!(
             "http://{}.s3.amazonaws.com/{}",
@@ -5783,6 +5791,15 @@ impl S3Handler {
                     &source.tags,
                     source.storage_class.clone(),
                 );
+                // store_bytes mints a plain md5; the replica must carry the
+                // SOURCE's etag (a composite multipart etag for MPU
+                // completions — review-probed: a plain md5 replica
+                // contradicted its own source).
+                if let Some(entry) = dest.objects.write().get_mut(key) {
+                    if let Some(v) = entry.versions.first_mut() {
+                        v.etag = source.etag.clone();
+                    }
+                }
             }
         }
     }

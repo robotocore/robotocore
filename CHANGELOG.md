@@ -62,6 +62,14 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3: replication rides the MPU-complete path.** The twin's
+  replication engine mirrored store semantics on the direct put paths
+  but the multipart-completed object missed it (#475-review lead).
+  CompleteMultipartUpload now calls maybe_replicate like the put
+  paths — the completed object lands in the destination bucket per
+  the source bucket's enabled replication rule (verified live:
+  versioned source, enabled rule, MPU complete → dst copy). Pin:
+  TestS3TaggingVersioning.test_mpu_complete_replicates.
 - **S3: the multipart tag lane.** moto parses x-amz-tagging at
   CreateMultipartUpload (responses.py:3137 — NOT validated at create)
   and routes the stored pending tags through put_object_tagging at
