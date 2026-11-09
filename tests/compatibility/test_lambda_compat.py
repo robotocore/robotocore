@@ -2258,7 +2258,7 @@ class TestLambdaEventSourceMappingExtended:
             try:
                 lam.delete_event_source_mapping(UUID=qual_uuid)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             lam.delete_function(FunctionName=fname)
             sqs.delete_queue(QueueUrl=q_url)
 
