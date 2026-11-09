@@ -170,8 +170,8 @@ impl KinesisHandler {
             "StreamStatus": stream.status,
             "StreamModeDetails": { "StreamMode": *stream.stream_mode.read() },
             "RetentionPeriodHours": *stream.retention_hours.read(),
-            "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
             "EncryptionType": *stream.encryption_type.read(),
+            "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
             "KeyId": Option::<String>::None,
             "StreamCreationTimestamp": stream.created,
         })
@@ -185,6 +185,7 @@ impl KinesisHandler {
             "StreamStatus": stream.status,
             "StreamModeDetails": { "StreamMode": *stream.stream_mode.read() },
             "RetentionPeriodHours": *stream.retention_hours.read(),
+            "EncryptionType": *stream.encryption_type.read(),
             "StreamCreationTimestamp": stream.created,
             "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
             // OPEN shards only: closed shards (split/merge/update
