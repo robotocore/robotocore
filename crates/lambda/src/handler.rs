@@ -1634,6 +1634,23 @@ impl LambdaHandler {
         // restore only ever ties nothing).
         static ESM_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let created_seq = ESM_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        // moto's create guard (awslambda/models.py:2111-2115): the
+        // required params answer 400 InvalidParameterValueException
+        // "Missing {param}" before any resolver runs — live-probed both
+        // engines (the twin previously fell through to the 404).
+        for required in ["EventSourceArn", "FunctionName"] {
+            if req
+                .param_str(required)
+                .map(|p| p.is_empty())
+                .unwrap_or(true)
+            {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterValueException",
+                    &format!("Missing {required}"),
+                );
+            }
+        }
         let fn_name = req.param_str("FunctionName").unwrap_or_default();
         let func = match resolve_fn(state, req, &fn_name) {
             Ok(f) => f,
@@ -3974,22 +3991,73 @@ mod tests {
         );
         assert_eq!(bare["StartingPosition"], json!("LATEST"));
 
+        // (e3) create-path error shapes (live-probed both engines):
+        // moto's guard answers 400 InvalidParameterValueException
+        // "Missing {param}" for a missing/EMPTY required param BEFORE
+        // the resolver (models.py:2111-2115) — the twin previously fell
+        // through to the resolver's 404 — and every unknown-function
+        // message ARN is built from the BACKEND context per
+        // construct_unknown_function_exception (1740-1753) +
+        // split_function_arn (1687-1702): a wrong-service ARN's name
+        // slot mangles to the final colon token; a foreign-account ARN
+        // drops the input's region/account. The twin used to echo the
+        // input ARN verbatim.
+        let resp = create_esm(&handler, json!({"FunctionName": fn_name}));
+        assert_eq!(resp.status, 400);
+        let err: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(err["__type"], json!("InvalidParameterValueException"));
+        assert_eq!(err["message"], json!("Missing EventSourceArn"));
+
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:e3-q", "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 400);
+        let err: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(err["message"], json!("Missing FunctionName"));
+
+        let resp = create_esm(
+            &handler,
+            json!({"FunctionName": "arn:aws:lambda:eu-west-2:111111111111:function:ghost-x-e3",
+                   "EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:e3-q",
+                   "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 404);
+        let err: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            err["message"],
+            json!("Function not found: arn:aws:lambda:us-east-1:123456789012:function:ghost-x-e3")
+        );
+
+        let resp = create_esm(
+            &handler,
+            json!({"FunctionName": "arn:aws:s3:us-east-1:123456789012:bucket/x",
+                   "EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:e3-q",
+                   "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 404);
+        let err: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            err["message"],
+            json!("Function not found: arn:aws:lambda:us-east-1:123456789012:function:123456789012:bucket/x")
+        );
+
         // (e2) RAW create-time FunctionName filter key: moto stores the
         // raw string (models.py:1306-1313) and lists compare against it
         // exactly (2274-2275), so an ARN-created mapping is found by its
         // ARN and NOT by the short name, and a qualifier-created mapping
         // matches only that qualifier form. Updates re-point
         // function_arn only (2225-2229) — the raw key is frozen.
-        let fnB = "esm-fn-arnform";
+        let fn_b = "esm-fn-arnform";
         handler.handle(make_req(
             "POST",
-            json!({"FunctionName": fnB, "Runtime": "python3.12", "Handler": "index.handler"}),
+            json!({"FunctionName": fn_b, "Runtime": "python3.12", "Handler": "index.handler"}),
             "/2015-03-31/functions",
         ));
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km1",
-                   "FunctionName": format!("arn:aws:lambda:us-east-1:123456789012:function:{fnB}"),
+                   "FunctionName": format!("arn:aws:lambda:us-east-1:123456789012:function:{fn_b}"),
                    "StartingPosition": "LATEST"}),
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
@@ -3997,7 +4065,7 @@ mod tests {
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km2",
-                   "FunctionName": format!("{fnB}:$LATEST"), "StartingPosition": "LATEST"}),
+                   "FunctionName": format!("{fn_b}:$LATEST"), "StartingPosition": "LATEST"}),
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
         let qualified: Value = serde_json::from_str(&resp.body).unwrap();
@@ -4012,7 +4080,7 @@ mod tests {
             method: "GET".to_string(),
             path: "/2015-03-31/event-source-mappings".to_string(),
             query_string: format!(
-                "FunctionName=arn:aws:lambda:us-east-1:123456789012:function:{fnB}"
+                "FunctionName=arn:aws:lambda:us-east-1:123456789012:function:{fn_b}"
             ),
             headers: std::collections::HashMap::new(),
         };
@@ -4029,7 +4097,7 @@ mod tests {
             "ARN-created mapping must match only by its raw create-time name"
         );
         let req = AwsRequest {
-            query_string: format!("FunctionName={fnB}"),
+            query_string: format!("FunctionName={fn_b}"),
             ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
         };
         let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
@@ -4044,7 +4112,7 @@ mod tests {
             "the short form must not match the ARN-created raw key: {uuids:?}"
         );
         let req = AwsRequest {
-            query_string: format!("FunctionName={fnB}:$LATEST"),
+            query_string: format!("FunctionName={fn_b}:$LATEST"),
             ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
         };
         let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
