@@ -303,6 +303,19 @@ pub struct EventSourceMapping {
     /// sorts at no worse than the pre-PR random order.
     #[serde(default)]
     pub created_seq: u64,
+    /// moto stores the RAW create-time FunctionName string
+    /// (awslambda/models.py:1306-1313: `self.function_name =
+    /// spec["FunctionName"]`) and the list filter compares against that
+    /// exact string (2274-2275) — an ARN- or qualifier-created mapping
+    /// matches future lists only by THAT form (live-probed by the #485
+    /// harness: fullarn_B moto 1 vs extracted-base twin 0). Updates
+    /// never touch it: an update's FunctionName only re-points
+    /// function_arn (models.py:2225-2229), so the raw string is
+    /// frozen-at-create. serde-default None keeps pre-PR snapshots
+    /// loadable; the None path falls back to the base-name extraction
+    /// (the #485 predicate) so restored mappings keep matching.
+    #[serde(default)]
+    pub function_name: Option<String>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -366,6 +379,7 @@ impl Clone for EventSourceMapping {
                 .amazon_managed_kafka_event_source_config
                 .clone(),
             created_seq: self.created_seq,
+            function_name: self.function_name.clone(),
             kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: self.ddb_attached_watermark.clone(),
         }

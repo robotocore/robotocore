@@ -1734,6 +1734,10 @@ impl LambdaHandler {
             state_transition_reason: "User initiated".to_string(),
             last_modified: epoch_now(),
             created_seq,
+            // moto stores the RAW create-time FunctionName (models.py:
+            // 1306-1313) — the list filter's exact-compare key
+            // (function_name), frozen across updates.
+            function_name: Some(fn_name.clone()),
             // moto's spec dict carries Tags on create too
             // (models.py:1348 `self.tags = spec.get("Tags") or {}`).
             tags: RwLock::new(
@@ -1958,6 +1962,7 @@ impl LambdaHandler {
             state_transition_reason: em.state_transition_reason.clone(),
             last_modified: epoch_now(),
             created_seq: em.created_seq,
+            function_name: em.function_name.clone(),
             tags: RwLock::new(em.tags.read().clone()),
             batch_size,
             enabled,
@@ -2121,13 +2126,17 @@ impl LambdaHandler {
                     .as_ref()
                     .is_none_or(|arn| e.event_source_arn == *arn)
                     && fn_name.as_ref().is_none_or(|fn_name| {
-                        // moto filters on EXACT function-name equality
-                        // (lambda/models.py:2274-2275: `x.function_name ==
-                        // function_name`); a substring `contains` wrongly
-                        // matched full ARNs and prefixes — the #484
-                        // reviewer's live observation (full-ARN filter: 0
-                        // hits on moto, everything on the twin).
-                        esm_function_name(&e.function_arn).is_some_and(|name| name == fn_name)
+                        // moto compares the mapping's RAW create-time
+                        // FunctionName (models.py:2274-2275 `x.
+                        // function_name == function_name` on the stored
+                        // raw string, 1306-1313); the twin falls back to
+                        // the base-name extraction for pre-model
+                        // snapshots whose function_name is None.
+                        match e.function_name.as_deref() {
+                            Some(raw) => raw == fn_name,
+                            None => esm_function_name(&e.function_arn)
+                                .is_some_and(|name| name == fn_name),
+                        }
                     })
             })
             .cloned()
@@ -3964,6 +3973,92 @@ mod tests {
             "unconfigured windows must be omitted: {bare}"
         );
         assert_eq!(bare["StartingPosition"], json!("LATEST"));
+
+        // (e2) RAW create-time FunctionName filter key: moto stores the
+        // raw string (models.py:1306-1313) and lists compare against it
+        // exactly (2274-2275), so an ARN-created mapping is found by its
+        // ARN and NOT by the short name, and a qualifier-created mapping
+        // matches only that qualifier form. Updates re-point
+        // function_arn only (2225-2229) — the raw key is frozen.
+        let fnB = "esm-fn-arnform";
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": fnB, "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km1",
+                   "FunctionName": format!("arn:aws:lambda:us-east-1:123456789012:function:{fnB}"),
+                   "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let arn_created: Value = serde_json::from_str(&resp.body).unwrap();
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km2",
+                   "FunctionName": format!("{fnB}:$LATEST"), "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        let qualified: Value = serde_json::from_str(&resp.body).unwrap();
+
+        let req = AwsRequest {
+            service: "lambda".to_string(),
+            operation: String::new(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params: json!({}),
+            body: Bytes::new(),
+            method: "GET".to_string(),
+            path: "/2015-03-31/event-source-mappings".to_string(),
+            query_string: format!(
+                "FunctionName=arn:aws:lambda:us-east-1:123456789012:function:{fnB}"
+            ),
+            headers: std::collections::HashMap::new(),
+        };
+        let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
+        let uuids: Vec<&str> = listed["EventSourceMappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["UUID"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            uuids,
+            vec![arn_created["UUID"].as_str().unwrap()],
+            "ARN-created mapping must match only by its raw create-time name"
+        );
+        let req = AwsRequest {
+            query_string: format!("FunctionName={fnB}"),
+            ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
+        };
+        let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
+        let uuids: Vec<&str> = listed["EventSourceMappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["UUID"].as_str().unwrap())
+            .collect();
+        assert!(
+            uuids.is_empty(),
+            "the short form must not match the ARN-created raw key: {uuids:?}"
+        );
+        let req = AwsRequest {
+            query_string: format!("FunctionName={fnB}:$LATEST"),
+            ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
+        };
+        let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
+        let uuids: Vec<&str> = listed["EventSourceMappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["UUID"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            uuids,
+            vec![qualified["UUID"].as_str().unwrap()],
+            "the qualifier-created mapping matches only by its raw form"
+        );
 
         // (f) list_event_source_mappings walks INSERTION order like moto's
         // ordered backend dict (live-probed alpha..echo listed back in
