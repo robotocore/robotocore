@@ -2196,6 +2196,72 @@ class TestLambdaEventSourceMappingExtended:
             lam.delete_function(FunctionName=fname)
             sqs.delete_queue(QueueUrl=q_url)
 
+    def test_list_event_source_mappings_raw_fnname_key(self, lam, role):
+        """FunctionName lists compare the RAW create-time string.
+
+        moto stores spec["FunctionName"] verbatim (awslambda/models.
+        py:1306-1313) and lists compare against that string exactly
+        (2274-2275): a mapping created via a full function ARN matches a
+        FunctionName filter ONLY by that ARN form (short form = nothing),
+        and a qualifier-created mapping matches only that qualifier form.
+        #485's differential harnessed this as its documented residual.
+        """
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-rfk-q-{suffix}"
+        fname = f"esm-rfk-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        fn_arn = lam.get_function(FunctionName=fname)["Configuration"]["FunctionArn"]
+        esm_uuid = None
+        qual_uuid = None
+        try:
+            # created via the FULL ARN: matches the ARN form, not the short one
+            esm_uuid = lam.create_event_source_mapping(
+                EventSourceArn=q_arn,
+                FunctionName=fn_arn,
+                StartingPosition="LATEST",
+            )["UUID"]
+
+            got = lam.list_event_source_mappings(FunctionName=fn_arn)
+            assert [m["UUID"] for m in got["EventSourceMappings"]] == [esm_uuid]
+            got = lam.list_event_source_mappings(FunctionName=fname)
+            assert got["EventSourceMappings"] == [], f"short form must not match: {got}"
+
+            # created via a qualifier form: matches only that form
+            qual_uuid = lam.create_event_source_mapping(
+                EventSourceArn=q_arn,
+                FunctionName=f"{fname}:$LATEST",
+                StartingPosition="LATEST",
+            )["UUID"]
+            got = lam.list_event_source_mappings(FunctionName=f"{fname}:$LATEST")
+            assert [m["UUID"] for m in got["EventSourceMappings"]] == [qual_uuid]
+            # the short name still matches nothing (both keys are non-plain)
+            got = lam.list_event_source_mappings(FunctionName=fname)
+            assert got["EventSourceMappings"] == []
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            # best-effort cleanup: the qualifier leg may not have run
+            try:
+                lam.delete_event_source_mapping(UUID=qual_uuid)
+            except Exception:
+                pass  # best-effort cleanup
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
 
 class TestLambdaLayerDeletion:
     """Tests for layer version deletion."""
