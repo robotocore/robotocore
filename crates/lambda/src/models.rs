@@ -293,6 +293,16 @@ pub struct EventSourceMapping {
     pub self_managed_kafka_event_source_config: Option<Value>,
     #[serde(default)]
     pub amazon_managed_kafka_event_source_config: Option<Value>,
+    /// Process-lifetime creation counter (AtomicU64 in the handler): the
+    /// ONLY ordering source for list_event_source_mappings, mirroring
+    /// moto's insertion-ordered backend dict (live-probed: moto lists
+    /// alpha..echo in create order; the twin's HashMap iteration is
+    /// random). serde-default 0 for pre-PR snapshots; fresh creates
+    /// start at 1 so they sort above them. Restore-ordering is honest
+    /// for same-version snapshots (true seqs); cross-version restore
+    /// sorts at no worse than the pre-PR random order.
+    #[serde(default)]
+    pub created_seq: u64,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -355,6 +365,7 @@ impl Clone for EventSourceMapping {
             amazon_managed_kafka_event_source_config: self
                 .amazon_managed_kafka_event_source_config
                 .clone(),
+            created_seq: self.created_seq,
             kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: self.ddb_attached_watermark.clone(),
         }
