@@ -1495,11 +1495,16 @@ impl LambdaHandler {
         // (models.py:1433-1434): unset MaximumBatchingWindowInSeconds/
         // MaximumRecordAgeInSeconds/BisectBatchOnFunctionError/
         // MaximumRetryAttempts/FunctionResponseTypes/FilterCriteria are
-        // omitted, and LastProcessingResult rides as null (its stored
-        // value is always None here). State derives from `enabled` at
-        // render time, exactly like moto's `"Enabled" if self.enabled
-        // else "Disabled"` — a create/update bookkeeping mismatch can no
-        // longer lie on the wire.
+        // omitted, and LastProcessingResult is stored None-here → the
+        // None-filter drops it outright (moto's dict carries the member
+        // as `None` at models.py:1407 then filters — moto bodies NEVER
+        // render it; real AWS would carry it (model-derived, not
+        // observed live), but the twin's ESM engine has no processing
+        // state to report, and phantom null members are raw-wire-visible
+        // to non-botocore clients). State derives from
+        // `enabled` at render time, exactly like moto's `"Enabled" if
+        // self.enabled else "Disabled"` — a create/update bookkeeping
+        // mismatch can no longer lie on the wire.
         //
         // `Tags` rides UNFILTERED (models.py:1429): `{}` is not None, so
         // moto's ESM bodies always carry the member, empty or not — real
@@ -1544,7 +1549,9 @@ impl LambdaHandler {
         if let Some(retry) = e.maximum_retry_attempts {
             m.insert("MaximumRetryAttempts".into(), json!(retry));
         }
-        m.insert("LastProcessingResult".into(), Value::Null);
+        // LastProcessingResult stays ABSENT: moto stores None-here and its
+        // None-filter drops the member (models.py:1407 → 1433-1434); the
+        // twin's null insert was a wire-visible (Go-SDK) phantom.
 
         m.insert(
             "Tags".into(),
@@ -3582,8 +3589,9 @@ mod tests {
     /// above the family max, the three-family ARN gate ("Unsupported event
     /// source type"), the 404 for a kinesis source that does not resolve
     /// ("Invalid EventSourceArn"), and the shape-filtered dict (mapping
-    /// ARN, null LastProcessingResult, MaximumBatchingWindowInSeconds only
-    /// when configured). The source-existence probes are process-global,
+    /// ARN, NO LastProcessingResult — moto's None-filter drops it,
+    /// MaximumBatchingWindowInSeconds only when configured). The
+    /// source-existence probes are process-global,
     /// so every probe-dependent assertion lives in this single
     /// sole-registrant test (the surge-guard style of the cloudwatch hook
     /// tests).
@@ -3687,8 +3695,9 @@ mod tests {
             resp.body
         );
 
-        // (e) the wire dict: mapping ARN + null LastProcessingResult ride
-        // every response; the optional windows appear only when set.
+        // (e) the wire dict: the mapping ARN rides every response and
+        // LastProcessingResult is ABSENT (moto's None-filter drops its
+        // always-None member); the optional windows appear only when set.
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/esm-dict-stream",
@@ -3706,10 +3715,8 @@ mod tests {
             ))
         );
         assert!(
-            configured
-                .get("LastProcessingResult")
-                .is_some_and(Value::is_null),
-            "LastProcessingResult rides as null: {configured}"
+            configured.get("LastProcessingResult").is_none(),
+            "LastProcessingResult must be absent (moto None-filters it): {configured}"
         );
         assert_eq!(
             configured.get("MaximumBatchingWindowInSeconds"),

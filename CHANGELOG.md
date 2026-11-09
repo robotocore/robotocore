@@ -62,6 +62,17 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda: ESM bodies drop the phantom `LastProcessingResult`
+  member.** moto stores the member as `None` (awslambda/models.py:1407)
+  and its None-filter (1433-1434) drops it outright — moto bodies never
+  render it; the twin inserted `"LastProcessingResult": null` on every
+  ESM body. Invisible through boto3 (parsers.py:705 drops null
+  members) but raw-wire-visible to non-botocore clients (no SDK
+  observes a decoded difference — null/absent parse identically), and
+  a misattributed
+  comment claimed moto-mirroring (#463 review lead). Pinned by the
+  dict-contract test's absence assert (red pre-fix — the member rode
+  the body).
 - **Cognito: user-pool DeletionProtection stores on create/update.**
   botocore models the member on CreateUserPool/UpdateUserPool (enum
   ACTIVE|INACTIVE) and on the UserPoolType output. moto has no literal

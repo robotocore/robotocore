@@ -255,3 +255,18 @@ TestDescribeStreamSummaryShape.
 test_key_id_renders_in_both_describe_shapes.
 No drift stack in the repo sets `encryption_type`, so the oracle can't
 drive this yet — the pin carries the live KMS round trip.
+
+Postscript (2026-11-09) to the same lambda review pass: the ESM body's
+`LastProcessingResult` was a twin-side phantom — moto stores the member
+as `None` (awslambda/models.py:1407) and its None-filter (1433-1434)
+drops it, so moto bodies NEVER render it, while the twin inserted
+`"LastProcessingResult": null` on every body. Invisible through boto3
+(parsers.py:705 skips null members) but wire-visible to Go-SDK
+clients, and the esm_dict comment claimed moto-mirroring (backwards).
+Dropped to moto parity; the dict-contract unit test pins the absence
+(red pre-fix). Terraform surface unchanged: the provider DOES read
+`last_processing_result` into a Computed attr
+(terraform-provider-aws v5.100 stream: `d.Set("last_processing_result",
+output.LastProcessingResult)`), but aws-sdk-go-v2 decodes JSON null and
+absent into the same nil pointer, so the refreshed state is the empty
+string either way and no plan diff can form.
