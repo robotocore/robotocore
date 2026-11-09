@@ -483,3 +483,20 @@ class TestEventSourceMappingOptionalConfig:
         assert updated["ScalingConfig"] == {"MaximumConcurrency": 9}
         # the omitted member is preserved (moto's elif-only loop)
         assert updated["DestinationConfig"] == mapping["DestinationConfig"]
+
+    def test_wave2_members_render(self, lam, mapping):
+        """The wave-2 spec.get members (botocore MODELS them): KMSKeyArn
+        and MetricsConfig mutate on update. Queues is create-only
+        (botocore itself rejects Queues on UpdateEventSourceMapping)."""
+        updated = lam.update_event_source_mapping(
+            UUID=mapping["UUID"],
+            KMSKeyArn="arn:aws:kms:us-east-1:123456789012:key/k1",
+            MetricsConfig={"Metrics": ["EventCount"]},
+        )
+        assert updated["KMSKeyArn"] == "arn:aws:kms:us-east-1:123456789012:key/k1"
+        assert updated["MetricsConfig"] == {"Metrics": ["EventCount"]}
+        # Queues: the create-time stored list rides (the fixture creates
+        # without one) — updates cannot carry the member at all. This
+        # absence leg is fixture-limited (passes on any server); the real
+        # immutability pin lives in the crate test (store + update-ride).
+        assert "Queues" not in updated

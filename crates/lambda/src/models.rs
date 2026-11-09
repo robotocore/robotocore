@@ -258,6 +258,25 @@ pub struct EventSourceMapping {
     /// `TumblingWindowInSeconds` when configured (kinesis; moto `spec.get`).
     #[serde(default)]
     pub tumbling_window_in_seconds: Option<u64>,
+    /// Wave-2 `spec.get` members (moto models.py:1331-1347, rendered in
+    /// the configuration dict 1414-1428; the update loop handles all but
+    /// `Queues` — botocore omits Queues from the update input, so it is
+    /// create-immutable like StartingPositionTimestamp):
+    /// `KMSKeyArn` (plain string), `MetricsConfig`,
+    /// `ProvisionedPollerConfig`, `Queues`, `SourceAccessConfigurations`
+    /// (list), `DocumentDBEventSourceConfig` — stored unvalidated.
+    #[serde(default)]
+    pub kms_key_arn: Option<String>,
+    #[serde(default)]
+    pub metrics_config: Option<Value>,
+    #[serde(default)]
+    pub provisioned_poller_config: Option<Value>,
+    #[serde(default)]
+    pub queues: Option<Value>,
+    #[serde(default)]
+    pub source_access_configurations: Option<Value>,
+    #[serde(default)]
+    pub document_db_config: Option<Value>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -306,6 +325,12 @@ impl Clone for EventSourceMapping {
             destination_config: self.destination_config.clone(),
             scaling_config: self.scaling_config.clone(),
             tumbling_window_in_seconds: self.tumbling_window_in_seconds,
+            kms_key_arn: self.kms_key_arn.clone(),
+            metrics_config: self.metrics_config.clone(),
+            provisioned_poller_config: self.provisioned_poller_config.clone(),
+            queues: self.queues.clone(),
+            source_access_configurations: self.source_access_configurations.clone(),
+            document_db_config: self.document_db_config.clone(),
             kinesis_bound_watermarks: self.kinesis_bound_watermarks.clone(),
             ddb_attached_watermark: self.ddb_attached_watermark.clone(),
         }
