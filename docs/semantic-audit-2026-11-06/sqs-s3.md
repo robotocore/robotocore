@@ -263,6 +263,22 @@ S3
    like put_object's error path; botocore rejects Tagging on
    CompleteMultipartUpload client-side, so invalid sets ride from
    CREATE). Pin: TestS3TaggingVersioning.test_mpu_complete_replicates.
+
+   Differential-corpus note (2026-11-09): extending the s3 corpus with
+   replication-config steps surfaces the pre-existing checksum slot
+   gaps (moto's put response carries ChecksumCRC32, put/list Contents
+   carry ChecksumAlgorithm [CRC32] — recorded as s3.list_v2_prefix).
+   The replication ENGINE itself is not single-bucket-corpus
+   exercisable (nothing crosses an engine boundary; the
+   twin-preferred engine ships to a dest bucket named in the rule, so
+   a two-bucket corpus is required after the models-side checksum
+   slot is fixed). Two more single-bucket divergences also surface
+   and stay open: moto REBUILDS the config on GET (injects
+   DeleteMarkerReplication {"Status": "Disabled"}, forces
+   Filter: {"Prefix": ""}) where the twin echoes the stored XML; and
+   moto accepts a replication config whose dest bucket doesn't exist
+   while the twin answers 400 InvalidRequest (the dest bucket must be
+   created before the config PUT on the twin).
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error
