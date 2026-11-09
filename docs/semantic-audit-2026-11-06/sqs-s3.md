@@ -273,12 +273,17 @@ S3
    twin-preferred engine ships to a dest bucket named in the rule, so
    a two-bucket corpus is required after the models-side checksum
    slot is fixed). Two more single-bucket divergences also surface
-   and stay open: moto REBUILDS the config on GET (injects
-   DeleteMarkerReplication {"Status": "Disabled"}, forces
-   Filter: {"Prefix": ""}) where the twin echoes the stored XML; and
-   moto accepts a replication config whose dest bucket doesn't exist
-   while the twin answers 400 InvalidRequest (the dest bucket must be
-   created before the config PUT on the twin).
+   and are now CLOSED (2026-11-09):
+   moto's GET rebuilds the rules and the twin mirrors it (renders
+   ID/Priority/Status/Destination, forces DeleteMarkerReplication
+   Disabled + empty Filter; the STORED copy keeps the user's
+   prefix/delete-marker setting for the replication engine); moto
+   accepts a replication config whose dest bucket doesn't exist and
+   the twin now does too (the dest-existence gate removed; moto
+   responses.py has no such check — live-probed). PUT normalization
+   (Priority default 1 + 30-char alnum ID when absent per moto
+   models.py:2233-2247) and the versioning gate message match moto
+   verbatim.
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error

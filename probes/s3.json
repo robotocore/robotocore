@@ -1,10 +1,10 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-09T11:05:14.173561+00:00",
+  "generated_at": "2026-11-09T18:21:34.058480+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "c616bc364168a66dab4c1bacf1e961c142a80cea2ac335362b051128d8b91691"
+    "crates/s3/src/": "7009f720d5910189e25966c88cff83e2a35a641ca1e9aef75cbcc68ce2954519"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -463,7 +463,7 @@
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the source bucket)"
+      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the bucket to apply a replic)"
     },
     {
       "operation": "PutBucketRequestPayment",

@@ -81,6 +81,23 @@ under *Changelog discipline*.
   the header on both MP surfaces. The #474 OPEN tape's MPU
   lane is closed with this (the '+'-decoding and decode-before-split
   raw edges stay parked).
+- **S3: bucket replication mirrors moto's PUT/GET contract.** PUT now
+  normalizes each rule at store time (moto models.py:2233-2247): a
+  missing Priority defaults to 1 and a missing ID becomes a random
+  30-char alnum; the versioning gate's message now matches moto's
+  verbatim ("...to apply a replication configuration"). GET REBUILDS
+  the rules (moto responses.py:1419-1437): it renders
+  ID/Priority/Status/Destination, forces
+  DeleteMarkerReplication:{"Status":"Disabled"} and an empty
+  Filter:{"Prefix":""} — dropping the user's stored prefix and
+  delete-marker setting (live-probed on moto; the STORED copy keeps
+  them so the replication engine's prefix filtering still works).
+  Committed pins: an exact GET-rebuild shape battery (filtered + no-filter PUTs + explicit ID round trip) and the verbatim versioning gate message. Prior behavior echoed the stored XML verbatim (Rules wrapped in a
+  plural <Rules> element that botocore's flattened
+  ReplicationConfiguration.Rules parse DROPS — moto's wire carries
+  bare <Rule> elements). MP-complete replication rides the #477
+  wiring. Pins: live GET rebuild (filtered + no-filter PUTs) + the
+  full compat suite.
 - **S3: duplicate tag keys collapse per path — header FIRST value,
   XML LAST value.** moto's two wire arrivals collapse differently
   (live-probed both): the header path's `parse_qs → values[0]`

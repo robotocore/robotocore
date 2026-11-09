@@ -2369,6 +2369,110 @@ class TestS3TaggingVersioning:
         tags = s3.get_object_tagging(Bucket=name, Key="good")["TagSet"]
         assert tags == [{"Key": "m", "Value": "1"}]
 
+    def test_replication_get_rebuild_and_versioning_message(self, s3):
+        """moto's GET REBUILDS the replication rules (responses.py
+        :1419-1437): renders ID/Priority/Status/Destination, forces
+        DeleteMarkerReplication Disabled + an empty Filter, DROPPING the
+        user's stored prefix/delete-marker setting. The PUT versioning
+        gate answers moto's verbatim message. Live-probed both."""
+        # unversioned gate message (own bucket — versioning untouched)
+        unv = f"repl-unv-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=unv)
+        with pytest.raises(ClientError) as exc:
+            s3.put_bucket_replication(
+                Bucket=unv,
+                ReplicationConfiguration={
+                    "Role": "arn:aws:iam::123456789012:role/repl",
+                    "Rules": [
+                        {
+                            "Status": "Enabled",
+                            "Destination": {"Bucket": "arn:aws:s3:::y"},
+                        }
+                    ],
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequest"
+        assert exc.value.response["Error"]["Message"] == (
+            "Versioning must be 'Enabled' on the bucket to apply a replication configuration"
+        )
+        # rebuild leg needs a versioned bucket
+        name = f"repl-getreb-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_bucket_replication(
+            Bucket=name,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/repl",
+                "Rules": [
+                    {
+                        "Status": "Enabled",
+                        "Priority": 2,
+                        "Filter": {"Prefix": "logs/"},
+                        "DeleteMarkerReplication": {"Status": "Enabled"},
+                        "Destination": {"Bucket": "arn:aws:s3:::dst-x"},
+                    },
+                    {"Status": "Enabled", "Destination": {"Bucket": "arn:aws:s3:::dst-x"}},
+                ],
+            },
+        )
+        rules = s3.get_bucket_replication(Bucket=name)["ReplicationConfiguration"]["Rules"]
+        # rule 1: user prefix + DMR input dropped, Priority/Status kept
+        assert rules[0]["Priority"] == 2
+        assert rules[0]["Status"] == "Enabled"
+        assert rules[0]["DeleteMarkerReplication"] == {"Status": "Disabled"}
+        assert rules[0]["Filter"] == {"Prefix": ""}
+        assert rules[0]["Destination"] == {"Bucket": "arn:aws:s3:::dst-x"}
+        assert len(rules[0]["ID"]) == 30
+        # rule 2 (no filter): Priority defaults to 1, ID minted
+        assert rules[1] == {
+            "ID": rules[1]["ID"],
+            "Priority": 1,
+            "Status": "Enabled",
+            "DeleteMarkerReplication": {"Status": "Disabled"},
+            "Filter": {"Prefix": ""},
+            "Destination": {"Bucket": "arn:aws:s3:::dst-x"},
+        }
+        assert len(rules[1]["ID"]) == 30
+        # and re-PUT with an explicit ID keeps it verbatim
+        s3.put_bucket_replication(
+            Bucket=name,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/repl",
+                "Rules": [
+                    {
+                        "ID": "my-explicit-id",
+                        "Status": "Enabled",
+                        "Destination": {"Bucket": "arn:aws:s3:::dst-x"},
+                    }
+                ],
+            },
+        )
+        got = s3.get_bucket_replication(Bucket=name)["ReplicationConfiguration"]["Rules"][0]
+        assert got["ID"] == "my-explicit-id"
+
+        # present-but-EMPTY member: moto's normalization keys on member
+        # PRESENCE (`"ID" not in rule`, models.py:2239), so `<ID></ID>`
+        # keeps its None — the GET rebuild's serializer skip renders the
+        # rule with NO ID member (review B1 on #480, live-verified both
+        # engines). Priority absent still defaults to 1; empty Priority
+        # omits from the GET view the same way.
+        s3.put_bucket_replication(
+            Bucket=name,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/repl",
+                "Rules": [
+                    {
+                        "ID": "",
+                        "Status": "Enabled",
+                        "Destination": {"Bucket": "arn:aws:s3:::dst-x"},
+                    }
+                ],
+            },
+        )
+        got = s3.get_bucket_replication(Bucket=name)["ReplicationConfiguration"]["Rules"][0]
+        assert "ID" not in got, f"present-empty ID must be omitted, got {got.get('ID')!r}"
+        assert got["Priority"] == 1
+
     def test_mpu_complete_replicates(self, s3):
         """Replication rides the MPU-complete path like the direct put
         paths (twin's replication engine mirrors store semantics; the
