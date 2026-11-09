@@ -222,6 +222,7 @@ in the raw describe and omitted the member from the summary. A
 KMS-encrypted stream therefore ran the phantom-drift loop again. Both
 shapes now render the stored value (null ⇔ empty-string storage, the
 ARN once StartStreamEncryption ran). Pin:
-TestDescribeStreamSummaryShape.TestKeyIdRendersInBothDescribeShapes.
+TestDescribeStreamSummaryShape.
+test_key_id_renders_in_both_describe_shapes.
 No drift stack in the repo sets `encryption_type`, so the oracle can't
 drive this yet — the pin carries the live KMS round trip.

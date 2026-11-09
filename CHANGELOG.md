@@ -87,7 +87,6 @@ under *Changelog discipline*.
   unknown uuid = moto's RESTError 404. Pins:
   TestEventSourceMappingTags (Routing, Unknown404, TagUntagRoundTrip,
   UpdatePreservesTags, FunctionPathRegression).
->>>>>>> d0d0e066 (kinesis: render the stored KeyId in both describe shapes)
 - **Kinesis DescribeStreamSummary renders EncryptionType.** The
   terraform kinesis refresh reads DescribeStreamSummary and the twin's
   summary omitted the member entirely; moto and real AWS always carry

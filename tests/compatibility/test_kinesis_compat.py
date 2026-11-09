@@ -1519,7 +1519,9 @@ class TestDescribeStreamSummaryShape:
         try:
             summary = kinesis.describe_stream_summary(StreamName=name)["StreamDescriptionSummary"]
             full = kinesis.describe_stream(StreamName=name)["StreamDescription"]
-            # KeyId:null on the raw wire (moto-faithful); parsed away.
+            # KeyId:null rides the raw wire (moto-faithful json!
+            # source); botocore's parser drops null members, so absence
+            # is all boto3 can pin here.
             assert "KeyId" not in summary
             assert "KeyId" not in full
 

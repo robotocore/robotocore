@@ -1,6 +1,6 @@
 {
   "service": "kinesis",
-  "generated_at": "2026-11-08T23:47:38.121020+00:00",
+  "generated_at": "2026-11-09T00:06:39.295580+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/kinesis.rs": "absent",
     "rotocore/src/services/kinesis/": "absent",
