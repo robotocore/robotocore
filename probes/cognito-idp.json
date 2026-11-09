@@ -1,11 +1,11 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-11-09T02:48:28.381777+00:00",
+  "generated_at": "2026-11-09T17:48:16.979213+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/cognito-idp.rs": "absent",
     "rotocore/src/services/cognito-idp/": "absent",
     "crates/cognito-idp/src/": "absent",
-    "rotocore/src/services/cognito_idp.rs": "a1aa6cd6e44805bda0a0767efa66c898b1f99c4fb8874f822b8befefd89f9afb",
+    "rotocore/src/services/cognito_idp.rs": "0481b5e58ddbd494ab38dd548d67885128bde823efd30e1a452056cd671065cc",
     "rotocore/src/services/cognito_idp/": "absent",
     "crates/cognito_idp/src/": "absent",
     "rotocore/src/services/cognitoidp.rs": "absent",
@@ -174,12 +174,12 @@
     {
       "operation": "CompleteWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "ConfirmDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "ConfirmForgotPassword",
@@ -264,7 +264,7 @@
     {
       "operation": "DeleteUser",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "DeleteUserAttributes",
@@ -294,7 +294,7 @@
     {
       "operation": "DeleteWebAuthnCredential",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "DescribeIdentityProvider",
@@ -349,7 +349,7 @@
     {
       "operation": "ForgetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "ForgotPassword",
@@ -364,7 +364,7 @@
     {
       "operation": "GetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "GetGroup",
@@ -429,7 +429,7 @@
     {
       "operation": "ListDevices",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "ListGroups",
@@ -489,7 +489,7 @@
     {
       "operation": "ListWebAuthnCredentials",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "ResendConfirmationCode",
@@ -524,7 +524,7 @@
     {
       "operation": "SetUserMFAPreference",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "SetUserPoolMfaConfig",
@@ -549,7 +549,7 @@
     {
       "operation": "StartWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "StopUserImportJob",
@@ -574,7 +574,7 @@
     {
       "operation": "UpdateDeviceStatus",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-5780)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3695)"
     },
     {
       "operation": "UpdateGroup",
