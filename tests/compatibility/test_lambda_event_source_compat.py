@@ -360,9 +360,10 @@ class TestEventSourceMappingTags:
         # not found: …" which pins nothing.
         assert body.get("Message", "") == "Event source mapping deadbeef not found."
 
-    # NOTE (Tagsh member render): moto's get_configuration carries `Tags`
-    # UNFILTERED (models.py:1431 — `{}` survives the None-filter), so every
-    # ESM body (create/get/list) describes the mapping's tags. NOT pinned
+    # NOTE (Tags member render): moto's get_configuration carries `Tags`
+    # UNFILTERED (models.py:1429 — `{}` survives the None-filter at
+    # 1433-1434), so every ESM body (create/update/delete/get/list — one
+    # shared renderer) describes the mapping's tags. NOT pinned
     # here: botocore's EventSourceMappingConfiguration model has no `Tags`
     # member, so its response parser drops the member silently — the pin
     # lives in the crate's own unit test
