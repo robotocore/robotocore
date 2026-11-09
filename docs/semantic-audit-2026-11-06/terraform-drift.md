@@ -336,3 +336,17 @@ recorded known diff: the member follows the describe shapes' real-AWS
 preference (and the standing presence pins). 2 compat pins tightened
 to the live round trip (NONE → KMS → NONE, stop leg on both
 surfaces).
+
+## dynamodb batch limits: queue lead closed (2026-11-09)
+
+The pre-#439 "batch limits (tranche 5b)" queue lead is already covered:
+BatchGetItem mirrors moto's three-level validation (per-table >100 with
+the exact provider message, the across-tables "Too many items requested
+for the BatchGetItem call" cap, duplicate keys) — #439 landed the pins
+and TestBatchGetItemLimits still carries them; live-probed against moto
+5.2.5 this session, messages identical. BatchWriteItem has NO cap in
+moto (live-probed: 26 PutRequests accepted, all stored) — the twin
+mirrors it; the real-AWS >25 ValidationException stays a recorded
+divergence (no drift stack batches writes) protected by
+TestBatchWriteItemMirror.test_twenty_six_put_requests_accepted, which
+fails if an un-mirrored cap is added later.

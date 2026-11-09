@@ -492,6 +492,36 @@ class TestBatchGetItemLimits:
         assert cc == [{"CapacityUnits": 2, "TableName": table}]
 
 
+class TestBatchWriteItemMirror:
+    """moto imposes NO item-count cap on BatchWriteItem (live-probed:
+    26 PutRequests accepted, all 26 stored); real AWS rejects >25 with
+    a ValidationException (developer-guide limit). The twin mirrors moto
+    — the real-AWS cap stays a recorded divergence until a driver (a
+    drift stack or recorded fixture) demands the real-AWS behavior. This
+    pin protects the mirror from an un-mirrored cap added later."""
+
+    def test_twenty_six_put_requests_accepted(self, ddb):
+        import uuid
+
+        name = f"bw26-{uuid.uuid4().hex[:8]}"
+        ddb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "k", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "k", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            resp = ddb.batch_write_item(
+                RequestItems={
+                    name: [{"PutRequest": {"Item": {"k": {"S": f"i{i}"}}}} for i in range(26)]
+                }
+            )
+            assert not resp.get("UnprocessedItems"), resp
+            assert ddb.scan(TableName=name, Select="COUNT")["Count"] == 26
+        finally:
+            ddb.delete_table(TableName=name)
+
+
 class TestListTablesDefaultLimit:
     """#439 review round 2: moto's `body.get("Limit", 100)` default cap and
     the falsy-Limit pass-through (responses.py:329 + models:154-158)."""
