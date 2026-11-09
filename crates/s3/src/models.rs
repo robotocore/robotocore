@@ -27,7 +27,12 @@ pub struct ObjectVersion {
     pub size: usize,
     pub last_modified: u64,
     pub storage_class: String,
-    pub tags: HashMap<String, String>,
+    /// Tag set in STORE (insertion) order — moto's tagger renders
+    /// `self.tags[arn].items()` in insertion order, so GET TagSet must not
+    /// depend on HashMap iteration. Duplicates collapse at the wire-parse
+    /// layer (first position, last value) before storage.
+    #[serde(default, with = "crate::snapshot::ordered_tags")]
+    pub tags: Vec<(String, String)>,
     pub legal_hold: Option<String>,
     #[serde(default)]
     pub retention: Option<(String, String)>,
@@ -52,7 +57,7 @@ impl ObjectVersion {
             size,
             last_modified: Utc::now().timestamp() as u64,
             storage_class: "STANDARD".to_string(),
-            tags: HashMap::new(),
+            tags: Vec::new(),
             legal_hold: None,
             retention: None,
             restore: None,

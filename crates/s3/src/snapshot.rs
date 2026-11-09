@@ -10,6 +10,33 @@ use std::sync::Arc;
 use crate::handler::S3Handler;
 use crate::models::Bucket;
 
+pub(crate) mod ordered_tags {
+    //! Serialize the ordered tag pairs AS PAIRS (a snapshot round trip
+    //! preserves storage order) and accept BOTH shapes on restore — an
+    //! array of pairs (this version's format) or a map (historical
+    //! snapshots; their member order is map-arbitrary, unchanged).
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S: Serializer>(v: &[(String, String)], s: S) -> Result<S::Ok, S::Error> {
+        v.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(String, String)>, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Shape {
+            Map(HashMap<String, String>),
+            Pairs(Vec<(String, String)>),
+        }
+        Ok(match Shape::deserialize(d)? {
+            Shape::Map(m) => m.into_iter().collect(),
+            Shape::Pairs(pairs) => pairs,
+        })
+    }
+}
+
 pub(crate) mod rw {
     use parking_lot::RwLock;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -146,7 +173,7 @@ mod tests {
                     size: 10,
                     last_modified: 99,
                     storage_class: "STANDARD".to_string(),
-                    tags: HashMap::new(),
+                    tags: Vec::new(),
                     legal_hold: None,
                     retention: None,
                 }],

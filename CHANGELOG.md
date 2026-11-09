@@ -62,6 +62,15 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **S3: GET TagSet renders storage (insertion) order.** moto's tagger
+  iterates its dict in insertion order; the twin's GET TagSet rendered a
+  HashMap iteration after the #472 ledger edge flagged it as
+  nondeterministic. The stored tag set became an ordered pairs vec
+  (duplicates already collapse first-position/last-value at the
+  wire-parse layer); snapshots restore BOTH shapes (map or pairs) via
+  the tagged helper. Pin:
+  TestS3TaggingVersioning.test_get_tagging_preserves_insertion_order
+  (live cross-checked against moto's member-for-member order).
 - **S3: object-tag deep validation (the shared tagger mirror).** moto's
   PutObjectTagging runs the s3-custom checks (>10 tags → BadRequest;
   aws:-prefixed keys → InvalidTag) and then the SHARED validator
