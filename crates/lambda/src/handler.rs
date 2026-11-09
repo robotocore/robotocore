@@ -4048,16 +4048,16 @@ mod tests {
         // ARN and NOT by the short name, and a qualifier-created mapping
         // matches only that qualifier form. Updates re-point
         // function_arn only (2225-2229) — the raw key is frozen.
-        let fnB = "esm-fn-arnform";
+        let fn_b = "esm-fn-arnform";
         handler.handle(make_req(
             "POST",
-            json!({"FunctionName": fnB, "Runtime": "python3.12", "Handler": "index.handler"}),
+            json!({"FunctionName": fn_b, "Runtime": "python3.12", "Handler": "index.handler"}),
             "/2015-03-31/functions",
         ));
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km1",
-                   "FunctionName": format!("arn:aws:lambda:us-east-1:123456789012:function:{fnB}"),
+                   "FunctionName": format!("arn:aws:lambda:us-east-1:123456789012:function:{fn_b}"),
                    "StartingPosition": "LATEST"}),
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
@@ -4065,7 +4065,7 @@ mod tests {
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/raw-km2",
-                   "FunctionName": format!("{fnB}:$LATEST"), "StartingPosition": "LATEST"}),
+                   "FunctionName": format!("{fn_b}:$LATEST"), "StartingPosition": "LATEST"}),
         );
         assert_eq!(resp.status, 201, "body: {}", resp.body);
         let qualified: Value = serde_json::from_str(&resp.body).unwrap();
@@ -4080,7 +4080,7 @@ mod tests {
             method: "GET".to_string(),
             path: "/2015-03-31/event-source-mappings".to_string(),
             query_string: format!(
-                "FunctionName=arn:aws:lambda:us-east-1:123456789012:function:{fnB}"
+                "FunctionName=arn:aws:lambda:us-east-1:123456789012:function:{fn_b}"
             ),
             headers: std::collections::HashMap::new(),
         };
@@ -4097,7 +4097,7 @@ mod tests {
             "ARN-created mapping must match only by its raw create-time name"
         );
         let req = AwsRequest {
-            query_string: format!("FunctionName={fnB}"),
+            query_string: format!("FunctionName={fn_b}"),
             ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
         };
         let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();
@@ -4112,7 +4112,7 @@ mod tests {
             "the short form must not match the ARN-created raw key: {uuids:?}"
         );
         let req = AwsRequest {
-            query_string: format!("FunctionName={fnB}:$LATEST"),
+            query_string: format!("FunctionName={fn_b}:$LATEST"),
             ..make_req("GET", json!({}), "/2015-03-31/event-source-mappings")
         };
         let listed: Value = serde_json::from_str(&handler.handle(req).body).unwrap();

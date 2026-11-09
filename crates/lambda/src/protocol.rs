@@ -305,7 +305,7 @@ pub fn function_not_found(name_or_arn: &str, region: &str, account: u64) -> AwsR
     // extracted (name[:qualifier]) — moto never echoes a foreign or
     // wrong-service input ARN back. A plain name was already backend-built.
     let (name, qualifier) = if let Some(rest) = name_or_arn.strip_prefix("arn:") {
-        let unknown_qual = if let Some(idx) = rest.find(":function:") {
+        let unknown_qual = if let Some(idx) = rest.rfind(":function:") {
             let tail = &rest[idx + ":function:".len()..];
             tail.contains(':')
         } else {
@@ -321,7 +321,7 @@ pub fn function_not_found(name_or_arn: &str, region: &str, account: u64) -> AwsR
             (
                 name_or_arn
                     .split_once("arn:aws:lambda:")
-                    .and_then(|_| name_or_arn.find(":function:"))
+                    .and_then(|_| name_or_arn.rfind(":function:"))
                     .map(|i| name_or_arn[i + ":function:".len()..].to_string())
                     .or_else(|| name_or_arn.split(':').next_back().map(str::to_string))
                     .unwrap_or_default(),
@@ -348,7 +348,7 @@ pub fn function_not_found(name_or_arn: &str, region: &str, account: u64) -> AwsR
 /// moto split_function_arn's name slot: the string after `:function:`
 /// when present, else the final colon token (the wrong-service mangle).
 fn extract_arn_or_tail_name(arn: &str) -> String {
-    if let Some(idx) = arn.find(":function:") {
+    if let Some(idx) = arn.rfind(":function:") {
         arn[idx + ":function:".len()..].to_string()
     } else {
         arn.split(':').next_back().unwrap_or("").to_string()
