@@ -82,14 +82,21 @@ pub fn deliver_to_queue(account: u64, region: &str, queue_name: &str, body: &str
 pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Queue) {
     let drained: Vec<SqsMessage> = {
         let mut pend = pending().write();
-        let mut drained = Vec::new();
-        // idx always decreasing so remove keeps indices consistent.
-        for idx in (0..pend.len()).rev() {
-            let p = &pend[idx];
+        let mut drained: Vec<SqsMessage> = Vec::new();
+        let mut to_remove: Vec<usize> = Vec::new();
+        // drain in PENDING ORDER — moto delivers same-tick events in fire
+        // order (the #475 review found two same-tick writes arriving
+        // Complete-before-Put under the old reverse walk, which pushed
+        // matches back-to-front).
+        for (idx, p) in pend.iter().enumerate() {
             if p.account == account && p.region == region && p.queue_name == queue_name {
                 drained.push(p.message.clone());
-                pend.remove(idx);
+                to_remove.push(idx);
             }
+        }
+        // remove right-to-left so earlier indices stay valid.
+        for idx in to_remove.into_iter().rev() {
+            pend.remove(idx);
         }
         drained
     };
