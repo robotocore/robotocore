@@ -297,16 +297,62 @@ impl AwsResponse {
 
 /// 404 for a function resource, mirroring moto's message shape.
 pub fn function_not_found(name_or_arn: &str, region: &str, account: u64) -> AwsResponse {
-    let arn = if name_or_arn.starts_with("arn:") {
-        name_or_arn.to_string()
+    // moto's construct_unknown_function_exception
+    // (awslambda/models.py:1740-1753) + split_function_arn (1687-1702),
+    // ported verbatim and live-probed: ANY arn-form input (lambda or
+    // wrong-service) is split on the last ':function:' or the last colon
+    // token, and the error ARN is BUILT FROM THE BACKEND CONTEXT plus the
+    // extracted (name[:qualifier]) — moto never echoes a foreign or
+    // wrong-service input ARN back. A plain name was already backend-built.
+    let (name, qualifier) = if let Some(rest) = name_or_arn.strip_prefix("arn:") {
+        let unknown_qual = if let Some(idx) = rest.find(":function:") {
+            let tail = &rest[idx + ":function:".len()..];
+            tail.contains(':')
+        } else {
+            rest.find(':').is_some()
+        };
+        if unknown_qual {
+            // python: qualifier = arn.split(":")[-1]; arn trimmed of the
+            // last colon segment; name = the final token
+            let q = name_or_arn.split(':').next_back().unwrap_or("");
+            let trimmed = name_or_arn.rsplit_once(':').map(|(a, _)| a).unwrap_or("");
+            (extract_arn_or_tail_name(trimmed), Some(q.to_string()))
+        } else {
+            (
+                name_or_arn
+                    .split_once("arn:aws:lambda:")
+                    .and_then(|_| name_or_arn.find(":function:"))
+                    .map(|i| name_or_arn[i + ":function:".len()..].to_string())
+                    .or_else(|| name_or_arn.split(':').next_back().map(str::to_string))
+                    .unwrap_or_default(),
+                None,
+            )
+        }
     } else {
-        format!("arn:aws:lambda:{region}:{account}:function:{name_or_arn}")
+        (name_or_arn.to_string(), None)
     };
+    let mut arn = format!("arn:aws:lambda:{region}:{account}:function:{name}");
+    // the qualifier appends only when the name segment carries no colon
+    if let Some(q) = qualifier {
+        if !name.contains(':') {
+            arn = format!("{arn}:{q}");
+        }
+    }
     AwsResponse::error(
         404,
         "ResourceNotFoundException",
         &format!("Function not found: {arn}"),
     )
+}
+
+/// moto split_function_arn's name slot: the string after `:function:`
+/// when present, else the final colon token (the wrong-service mangle).
+fn extract_arn_or_tail_name(arn: &str) -> String {
+    if let Some(idx) = arn.find(":function:") {
+        arn[idx + ":function:".len()..].to_string()
+    } else {
+        arn.split(':').next_back().unwrap_or("").to_string()
+    }
 }
 
 /// Resolve a function by name / ARN / alias. Qualifier resolution order:
