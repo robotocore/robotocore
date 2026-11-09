@@ -15,7 +15,7 @@ base64 = "0.22"
 # Real crypto for Sign/Verify, GenerateMac, Encrypt/Decrypt round-trips,
 # key pairs, import wrapping and ECDH
 sha2 = "0.10"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 hmac = "0.12"
 rand = "0.8"
 rsa = { version = "0.9", features = ["sha2", "getrandom"] }
