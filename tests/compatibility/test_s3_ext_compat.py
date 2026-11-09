@@ -2369,6 +2369,72 @@ class TestS3TaggingVersioning:
         tags = s3.get_object_tagging(Bucket=name, Key="good")["TagSet"]
         assert tags == [{"Key": "m", "Value": "1"}]
 
+    def test_mpu_complete_replicates(self, s3):
+        """Replication rides the MPU-complete path like the direct put
+        paths (twin's replication engine mirrors store semantics; the
+        #475 review's maybe_replicate lead)."""
+        src = f"repl-src-{uuid.uuid4().hex[:8]}"
+        dst = f"repl-dst-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=src)
+        s3.create_bucket(Bucket=dst)
+        s3.put_bucket_versioning(Bucket=src, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_bucket_replication(
+            Bucket=src,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/repl",
+                "Rules": [{"Status": "Enabled", "Destination": {"Bucket": f"arn:aws:s3:::{dst}"}}],
+            },
+        )
+        s3.put_object(Bucket=src, Key="direct", Body=b"put-data")
+        assert s3.get_object(Bucket=dst, Key="direct")["Body"].read() == b"put-data"
+        # The pending tag set is captured at CREATE (moto responses.py
+        # :3137); first-value collapse collapses m=1&m=2 → m=1.
+        u = s3.create_multipart_upload(Bucket=src, Key="mpu-back", Tagging="m=1&m=2")["UploadId"]
+        p = s3.upload_part(
+            Bucket=src,
+            Key="mpu-back",
+            UploadId=u,
+            PartNumber=1,
+            Body=b"B" * (5 * 1024 * 1024),
+        )
+        s3.complete_multipart_upload(
+            Bucket=src,
+            Key="mpu-back",
+            UploadId=u,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": p["ETag"]}]},
+        )
+        assert s3.get_object(Bucket=dst, Key="mpu-back")["Body"].read() == b"B" * (5 * 1024 * 1024)
+        # The replica carries the SOURCE's etag (the composite multipart
+        # one — store_bytes mints a plain md5; review-probed divergence)
+        # and the grafted first-value tags.
+        ver = s3.list_object_versions(Bucket=dst, Prefix="mpu-back")["Versions"]
+        src_ver = s3.list_object_versions(Bucket=src, Prefix="mpu-back")["Versions"]
+        assert ver[-1]["ETag"] == src_ver[0]["ETag"]
+        tags = s3.get_object_tagging(Bucket=dst, Key="mpu-back")["TagSet"]
+        assert tags == [{"Key": "m", "Value": "1"}]
+        # An invalid pending set fails the complete; the replica still
+        # lands untagged (put-path precedent — invalid lanes replicate
+        # too). The pending set is captured at CREATE — the model rejects
+        # Tagging on complete client-side.
+        u2 = s3.create_multipart_upload(Bucket=src, Key="mpu-bad", Tagging="k(x)=v")["UploadId"]
+        p2 = s3.upload_part(
+            Bucket=src,
+            Key="mpu-bad",
+            UploadId=u2,
+            PartNumber=1,
+            Body=b"A" * (5 * 1024 * 1024),
+        )
+        with pytest.raises(ClientError) as exc:
+            s3.complete_multipart_upload(
+                Bucket=src,
+                Key="mpu-bad",
+                UploadId=u2,
+                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": p2["ETag"]}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidTag"
+        assert s3.get_object(Bucket=dst, Key="mpu-bad")["Body"].read() == b"A" * (5 * 1024 * 1024)
+        assert s3.get_object_tagging(Bucket=dst, Key="mpu-bad")["TagSet"] == []
+
     def test_header_duplicate_key_keeps_first_value(self, s3, versioned_tagged):
         """moto's header path (parse_qs → values[0]) keeps the FIRST
         duplicate key's value while the XML path keeps the LAST

@@ -256,7 +256,13 @@ S3
    Vec forward and removes right-to-left — live-verified Put-then-
    Complete). Recorded lead (out-of-lane): completed multipart
    objects do not reach maybe_replicate — replication on the
-   complete path is a pre-existing gap.
+   complete path is a pre-existing gap — CLOSED 2026-11-09:
+   CompleteMultipartUpload now calls maybe_replicate like the direct
+   put paths (both copy the stored version's tags with the object) —
+   including the INVALID-pending lane (replicated untagged, exactly
+   like put_object's error path; botocore rejects Tagging on
+   CompleteMultipartUpload client-side, so invalid sets ride from
+   CREATE). Pin: TestS3TaggingVersioning.test_mpu_complete_replicates.
    where the twin answers 200 with the member dropped — twin-preferred,
    recorded as the oracle misbehaving. 6 pins in TestS3TaggingVersioning
    (129-char key; k(x) key regex; 257-char value; compound two-error

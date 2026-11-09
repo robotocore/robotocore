@@ -1,10 +1,10 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-09T09:23:32.514980+00:00",
+  "generated_at": "2026-11-09T11:05:14.173561+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "289db43f704e6baad156d795d84dd021a09e952a296593d933ceb6c8c324a5f8"
+    "crates/s3/src/": "c616bc364168a66dab4c1bacf1e961c142a80cea2ac335362b051128d8b91691"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
