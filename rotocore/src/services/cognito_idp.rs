@@ -915,6 +915,21 @@ fn delete_user_pool(s: &mut State, p: &Value) -> Response {
     let Some(idx) = s.pools.iter().position(|(k, _)| *k == pool_id) else {
         return pool_missing(&pool_id);
     };
+    // real AWS refuses to delete a deletion-protected pool:
+    // "When you try to delete a protected user pool in a DeleteUserPool
+    // API request, Amazon Cognito returns an InvalidParameterException
+    // error" (botocore cognito-idp UserPoolType.DeletionProtection doc).
+    // Deactivation is the UpdateUserPool INACTIVE write. moto deletes
+    // unconditionally (recorded known diff). Absent = the INACTIVE
+    // default (#456), so pools created without the member delete fine.
+    if s.pools[idx].1.pool.get("DeletionProtection").and_then(Value::as_str) == Some("ACTIVE") {
+        return err(
+            "InvalidParameterException",
+            &format!(
+                "User pool {pool_id} cannot be deleted while DeletionProtection is set to ACTIVE."
+            ),
+        );
+    }
     s.pools.remove(idx);
     s.domains.retain(|(_, pid)| *pid != pool_id);
     ok_json(&json!({}))

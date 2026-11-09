@@ -62,6 +62,19 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Cognito: DeleteUserPool refuses a DeletionProtection=ACTIVE pool.**
+  real AWS: "When you try to delete a protected user pool in a
+  DeleteUserPool API request, Amazon Cognito returns an
+  InvalidParameterException error" (botocore UserPoolType.
+  DeletionProtection doc); deactivation is the UpdateUserPool INACTIVE
+  write. moto deletes unconditionally (recorded known diff — the twin
+  is real-AWS-preferred on this surface since #456). The guard claims
+  only an EXPLICIT stored ACTIVE member (absent = the INACTIVE
+  default, still deletable); the error MESSAGE text is twin-authored —
+  the recorded oracle pins the code, not the string. 2 new pins in
+  TestDeletionProtectionRender (DeleteGuardBlocksActivePool:
+  refuse → pool survives → deactivate → delete → 404;
+  DeleteWithoutMemberStillWorks anchor).
 - **Lambda: ESM bodies drop the phantom `LastProcessingResult`
   member.** moto stores the member as `None` (awslambda/models.py:1407)
   and its None-filter (1433-1434) drops it outright — moto bodies never

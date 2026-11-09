@@ -1648,7 +1648,15 @@ class TestDeletionProtectionRender:
             got = cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]
             assert got["DeletionProtection"] == "ACTIVE"
         finally:
-            cognito.delete_user_pool(UserPoolId=pool_id)
+            # the delete-guard refuses ACTIVE pools — deactivate first
+            try:
+                cognito.update_user_pool(UserPoolId=pool_id, DeletionProtection="INACTIVE")
+            except Exception:
+                pass  # best-effort teardown
+            try:
+                cognito.delete_user_pool(UserPoolId=pool_id)
+            except Exception:
+                pass  # best-effort teardown
 
     def test_update_flips_and_resets_deletion_protection(self, cognito):
         """UpdateUserPool mutates DeletionProtection, and RESETS omitted
@@ -1686,3 +1694,58 @@ class TestDeletionProtectionRender:
             )
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_guard_blocks_active_pool(self, cognito):
+        """real AWS returns InvalidParameterException for DeleteUserPool
+        on a DeletionProtection=ACTIVE pool — "When you try to delete a
+        protected user pool in a DeleteUserPool API request, Amazon
+        Cognito returns an InvalidParameterException error" (botocore
+        UserPoolType.DeletionProtection doc). moto deletes
+        unconditionally (recorded known diff). Deactivation via
+        UpdateUserPool INACTIVE re-enables the delete."""
+        import uuid
+
+        pool_id = cognito.create_user_pool(
+            PoolName=f"dp-guard-{uuid.uuid4().hex[:8]}",
+            DeletionProtection="ACTIVE",
+        )["UserPool"]["Id"]
+        try:
+            with pytest.raises(Exception) as err:
+                cognito.delete_user_pool(UserPoolId=pool_id)
+            body = getattr(err.value, "response", {}).get("Error", {})
+            assert body.get("Code") == "InvalidParameterException"
+            # the pool survives the refused delete
+            assert (
+                cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]["DeletionProtection"]
+                == "ACTIVE"
+            )
+            # deactivate, then the delete goes through
+            cognito.update_user_pool(UserPoolId=pool_id, DeletionProtection="INACTIVE")
+            cognito.delete_user_pool(UserPoolId=pool_id)
+            with pytest.raises(Exception) as gone:
+                cognito.describe_user_pool(UserPoolId=pool_id)
+            assert (
+                getattr(gone.value, "response", {}).get("Error", {}).get("Code")
+                == "ResourceNotFoundException"
+            )
+        finally:
+            try:
+                cognito.delete_user_pool(UserPoolId=pool_id)
+            except Exception:
+                pass  # already deleted via the guard sequence
+
+    def test_delete_without_member_still_works(self, cognito):
+        """The guard only claims an EXPLICIT ACTIVE member — pools created
+        without one carry the INACTIVE default (#456) and delete fine."""
+        import uuid
+
+        pool_id = cognito.create_user_pool(PoolName=f"dp-nomember-{uuid.uuid4().hex[:8]}")[
+            "UserPool"
+        ]["Id"]
+        cognito.delete_user_pool(UserPoolId=pool_id)
+        with pytest.raises(Exception) as gone:
+            cognito.describe_user_pool(UserPoolId=pool_id)
+        assert (
+            getattr(gone.value, "response", {}).get("Error", {}).get("Code")
+            == "ResourceNotFoundException"
+        )
