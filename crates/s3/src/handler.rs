@@ -1507,9 +1507,14 @@ impl S3Handler {
     /// urllib.parse.unquote_plus for a single Tagging half.
     fn tagging_header_decode(raw: &str) -> String {
         let plus_spaced = raw.replace('+', " ");
-        urlencoding::decode(&plus_spaced)
-            .map(|cow| cow.into_owned())
-            .unwrap_or_else(|_| "\u{fffd}".to_string())
+        // percent-decode to bytes (invalid escapes pass through
+        // literally), then replace each maximal invalid UTF-8
+        // subsequence with U+FFFD — unquote_plus's errors='replace'.
+        // The whole-half Err → single-FFFD mapping this replaces broke
+        // multi-bad-byte diagnostics (review #482: one_bad is
+        // '\ufffd(x' on moto vs '\ufffd' under the whole-half map).
+        let decoded = urlencoding::decode_binary(plus_spaced.as_bytes());
+        String::from_utf8_lossy(&decoded).into_owned()
     }
 
     /// Store object bytes, applying bucket versioning semantics.
@@ -9820,6 +9825,21 @@ mod catchup_fx5_object_attributes_tests {
         assert_eq!(
             S3Handler::tags_list_from_header("a=%ff"),
             vec![("a".into(), "\u{fffd}".into())]
+        );
+        // Multi-bad-byte and mixed-validity sequences replace per maximal
+        // invalid subsequence (unquote_plus errors='replace'), not to a
+        // single whole-half FFFD (review #482 diagnostic note).
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=%c3%28x"),
+            vec![("a".into(), "\u{fffd}(x".into())]
+        );
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=%ff%ff"),
+            vec![("a".into(), "\u{fffd}\u{fffd}".into())]
+        );
+        assert_eq!(
+            S3Handler::tags_list_from_header("a=g%FFood"),
+            vec![("a".into(), "g\u{fffd}ood".into())]
         );
         // Empty pair segments (wire "a=&&b=1") are skipped like moto.
         assert_eq!(
