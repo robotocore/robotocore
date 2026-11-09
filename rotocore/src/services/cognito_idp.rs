@@ -846,6 +846,15 @@ fn create_user_pool(
         "SmsConfiguration",
         "AdminCreateUserConfig",
         "UsernameAttributes",
+        // DeletionProtection: botocore models the member on CreateUserPool
+        // (DeletionProtectionType enum ACTIVE|INACTIVE) and on the
+        // UserPoolType output. moto carries it the same way — the whole
+        // body passes through into extended_config
+        // (cognitoidp/models.py:470-472) and renders whatever was passed —
+        // with no literal member handling anywhere; moto's describe omits
+        // it only for pools CREATED without one (it never adds a default),
+        // which is the #456-recorded diff.
+        "DeletionProtection",
     ] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
             pool[key] = v.clone();
@@ -943,9 +952,25 @@ fn update_user_pool(s: &mut State, p: &Value) -> Response {
         "EmailConfiguration",
         "SmsConfiguration",
         "AdminCreateUserConfig",
+        "DeletionProtection",
     ] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
             pl.pool[key] = v.clone();
+        }
+    }
+    // UpdateUserPool RESETS omitted members to their defaults — botocore's
+    // UpdateUserPool doc: "if you don't provide a value for an attribute,
+    // Amazon Cognito sets it to its default value" — and moto matches
+    // (cognitoidp/models.py:470-472: extended_config = DEFAULT_USER_POOL_
+    // CONFIG plus provided keys; an omitted DeletionProtection vanishes
+    // from describe). Preserve-on-omit would keep terraform-managed
+    // protection ACTIVE after an unrelated update, diverging from both
+    // oracles. The describe path renders the INACTIVE default for an
+    // un-stored member (#456) — the same observable state real AWS yields
+    // after the reset.
+    if p.get("DeletionProtection").filter(|v| !v.is_null()).is_none() {
+        if let Some(map) = pl.pool.as_object_mut() {
+            map.remove("DeletionProtection");
         }
     }
     pl.pool["LastModifiedDate"] = json!(now());

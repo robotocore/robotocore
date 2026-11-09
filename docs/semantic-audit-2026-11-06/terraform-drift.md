@@ -164,6 +164,23 @@ Two wire divergences surfaced while pinning the wave-2 rows, both fixed:
   forever. real AWS always renders the member; moto omits it (known
   diff). The twin now renders the INACTIVE default; pin
   TestDeletionProtectionRender.
+  Closed (2026-11-09): the describe-side default left the STORAGE half
+  — create/update dropped the wire member (moto carries it as a
+  whole-body pass-through into extended_config,
+  cognitoidp/models.py:470-472, with no literal handling; its reset-on
+  -update came from the same rebuild — an update that omits the member
+  resets it, per botocore's UpdateUserPool doc "if you don't provide a
+  value for an attribute, Amazon Cognito sets it to its default
+  value"). So a terraform pool with `deletion_protection = ACTIVE`
+  flipped back to INACTIVE on the next refresh. Create now stores;
+  UpdateUserPool mutates and RESETS to the INACTIVE default when the
+  caller omits the member — matching both oracles (preserve-on-omit
+  was falsified by the adversarial reviewer's live moto probe).
+  describe renders stored-or-default. 3 pins added to
+  TestDeletionProtectionRender (create-store, flip → unrelated update
+  → reset, INACTIVE write-back). Junk-enum values echo as stored (moto
+  does the same pass-through); the real-AWS Delete-guard on an ACTIVE
+  pool remains unimplemented — unrecorded real-AWS-side lead.
 - CloudWatch alarm readback + Cognito pool schema remainder unchanged.
 
 

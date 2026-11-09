@@ -62,6 +62,29 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Cognito: user-pool DeletionProtection stores on create/update.**
+  botocore models the member on CreateUserPool/UpdateUserPool (enum
+  ACTIVE|INACTIVE) and on the UserPoolType output. moto has no literal
+  handling: the whole body passes into `extended_config`
+  (cognitoidp/models.py:470-472 — DEFAULT_USER_POOL_CONFIG plus provided
+  keys), so moto stores the passed value and renders it, while its
+  describe omits the member for pools CREATED without one (no default
+  — the #456-recorded diff) and an update that OMITS the member resets
+  it (botocore's UpdateUserPool doc: "if you don't provide a value for
+  an attribute, Amazon Cognito sets it to its default value"). #456
+  fixed the describe render; the storage half still dropped the wire
+  value, so a terraform pool with `deletion_protection = ACTIVE`
+  flipped back on the next refresh. Create stores the wire value;
+  UpdateUserPool mutates it and RESETS to the INACTIVE default when the
+  caller omits the member (matching both oracles — an earlier draft of
+  this fix preserved on omit, falsified by the adversarial reviewer's
+  live moto probe and botocore prose). describe renders stored-or-
+  INACTIVE. TestDeletionProtectionRender gains 3 pins:
+  CreateStoresDeletionProtection;
+  UpdateFlipsAndResetsDeletionProtection (flip → unrelated update →
+  reset to INACTIVE → INACTIVE write-back; the first two legs are red
+  pre-fix). A terraform modify path must therefore always re-send
+  deletion_protection — as the provider does.
 - **Lambda: ESM bodies carry the per-mapping `Tags` member.** moto's
   get_configuration renders `Tags` UNFILTERED (awslambda/models.py:1429
   — `{}` survives its None-filter), so all five ESM bodies (create/
