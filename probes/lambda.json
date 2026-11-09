@@ -1,10 +1,10 @@
 {
   "service": "lambda",
-  "generated_at": "2026-11-08T23:41:39.496803+00:00",
+  "generated_at": "2026-11-09T00:10:36.969099+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/lambda.rs": "absent",
     "rotocore/src/services/lambda/": "absent",
-    "crates/lambda/src/": "f78c02479946611f9f0d16066aa130358d30ef853830e6732b53c88eb58f9f1d"
+    "crates/lambda/src/": "221d2437a60852487b259f938096489526fe0b14baf9e705f132675f55727508"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -18,7 +18,7 @@
     {
       "operation": "AddLayerVersionPermission",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "AddPermission",
@@ -53,7 +53,7 @@
     {
       "operation": "CreateFunction",
       "status": "working",
-      "message": "OK (required-only fill)"
+      "message": "implemented via required-only (ResourceConflictException)"
     },
     {
       "operation": "CreateFunctionUrlConfig",
@@ -103,7 +103,7 @@
     {
       "operation": "DeleteLayerVersion",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteProvisionedConcurrencyConfig",
@@ -203,7 +203,7 @@
     {
       "operation": "GetLayerVersionPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetPolicy",
@@ -358,7 +358,7 @@
     {
       "operation": "RemoveLayerVersionPermission",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "RemovePermission",
