@@ -100,6 +100,26 @@ fn xml_sections(doc: &str, tag: &str) -> Vec<String> {
 // Bucket CORS (browser preflights)
 // ---------------------------------------------------------------------------
 
+/// Is the `<tag>` element present at all in `doc` — including a
+/// self-closed `<tag/>`, which `xml_text`/`xml_sections` (they require
+/// a closer) do not see? moto's rule normalization keys on member
+/// PRESENCE (`"ID" not in rule`), and xmltodict folds a self-closed
+/// element into the same None member — mirror both shapes here.
+fn xml_child_present(doc: &str, tag: &str) -> bool {
+    let open = format!("<{}", tag);
+    let mut from = 0;
+    while let Some(i) = doc[from..].find(&open) {
+        let at = from + i;
+        // The tag-name boundary: `<ID>` / `<ID attr="x">` / `<ID/>` are
+        // matches, `<IDX>` is not.
+        match doc[at + open.len()..].chars().next() {
+            Some('>') | Some(' ') | Some('/') => return true,
+            _ => from = at + open.len(),
+        }
+    }
+    false
+}
+
 /// One bucket CORS rule parsed from the stored PutBucketCors XML — the
 /// matching subset of the gateway's dead `S3CorsRule` shape (`src/cors.rs`
 /// builders cannot be imported into this crate; the contract mirrors them).
@@ -5711,9 +5731,20 @@ impl S3Handler {
                     .map(|inner| format!("<Destination>{}</Destination>", inner))
                     .unwrap_or_else(|| "<Destination></Destination>".to_string());
                 rules_xml.push(format!(
-                    "<Rule><ID>{}</ID><Priority>{}</Priority><Status>{}</Status><DeleteMarkerReplication><Status>Disabled</Status></DeleteMarkerReplication><Filter><Prefix/></Filter>{}</Rule>",
-                    xml_escape(&xml_child_text(&rule, "ID").unwrap_or_default()),
-                    xml_escape(&xml_child_text(&rule, "Priority").unwrap_or_else(|| "1".to_string())),
+                    "<Rule>{}{}<Status>{}</Status><DeleteMarkerReplication><Status>Disabled</Status></DeleteMarkerReplication><Filter><Prefix/></Filter>{}</Rule>",
+                    // moto's rebuild passes stored members through the
+                    // serializer, which SKIPS None — a present-empty ID
+                    // or Priority renders nothing (review B1 on #480).
+                    match xml_child_text(&rule, "ID").filter(|id| !id.is_empty()) {
+                        Some(id) => format!("<ID>{}</ID>", xml_escape(&id)),
+                        None => String::new(),
+                    },
+                    match xml_child_text(&rule, "Priority").as_deref() {
+                        Some(text) if !text.is_empty() => {
+                            format!("<Priority>{}</Priority>", xml_escape(text))
+                        }
+                        _ => String::new(),
+                    },
                     xml_escape(&xml_child_text(&rule, "Status").unwrap_or_default()),
                     dest
                 ));
@@ -5753,19 +5784,28 @@ impl S3Handler {
             );
         }
         // moto models.py:2233-2247 normalizes each rule at PUT: Priority
-        // defaults to 1 and the ID is a random 30-char alnum when absent.
+        // defaults to 1 ONLY when the member is ABSENT (a present-but-
+        // empty `<Priority></Priority>` stays None — its GET build skips
+        // it), and the ID is a random 30-char alnum only when the `<ID>`
+        // member is ABSENT (`"ID" not in rule` — a present-empty
+        // `<ID></ID>` or self-closed `<ID/>` keeps its None; live- and
+        // source-verified, review B1 on #480).
         let role = xml_text(&body, "Role").unwrap_or_default();
         let mut rule_xmls = Vec::new();
         for rule in xml_sections(&body, "Rule") {
-            let id = xml_child_text(&rule, "ID")
-                .filter(|id| !id.is_empty())
-                .unwrap_or_else(|| {
-                    // moto models.py:2239-2244 mints a random 30-char
-                    // alnum ID; uuid v4 simple() is 32 hex chars — take
-                    // its first 30 (same charset family, same length).
-                    uuid::Uuid::new_v4().simple().to_string()[..30].to_string()
-                });
-            let priority = xml_child_text(&rule, "Priority").unwrap_or_else(|| "1".to_string());
+            let id = if xml_child_present(&rule, "ID") {
+                xml_child_text(&rule, "ID").unwrap_or_default()
+            } else {
+                // moto models.py:2239-2244 mints a random 30-char alnum
+                // ID; uuid v4 simple() is 32 hex chars — take its first
+                // 30 (same length, same charset family).
+                uuid::Uuid::new_v4().simple().to_string()[..30].to_string()
+            };
+            let priority = if xml_child_present(&rule, "Priority") {
+                xml_child_text(&rule, "Priority").unwrap_or_default()
+            } else {
+                "1".to_string()
+            };
             let status = xml_child_text(&rule, "Status").unwrap_or_else(|| "Disabled".to_string());
             let dest = xml_sections(&rule, "Destination")
                 .pop()

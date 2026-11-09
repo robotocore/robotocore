@@ -2423,7 +2423,6 @@ class TestS3TaggingVersioning:
         assert rules[0]["Filter"] == {"Prefix": ""}
         assert rules[0]["Destination"] == {"Bucket": "arn:aws:s3:::dst-x"}
         assert len(rules[0]["ID"]) == 30
-        assert len(rules[0]["ID"]) == 30
         # rule 2 (no filter): Priority defaults to 1, ID minted
         assert rules[1] == {
             "ID": rules[1]["ID"],
@@ -2450,6 +2449,29 @@ class TestS3TaggingVersioning:
         )
         got = s3.get_bucket_replication(Bucket=name)["ReplicationConfiguration"]["Rules"][0]
         assert got["ID"] == "my-explicit-id"
+
+        # present-but-EMPTY member: moto's normalization keys on member
+        # PRESENCE (`"ID" not in rule`, models.py:2239), so `<ID></ID>`
+        # keeps its None — the GET rebuild's serializer skip renders the
+        # rule with NO ID member (review B1 on #480, live-verified both
+        # engines). Priority absent still defaults to 1; empty Priority
+        # omits from the GET view the same way.
+        s3.put_bucket_replication(
+            Bucket=name,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/repl",
+                "Rules": [
+                    {
+                        "ID": "",
+                        "Status": "Enabled",
+                        "Destination": {"Bucket": "arn:aws:s3:::dst-x"},
+                    }
+                ],
+            },
+        )
+        got = s3.get_bucket_replication(Bucket=name)["ReplicationConfiguration"]["Rules"][0]
+        assert "ID" not in got, f"present-empty ID must be omitted, got {got.get('ID')!r}"
+        assert got["Priority"] == 1
 
     def test_mpu_complete_replicates(self, s3):
         """Replication rides the MPU-complete path like the direct put
