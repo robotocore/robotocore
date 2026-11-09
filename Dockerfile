@@ -37,7 +37,7 @@ RUN cargo build --locked --release && strip target/release/robotocore-rust
 # subprocess python, so the bundle has to ride along: built once here and
 # COPY'd into every runtime stage, exported via PYTHONPATH (the distroless
 # base has no pip or package manager of its own).
-FROM python:3.11-slim-bookworm AS lambda-site
+FROM python:3.15-slim-bookworm AS lambda-site
 
 RUN pip install --no-cache-dir --no-compile --target /lambda-site \
         boto3 botocore
