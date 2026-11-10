@@ -53,6 +53,13 @@ from scripts.probe_freshness import impl_fingerprint
 
 # Operations that are destructive or have side effects we don't want.
 SKIP_OPERATIONS = {
+    # UploadPartCopy needs an ACTIVE multipart upload + a live copy
+    # source, and PutObjectAcl's synthesized ACP shapes engage deeper
+    # paths than the probe's single-call fill reaches; the probe
+    # classified both not_implemented against tame SDK calls that both
+    # engines answer 200 (live-captured both).
+    "UploadPartCopy",
+    "PutObjectAcl",
     "DeleteBucket",
     "DeleteQueue",
     "DeleteTopic",
