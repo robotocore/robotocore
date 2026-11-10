@@ -373,10 +373,13 @@ fn evaluate_preconditions(
             "At least one of the pre-conditions you specified did not hold",
         ))
     }
-    // moto parses If-(Un)Modified-Since via email.utils.parsedate, which
-    // IGNORES the weekday token (a wrong weekday on a future date still
-    // 304s — live-captured) — chrono's RFC 2822 verifies the weekday and
-    // errors on mismatch, so both date parsers drop the token first.
+    // moto parses If-(Un)Modified-Since via datetime.strptime(RFC1123 =
+    // "%a, %d %b %Y %H:%M:%S GMT", core/utils.py:174,207): a weekday TOKEN
+    // is required (missing → ValueError → moto 500) but its CONSISTENCY
+    // is ignored (a wrong weekday on a future date still 304s — live-
+    // captured) — chrono's RFC 2822 verifies the consistency and errors
+    // on mismatch, so both date parsers drop the token before matching
+    // (verdict-equivalent: every moto-parseable input carries ", ").
     fn parse_since_like_moto(v: &str) -> Option<i64> {
         let needle = if let Some((_, rest)) = v.split_once(", ") {
             rest
@@ -3149,7 +3152,9 @@ impl S3Handler {
             .get("x-amz-storage-class")
             .cloned()
             .unwrap_or_else(|| "STANDARD".to_string());
-        // moto CopyObject validates the requested storage class against the
+        // moto CopyObject validates a REQUESTED storage class against the
+        // whitelist (models.py:2416 passes only what the client sent;
+        // copies without one take the default STANDARD outright).
         const COPY_STORAGE_CLASSES: [&str; 9] = [
             "STANDARD",
             "REDUCED_REDUNDANCY",
@@ -10461,9 +10466,9 @@ mod tests {
         assert_eq!(cls, "GLACIER_IR");
     }
 
-    /// moto parses If-(Un)Modified-Since dates IGNORING the weekday token
-    /// (email.utils.parsedate; live-captured: a future date with a wrong
-    /// weekday still 304s).
+    /// moto parses If-(Un)Modified-Since dates via strptime(RFC1123),
+    /// requiring the weekday token but ignoring its consistency (live-
+    /// captured: a future date with a wrong weekday still 304s).
     #[test]
     fn test_precondition_ignores_weekday_token() {
         let handler = S3Handler::new();
