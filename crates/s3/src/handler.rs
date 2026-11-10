@@ -3328,6 +3328,18 @@ impl S3Handler {
                 source.version_id.clone(),
             ));
         }
+        // moto's copy response_headers ride new_key.response_dict
+        // (responses.py:2332 push): the ETag header and, when a checksum is
+        // stored, the SDK-algorithm header (live wire capture — the twin
+        // previously carried neither).
+        resp.headers
+            .push(("ETag".to_string(), format!("\"{etag}\"")));
+        if let Some((algorithm, _)) = &copy_checksum {
+            resp.headers.push((
+                "x-amz-sdk-checksum-algorithm".to_string(),
+                algorithm.clone(),
+            ));
+        }
         resp
     }
 
@@ -3602,10 +3614,14 @@ impl S3Handler {
                 for (k, v) in obj.metadata.iter() {
                     resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
                 }
+                // moto strips the checksum-value header only on PARTIAL
+                // ranges (responses.py:1825 — `begin or end < last`); a
+                // full-range 206 echoes it like a 200.
+                let full_range = range.start == 0 && range.end == obj.size;
                 Self::apply_checksum_headers(
                     req,
                     obj.checksum_value.as_ref(),
-                    false,
+                    full_range,
                     &mut resp.headers,
                 );
                 Self::apply_response_header_overrides(req, &mut resp.headers);
@@ -3786,10 +3802,18 @@ impl S3Handler {
                     headers,
                     body: vec![],
                 };
+                // Full-range HEAD-206 echoes the value header like a 200
+                // (moto strips only on partial ranges, responses.py:1825).
+                let full_range = match req.headers.get("range").map(|r| parse_range(r, obj.size)) {
+                    Some(RangeOutcome::Satisfiable(range)) => {
+                        range.start == 0 && range.end == obj.size
+                    }
+                    _ => false,
+                };
                 Self::apply_checksum_headers(
                     req,
                     obj.checksum_value.as_ref(),
-                    false,
+                    full_range,
                     &mut resp.headers,
                 );
                 Self::apply_response_header_overrides(req, &mut resp.headers);
@@ -5570,11 +5594,40 @@ impl S3Handler {
                 return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
             }
         };
+        // moto reads the requested attribute list from the comma-split
+        // x-amz-object-attributes header (responses.py:2063-2064) and
+        // renders each field ONLY when requested (models.py:2436-2445):
+        // LastModified stays header-bound, ETag unquoted, Checksum nested
+        // when requested+stored (ChecksumType rides only a COMPOSITE pair —
+        // the twin has none), ObjectSize and StorageClass as plain scalars.
+        let requested: Vec<String> = req
+            .headers
+            .get("x-amz-object-attributes")
+            .map(|h| h.split(',').map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
+        let mut inner = String::new();
+        if requested.iter().any(|s| s == "ETag") {
+            inner.push_str(&format!("<ETag>{}</ETag>", obj.etag.replace('"', "")));
+        }
+        if requested.iter().any(|s| s == "Checksum") {
+            if let Some((algorithm, value)) = &obj.checksum_value {
+                inner.push_str(&format!(
+                    "<Checksum><Checksum{algorithm}>{value}</Checksum{algorithm}></Checksum>"
+                ));
+            }
+        }
+        if requested.iter().any(|s| s == "ObjectSize") {
+            inner.push_str(&format!("<ObjectSize>{}</ObjectSize>", obj.size));
+        }
+        if requested.iter().any(|s| s == "StorageClass") {
+            inner.push_str(&format!(
+                "<StorageClass>{}</StorageClass>",
+                obj.storage_class
+            ));
+        }
         let mut body = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<GetObjectAttributesOutput xmlns=\"{ns}\"><ETag>{et}</ETag><ObjectSize>{sz}</ObjectSize></GetObjectAttributesOutput>",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<GetObjectAttributesOutput xmlns=\"{ns}\">{inner}</GetObjectAttributesOutput>",
             ns = S3_NS,
-            et = obj.etag,
-            sz = obj.size
         );
         if let Some(vid) = req.query_params.get("versionId") {
             if vid != NULL_VERSION_ID {
@@ -10115,6 +10168,98 @@ mod tests {
         assert!(String::from_utf8_lossy(&tags.body).contains("new"));
     }
 
+    // ------------------------------------------------------------------
+    // Returned surfaces (live-captured moto): full-range 206 value echo,
+    // copy-response headers, requested-attributes modeling.
+    // ------------------------------------------------------------------
+
+    /// moto strips the checksum-value header only on PARTIAL ranges
+    /// (responses.py:1825 `begin or end < last`); a full-range 206 echoes
+    /// it like a 200, GET and HEAD.
+    #[test]
+    fn test_full_range_206_echoes_value_header() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("sc1"), None, b""));
+        put_checksummed(&handler, "sc1", "CRC32C", None, b"gt");
+        for (op, name) in [("GetObject", "g1"), ("HeadObject", "h1")] {
+            let mut req = make_req(op, Some("sc1"), Some("ck"), b"");
+            req.headers
+                .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+            req.headers
+                .insert("range".to_string(), "bytes=0-1".to_string());
+            let resp = handler.handle(req);
+            assert_eq!(resp.status, 206, "{name}");
+            assert!(
+                checksum_echo(&resp)
+                    .contains(&("x-amz-checksum-crc32c".to_string(), "vZJYgw==".to_string())),
+                "{name} full-range must echo the value header, got {:?}",
+                checksum_echo(&resp)
+            );
+        }
+    }
+
+    /// moto's copy response carries the ETag header and, when a checksum is
+    /// stored, the SDK-algorithm header (response_dict render).
+    #[test]
+    fn test_copy_response_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("sc2"), None, b""));
+        handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
+        put_at_source(&handler, "sc2", Some("SHA256"), b"p6b-doc");
+        let resp = copy(&handler, "sc2", "dst", None);
+        let etag_h = resp
+            .headers
+            .iter()
+            .any(|(k, v)| k == "ETag" && v.starts_with('"') && v.ends_with('"'));
+        assert!(etag_h, "copy response must carry a quoted ETag header");
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "x-amz-sdk-checksum-algorithm" && v == "SHA256"),
+            "copy response must carry the stored algorithm header"
+        );
+    }
+
+    /// GetObjectAttributes renders requested fields only; the nested
+    /// Checksum member rides requested+stored.
+    #[test]
+    fn test_object_attributes_requested_fields() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("sc3"), None, b""));
+        put_checksummed(&handler, "sc3", "CRC32C", None, b"gt");
+        let mut req = make_req("GetObjectAttributes", Some("sc3"), Some("ck"), b"");
+        req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ETag,Checksum,ObjectSize,StorageClass".to_string(),
+        );
+        let attr_resp = handler.handle(req);
+        let body = String::from_utf8_lossy(&attr_resp.body);
+        assert!(body.contains("<ETag>"), "got {body}");
+        assert!(
+            body.contains("<Checksum><ChecksumCRC32C>vZJYgw==</ChecksumCRC32C></Checksum>"),
+            "got {body}"
+        );
+        assert!(body.contains("<ObjectSize>2</ObjectSize>"), "got {body}");
+        assert!(
+            body.contains("<StorageClass>STANDARD</StorageClass>"),
+            "got {body}"
+        );
+        assert!(!body.contains("<LastModified>"), "got {body}");
+
+        let mut req = make_req("GetObjectAttributes", Some("sc3"), Some("ck"), b"");
+        req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ObjectSize".to_string(),
+        );
+        let attr_resp = handler.handle(req);
+        let body = String::from_utf8_lossy(&attr_resp.body);
+        assert!(
+            !body.contains("ETag"),
+            "unrequested field must be omitted: {body}"
+        );
+        assert!(body.contains("<ObjectSize>2</ObjectSize>"), "got {body}");
+    }
+
     fn ver_req(bucket: &str) -> AwsRequest {
         let mut req = make_req(
             "PutBucketVersioning",
@@ -10173,12 +10318,15 @@ mod catchup_fx5_object_attributes_tests {
         let resp = handler.handle(make_req("PutObject", Some("fx5-attrs"), Some("k1"), b"x"));
         assert_eq!(resp.status, 200);
 
-        let resp = handler.handle(make_req(
-            "GetObjectAttributes",
-            Some("fx5-attrs"),
-            Some("k1"),
-            b"",
-        ));
+        let mut attrs_req = make_req("GetObjectAttributes", Some("fx5-attrs"), Some("k1"), b"");
+        // botocore cannot send GetObjectAttributes without ObjectAttributes
+        // (required member) — the header gate is live-verified against moto
+        // (requested fields only: attrs=None never occurs wire-side).
+        attrs_req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ETag,ObjectSize".to_string(),
+        );
+        let resp = handler.handle(attrs_req);
         assert_eq!(resp.status, 200, "got {:?}", resp.status);
 
         // The header must be parseable as an RFC 2822 / HTTP-date — moto's
