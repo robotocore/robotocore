@@ -194,8 +194,16 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 }
 
 /// CORS response headers for an origin/method against the bucket's stored
-/// CORS rules, first matching rule wins (same resolution the gateway's
-/// `build_s3_cors_headers` spells out). `None` when no rule matches.
+/// CORS rules. moto's `_set_cors_headers_options` (responses.py:494-526,
+/// with its own "TODO: smarter way of matching" admitting the shortcut)
+/// walks EVERY rule and overwrites the response headers as it goes —
+/// LAST-RULE-WINS, origin-gating only: a rule whose origins do not match
+/// the request raises AccessForbidden, but a rule with matching origins
+/// overwrites the earlier Allow-* headers even when the METHODS disagree
+/// with the preflight. The twin mirrors that walk (override, no break)
+/// so a later liberal-origin rule rewrites an earlier matched one.
+/// `None` when the bucket stores no rules; the AccessForbidden raise maps
+/// to `Some(empty)` (real S3 then sends NO CORS headers).
 ///
 /// Origin patterns match with fnmatch semantics (`https://*.example.com`
 /// works); when `request_headers` (the preflight's
@@ -204,35 +212,53 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 fn bucket_cors_headers(
     cors_xml: &str,
     origin: Option<&str>,
-    method: Option<&str>,
+    _method: Option<&str>,
     request_headers: Option<&str>,
 ) -> Option<Vec<(String, String)>> {
     let origin = origin?;
-    for rule in parse_bucket_cors_rules(cors_xml) {
+    let rules = parse_bucket_cors_rules(cors_xml);
+    if rules.is_empty() {
+        // No stored rules: moto's preflight relay falls through to an
+        // empty-header 200 (live-captured: 403-with-echo only fires on
+        // rules carrying allowed_methods).
+        return None;
+    }
+    // moto's walk is a LAST-WRITE dictionary (self.response_headers), not
+    // an inline vec: later rules OVERWRITE the earlier Allow-* entries.
+    let mut headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for rule in rules {
+        // moto's loop ignores rules whose allowed_methods member is None
+        // (models.py:918-921 keeps it a list; the None case covers rules
+        // carrying none) — it skips only those.
+        if rule.allowed_methods.is_empty() {
+            continue;
+        }
+        // ORIGIN GATE (responses.py:519-526): ANY rule carrying
+        // allowed_methods whose origins do not match the request raises
+        // AccessForbidden — the whole response becomes header-less (real
+        // S3 sends no CORS headers on the deny), regardless of other
+        // matching rules. Return Some(empty) so the relay answers with
+        // the stored status and no CORS headers.
         if !rule
             .allowed_origins
             .iter()
             .any(|o| o == "*" || glob_match(o, origin))
         {
-            continue;
+            return Some(Vec::new());
         }
-        let method = method.unwrap_or("OPTIONS");
-        if !rule
-            .allowed_methods
-            .iter()
-            .any(|m| m == "*" || m.eq_ignore_ascii_case(method))
-        {
-            continue;
-        }
-        let mut headers = vec![(
-            "Access-Control-Allow-Origin".to_string(),
-            origin.to_string(),
-        )];
-        if !rule.allowed_methods.is_empty() {
-            headers.push((
-                "Access-Control-Allow-Methods".to_string(),
+        // NO request-method gate (the TODO at responses.py:498): every
+        // matching-origin rule overwrites the Allow-* headers exactly as
+        // moto's loop runs them — a later liberal-GET rule rewrites an
+        // earlier PUT rule's echo. The Access-Control-Request-Method
+        // member never enters this matching.
+        for (name, value) in [
+            ("Access-Control-Allow-Origin", origin.to_string()),
+            (
+                "Access-Control-Allow-Methods",
                 rule.allowed_methods.join(", "),
-            ));
+            ),
+        ] {
+            headers.insert(name.to_string(), value);
         }
         let allowed_headers_echo: Vec<String> = match request_headers {
             Some(reqs) => reqs
@@ -247,29 +273,40 @@ fn bucket_cors_headers(
                 })
                 .map(String::from)
                 .collect(),
-            // No Access-Control-Request-Headers on the wire (or a real
-            // -object response): the rule's own list is the answer.
+            // No Access-Control-Request-Headers on the wire: the rule's
+            // own list is the answer (the echo carries '*' when the rule
+            // lists it).
             None => rule.allowed_headers.clone(),
         };
         if !allowed_headers_echo.is_empty() {
-            headers.push((
+            headers.insert(
                 "Access-Control-Allow-Headers".to_string(),
                 allowed_headers_echo.join(", "),
-            ));
+            );
         }
         if !rule.expose_headers.is_empty() {
-            headers.push((
+            headers.insert(
                 "Access-Control-Expose-Headers".to_string(),
                 rule.expose_headers.join(", "),
-            ));
+            );
         }
         if let Some(age) = &rule.max_age_seconds {
-            headers.push(("Access-Control-Max-Age".to_string(), age.clone()));
+            headers.insert("Access-Control-Max-Age".to_string(), age.clone());
         }
-        headers.push(("Vary".to_string(), "Origin".to_string()));
-        return Some(headers);
+        headers.insert("Vary".to_string(), "Origin".to_string());
     }
-    None
+    let ordered: Vec<(String, String)> = [
+        "Access-Control-Allow-Origin",
+        "Access-Control-Allow-Methods",
+        "Access-Control-Allow-Headers",
+        "Access-Control-Expose-Headers",
+        "Access-Control-Max-Age",
+        "Vary",
+    ]
+    .iter()
+    .filter_map(|name| headers.get(*name).map(|v| (name.to_string(), v.clone())))
+    .collect();
+    Some(ordered)
 }
 
 /// ISO8601 S3 timestamp (zero fractional seconds, `Z` suffix).
@@ -10682,13 +10719,14 @@ mod catchup_fx5_object_attributes_tests {
         );
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
-        let get = |name: &str| {
-            resp.headers
+        fn get_of(r: &crate::protocol::AwsResponse, name: &str) -> String {
+            r.headers
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case(name))
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default()
-        };
+        }
+        let get = |name: &str| get_of(&resp, name);
         assert_eq!(
             get("Access-Control-Allow-Origin"),
             "https://app.example.com"
@@ -10707,8 +10745,22 @@ mod catchup_fx5_object_attributes_tests {
             "DELETE".to_string(),
         );
         let resp = handler.handle(req);
-        assert_eq!(resp.status, 403);
-        assert!(String::from_utf8_lossy(&resp.body).contains("AccessDenied"));
+        // moto-live truth (captured on 4714 with this exact store): a
+        // DELETE preflight on a GET+PUT-only rule answers 200 with the
+        // relay's wildcard-methods echo — moto's preflight matching is
+        // origin-gated last-rule-wins, NOT method-gated (the TODO
+        // comment at responses.py:498). The old twin 403 was a
+        // moto-mismatch tell; this walk mirrors the live shape.
+        assert_eq!(
+            get_of(&resp, "Access-Control-Allow-Origin"),
+            "https://app.example.com"
+        );
+        assert_eq!(
+            get_of(&resp, "Access-Control-Allow-Methods"),
+            "GET, PUT",
+            "moto's relay is method-ungated: a DELETE preflight echoes the
+            rule's own methods (live-captured 4714: 'GET, PUT')"
+        );
     }
 
     /// The real-response arm (wave-2 gateway finding 14):
