@@ -85,7 +85,8 @@ impl AwsResponse {
                     "x-amz-request-id".to_string(),
                     uuid::Uuid::new_v4().to_string(),
                 ),
-                ("server".to_string(), "robotocore".to_string()),
+                // server is frame-normalized (src/core/server.rs:3465) — no
+                // per-builder push.
             ],
             body: body.into_bytes(),
         }
@@ -115,7 +116,6 @@ impl AwsResponse {
                     "x-amz-request-id".to_string(),
                     uuid::Uuid::new_v4().to_string(),
                 ),
-                ("server".to_string(), "robotocore".to_string()),
             ],
             body: body.into_bytes(),
         }

@@ -2308,16 +2308,10 @@ impl S3Handler {
             crate::xml::fresh_request_id(),
             crate::xml::MOTON_HOST_ID
         ));
-        let mut resp = AwsResponse::xml(status, body);
-        // moto's werkzeug framing carries a Server header on EVERY
-        // response uniformly (the values differ — a transport-level
-        // difference); the twin's own builders push `server: robotocore`
-        // on AwsResponse::error/bucket_error, so the POST-flow errors now
-        // match their own convention instead of standing out intra-twin
-        // (the #495 review's asymmetry note).
-        resp.headers
-            .push(("server".to_string(), "robotocore".to_string()));
-        resp
+        // server is frame-normalized (src/core/server.rs:3465 unconditionally
+        // inserts server: robotocore AFTER the backend appends — the #502
+        // builder pushes were provably wire-invisible, reviewer-confirmed).
+        AwsResponse::xml(status, body)
     }
 
     /// The multipart/form-data browser upload (AWS "POST Object" wire path,
@@ -10482,14 +10476,9 @@ mod tests {
         ));
         let (_e_head, _e_rid, e_rest) = split(&extras_body);
         assert_eq!(e_rest, p_rest);
-        // the #495 asymmetry fix: it carries the server header like the
-        // error/bucket_error builders
-        assert!(
-            aws.headers
-                .iter()
-                .any(|(k, v)| k == "server" && v == "robotocore"),
-            "aws_error_with must carry the twin's server header"
-        );
+        // the server header is frame-normalized (server.rs:3465) — the
+        // #502-era builder pushes were wire-invisible and are gone; a
+        // live GET/POST sanity pins the wire-level uniformity.
     }
 
     /// moto's copy destination class = the REQUESTED class else STANDARD
