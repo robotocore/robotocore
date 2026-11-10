@@ -495,6 +495,15 @@ fn parse_copy_source(value: &str) -> (String, String, Option<String>) {
     }
 }
 
+/// moto's ChecksumCRC32: the base64 of the payload's CRC-32 coded big-endian
+/// (network order) — live-probed jNwWgw== for body 'x' = zlib.crc32(b'x')
+/// .to_be_bytes() — same in CopyObjectResult, CopyPartResult, and the
+/// CompleteMultipartUploadResult (crc32 over the concatenated parts).
+fn b64_be_crc32(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(crc32(data).to_be_bytes())
+}
+
 /// A listing content row: `(key, etag, size, last_modified, storage_class)`.
 pub type ListingRow = (String, String, usize, u64, String);
 
@@ -2111,6 +2120,34 @@ impl S3Handler {
                 }
             }
         }
+        // moto's checksum storage: LIVE-probed trigger — modern botocore
+        // auto-adds `x-amz-checksum-crc32` + `x-amz-sdk-checksum-algorithm`
+        // on every put (when_supported), and moto stores that value on the
+        // key (models.py references checksum_value when the client sent a
+        // checksum). CopyObjectResult renders it conditionally
+        // (responses.py:2463-2470 `if new_key.checksum_value`); the
+        // checksum members never ride the Complete envelope.
+        if let Some(value) = req
+            .headers
+            .get("x-amz-checksum-crc32")
+            .cloned()
+            .or_else(|| {
+                req.headers
+                    .get("x-amz-checksum-algorithm")
+                    .map(|_| b64_be_crc32(&req.body))
+            })
+        {
+            let mut objects = bucket.objects.write();
+            if let Some(entry) = objects.get_mut(&key) {
+                if let Some(v) = entry
+                    .versions
+                    .iter_mut()
+                    .find(|v| v.version_id == version_id)
+                {
+                    v.checksum_value = Some(("CRC32".to_string(), value));
+                }
+            }
+        }
 
         Self::fire_event(
             req,
@@ -3122,10 +3159,14 @@ impl S3Handler {
         let mut resp = AwsResponse::xml(
             200,
             format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CopyObjectResult xmlns=\"{ns}\">\n  <LastModified>{dt}</LastModified>\n  <ETag>&quot;{et}&quot;</ETag>\n</CopyObjectResult>",
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<CopyObjectResult xmlns=\"{ns}\"><ETag>\"{et}\"</ETag><LastModified>{dt}</LastModified>{checksum_member}</CopyObjectResult>",
                 ns = S3_NS,
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
-                et = etag
+                et = etag,
+                checksum_member = match &source.checksum_value {
+                    Some((_, value)) => format!("<ChecksumCRC32>{value}</ChecksumCRC32>"),
+                    None => String::new(),
+                }
             ),
         );
         // moto responses.py:2446-2447: the source's version id rides the
@@ -4829,10 +4870,14 @@ impl S3Handler {
             upload.parts.write().insert(part_number, part);
         }
 
+        // moto's CopyPartResult is asymmetric with CopyObjectResult: NO
+        // checksum member (responses.py:2613-2619 renders LastModified +
+        // ETag only, in the shape's ETag/LastModified order), unlike the
+        // conditional CopyObjectResult above.
         AwsResponse::xml(
             200,
             format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CopyPartResult xmlns=\"{ns}\">\n  <LastModified>{dt}</LastModified>\n  <ETag>&quot;{et}&quot;</ETag>\n</CopyPartResult>",
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<CopyPartResult xmlns=\"{ns}\"><ETag>\"{et}\"</ETag><LastModified>{dt}</LastModified></CopyPartResult>",
                 ns = S3_NS,
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
                 et = etag
@@ -5006,7 +5051,7 @@ impl S3Handler {
             xml_escape(&key)
         );
         let body = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CompleteMultipartUploadResult xmlns=\"{ns}\">\n  <Location>{loc}</Location>\n  <Bucket>{b}</Bucket>\n  <Key>{k}</Key>\n  <ETag>&quot;{et}&quot;</ETag>\n</CompleteMultipartUploadResult>",
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<CompleteMultipartUploadResult xmlns=\"{ns}\"><Location>{loc}</Location><Bucket>{b}</Bucket><Key>{k}</Key><ETag>\"{et}\"</ETag></CompleteMultipartUploadResult>",
             ns = S3_NS,
             loc = xml_escape(&location),
             b = xml_escape(&bucket_name),
