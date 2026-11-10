@@ -3330,24 +3330,34 @@ impl S3Handler {
         }
         // moto's copy response_headers ride new_key.response_dict
         // (headers.update at responses.py:2477-2482, rendered by
-        // models.py:303-347): the quoted ETag header, last-modified always,
+        // models.py:303-357): the quoted ETag header, last-modified always,
         // versioned destinations add x-amz-version-id, non-STANDARD storage
-        // adds x-amz-storage-class; when a checksum is stored the
-        // SDK-algorithm header rides too (live wire capture — the twin
-        // previously carried neither ETag nor the rest).
+        // adds x-amz-storage-class, tagged copies add x-amz-tagging-count
+        // (354-357, live-captured reviewer blocker); when a checksum is
+        // stored the SDK-algorithm header rides too.
+        let stored = dest
+            .objects
+            .read()
+            .get(dest_key)
+            .and_then(|e| e.versions.first())
+            .cloned();
         resp.headers
             .push(("ETag".to_string(), format!("\"{etag}\"")));
         resp.headers.push((
             "last-modified".to_string(),
             httpdate(
-                dest.objects
-                    .read()
-                    .get(dest_key)
-                    .and_then(|e| e.versions.first())
+                stored
+                    .as_ref()
                     .map(|v| v.last_modified)
                     .unwrap_or_else(|| chrono::Utc::now().timestamp() as u64),
             ),
         ));
+        if let Some(v) = &stored {
+            if !v.tags.is_empty() {
+                resp.headers
+                    .push(("x-amz-tagging-count".to_string(), v.tags.len().to_string()));
+            }
+        }
         if dest.is_versioned() {
             resp.headers
                 .push(("x-amz-version-id".to_string(), new_version_id));
@@ -10257,7 +10267,14 @@ mod tests {
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("sc2"), None, b""));
         handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
-        put_at_source(&handler, "sc2", Some("SHA256"), b"p6b-doc");
+        let mut req = make_req("PutObject", Some("sc2"), Some("src"), b"p6b-doc");
+        req.headers.insert(
+            "x-amz-sdk-checksum-algorithm".to_string(),
+            "SHA256".to_string(),
+        );
+        req.headers
+            .insert("x-amz-tagging".to_string(), "k1=v1&k2=v2".to_string());
+        assert_eq!(handler.handle(req).status, 200);
         let resp = copy(&handler, "sc2", "dst", None);
         let etag_h = resp
             .headers
@@ -10269,6 +10286,20 @@ mod tests {
                 .iter()
                 .any(|(k, v)| k == "x-amz-sdk-checksum-algorithm" && v == "SHA256"),
             "copy response must carry the stored algorithm header"
+        );
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("last-modified")),
+            "copy response must carry last-modified, got {:?}",
+            resp.headers
+        );
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "x-amz-tagging-count" && v == "2"),
+            "tagged copies ride x-amz-tagging-count (models.py:354-357), got {:?}",
+            resp.headers
         );
     }
 
