@@ -541,18 +541,26 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
 
     // 7. Body-based Action detection for unsigned requests
     // Some STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
-    // don't include an Authorization header.
-    // Unsigned urlencoded bodies classify as STS; S3's multipart POST forms reach arm 8.
+    // don't include an Authorization header. Real STS form posts always
+    // address the root path (POST /), so park ONLY those — a bucket-shaped
+    // urlencoded PUT/POST is the anonymous browser wire (arm 8), not STS;
+    // parking it made urllib-defaulted (and html-form) PUTs answer
+    // STS-shaped InvalidAction XML instead of moto's S3 behavior.
+    // Unsigned urlencoded bodies classify as STS; S3's multipart POST forms
+    // reach arm 8.
     let content_type = request.header("content-type").unwrap_or("");
-    if content_type.contains("x-www-form-urlencoded") && auth.is_empty() {
+    if path == "/" && content_type.contains("x-www-form-urlencoded") && auth.is_empty() {
         return Some("sts".to_string());
     }
 
     // 8. Path-style S3 fallback for unsigned/anonymous bucket paths.
     // Handles: GET http://localhost:4566/bucket/key.json (public bucket access)
-    // Restricted to GET/HEAD plus the unsigned browser-form POST handled
-    // below, always with no auth header, so that genuine typos and non-S3
-    // services still get a clean 400.
+    // plus the anonymous object writes (moto's _do_authenticate skips
+    // unsigned requests, so an anonymous PUT/DELETE on a bucket-shaped path
+    // reaches S3 and answers moto's observable behavior — anonymous
+    // stores/deletes, or the marker-addressed PUT-tagging 405 XML; both
+    // live-captured), always with no auth header, so that genuine typos and
+    // non-S3 services still get a clean 400.
     // The S3 POST-object wire path carries credentials inside the multipart
     // form (x-amz-signature field), never in an Authorization header, so an
     // unsigned POST on a bucket-shaped path is S3 by definition. Real AWS
@@ -564,7 +572,10 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
     // further up). Must come last — all other service patterns are more
     // specific.
     if auth.is_empty()
-        && (request.method == "GET" || request.method == "HEAD" || request.method == "POST")
+        && matches!(
+            request.method.as_str(),
+            "GET" | "HEAD" | "POST" | "PUT" | "DELETE"
+        )
         && path != "/"
         && !path.starts_with("/_")
     {
@@ -1129,6 +1140,55 @@ mod tests {
         // Root path is not an upload.
         let r = req("POST", "/", "", &[]);
         assert_eq!(route_to_service(&r).as_deref(), None);
+    }
+
+    #[test]
+    fn path_style_s3_put_delete_anonymous() {
+        // moto's _do_authenticate skips unsigned requests, so an anonymous
+        // PUT/DELETE on a bucket-shaped path reaches S3 and answers moto's
+        // observable behavior (anonymous stores/deletes, or the marker-
+        // addressed PUT-tagging 405 XML — the flows live-captured this
+        // wave) instead of the gateway's clean 400.
+        let r = req("PUT", "/my-bucket/key.json", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
+        let r = req("PUT", "/my-bucket", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
+        let r = req("DELETE", "/my-bucket/key.json", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
+        // Root path stays unrouted.
+        let r = req("PUT", "/", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), None);
+        // A signed request routes by its credential scope — arm 8 must not
+        // override it even on a bucket-shaped path.
+        let r = req(
+            "PUT",
+            "/my-bucket/key.json",
+            "",
+            &[("authorization", SIGV4)],
+        );
+        assert_eq!(route_to_service(&r).as_deref(), Some("sqs"));
+    }
+
+    #[test]
+    fn unsigned_sts_form_posts_park_on_root_only() {
+        // STS's unsigned wire shape is a form POST to the root path.
+        let r = req(
+            "POST",
+            "/",
+            "",
+            &[("content-type", "application/x-www-form-urlencoded")],
+        );
+        assert_eq!(route_to_service(&r).as_deref(), Some("sts"));
+        // A bucket-shaped urlencoded PUT is the anonymous browser wire
+        // (arm 8), not STS — urllib and html forms default this content
+        // type on raw PUT bodies.
+        let r = req(
+            "PUT",
+            "/my-bucket/key.json",
+            "",
+            &[("content-type", "application/x-www-form-urlencoded")],
+        );
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
     }
 
     #[test]
