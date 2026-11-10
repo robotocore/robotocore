@@ -41,7 +41,7 @@ until_up() { # url retries
 
 RUST_OLD=$(cat /tmp/${LOG_PREFIX}_rust.pid 2>/dev/null || true)
 if [ -n "$RUST_OLD" ] && ! kill -0 "$RUST_OLD" 2>/dev/null; then RUST_OLD=""; fi
-[ -z "$RUST_OLD" ] && RUST_OLD=$(incumbent_pid "$RUST_PORT" "robotocore-rust --port $RUST_PORT" || true)
+[ -z "$RUST_OLD" ] && RUST_OLD=$(incumbent_pid "$RUST_PORT" "robotocore-rust" || true)
 if [ -n "$RUST_OLD" ]; then
     kill "$RUST_OLD" 2>/dev/null || true
     sleep 1
@@ -61,6 +61,15 @@ echo "Rust server PID: $(cat /tmp/${LOG_PREFIX}_rust.pid)"
 
 if ! until_up "http://127.0.0.1:$RUST_PORT/_robotocore/health" 20; then
     echo "Rust server failed; see /tmp/${LOG_PREFIX}_rust.log"
+    exit 1
+fi
+
+# The health probe above can be answered by a stale incumbent if this
+# server's bind failed — bind errors only surface in the log. Fail loud
+# unless the port is actually held by the PID we just spawned.
+HOLDER=$(ss -ltnp "sport = :$RUST_PORT" 2>/dev/null | grep -oP "pid=\K[0-9]+" | head -1 || true)
+if [ "$HOLDER" != "$(cat /tmp/${LOG_PREFIX}_rust.pid)" ]; then
+    echo "Port $RUST_PORT is held by PID $HOLDER, not the new server"
     exit 1
 fi
 
