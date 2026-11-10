@@ -504,6 +504,32 @@ fn b64_be_crc32(data: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(crc32(data).to_be_bytes())
 }
 
+/// Castagnoli CRC-32C: the wider S3 checksum algorithm (AWS ChecksumAlgorithm
+/// table; moto's compute_checksum leans on an optional crc32c pip lib and
+/// degrades to a CRC32 value when it is missing — a recorded brittleness
+/// tell; the twin always computes the real value, cross-checked against
+/// awscrt's checksums: crc32c(b'gt') = vZJYgw==).
+fn b64_be_crc32c(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(
+        crc::Crc::<u32>::new(&crc::CRC_32_ISCSI)
+            .checksum(data)
+            .to_be_bytes(),
+    )
+}
+
+/// CRC-64/NVMe, the other non-default S3 checksum algorithm (moto computes it
+/// via awscrt, HAS_CRT-gated). Coded big-endian like b64_be_crc32;
+/// awscrt cross-check: crc64nvme(b'gt') = 6kzUMHgW6QU=.
+fn b64_be_crc64nvme(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(
+        crc::Crc::<u64>::new(&crc::CRC_64_NVME)
+            .checksum(data)
+            .to_be_bytes(),
+    )
+}
+
 /// A listing content row: `(key, etag, size, last_modified, storage_class)`.
 pub type ListingRow = (String, String, usize, u64, String);
 
@@ -2139,6 +2165,8 @@ impl S3Handler {
             ("SHA256", "x-amz-checksum-sha256"),
             ("SHA1", "x-amz-checksum-sha1"),
             ("CRC32", "x-amz-checksum-crc32"),
+            ("CRC32C", "x-amz-checksum-crc32c"),
+            ("CRC64NVME", "x-amz-checksum-crc64nvme"),
         ]
         .iter()
         .find_map(|(alg, hdr)| {
@@ -2149,9 +2177,13 @@ impl S3Handler {
                 .cloned()
                 .map(|value| format!("{alg}|{value}"))
                 .or_else(|| {
+                    // moto's _get_checksum resolves the algorithm from the
+                    // SDK header (responses.py:2338) — the header lib consumers
+                    // actually emit; value headers win verbatim when present
+                    // (moto TODO cites AWS's verify step, unimplemented).
                     let sdk_alg = req
                         .headers
-                        .get("x-amz-checksum-algorithm")
+                        .get("x-amz-sdk-checksum-algorithm")
                         .map(|a| a.eq_ignore_ascii_case(alg))
                         .unwrap_or(false);
                     if sdk_alg {
@@ -2166,6 +2198,8 @@ impl S3Handler {
                                 hash.update(&req.body);
                                 base64::engine::general_purpose::STANDARD.encode(hash.finalize())
                             }
+                            "CRC32C" => b64_be_crc32c(&req.body),
+                            "CRC64NVME" => b64_be_crc64nvme(&req.body),
                             _ => b64_be_crc32(&req.body),
                         };
                         Some(format!("{alg}|{computed}"))
@@ -2174,7 +2208,7 @@ impl S3Handler {
                     }
                 })
         });
-        if let Some(joined) = checksum_from_headers {
+        if let Some(ref joined) = checksum_from_headers {
             let (algorithm, value) = joined.split_once('|').unwrap();
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
@@ -2201,6 +2235,21 @@ impl S3Handler {
         let mut resp = AwsResponse::xml(200, String::new());
         resp.headers
             .push(("ETag".to_string(), format!("\"{}\"", etag)));
+        // moto echoes the stored checksum back on the PUT response headers
+        // (response_headers.update({checksum_header: value}) +
+        // FakeKey.response_dict's x-amz-sdk-checksum-algorithm — live
+        // wire capture), for the compute path as well.
+        if let Some(joined) = &checksum_from_headers {
+            let (algorithm, value) = joined.split_once('|').unwrap();
+            resp.headers.push((
+                format!("x-amz-checksum-{}", algorithm.to_lowercase()),
+                value.to_string(),
+            ));
+            resp.headers.push((
+                "x-amz-sdk-checksum-algorithm".to_string(),
+                algorithm.to_string(),
+            ));
+        }
         if version_id != NULL_VERSION_ID {
             resp.headers
                 .push(("x-amz-version-id".to_string(), version_id));
@@ -3322,6 +3371,40 @@ impl S3Handler {
         }
     }
 
+    /// moto's checksum response headers when a checksum is stored (FakeKey
+    /// response_dict render, models.py:337 — live-captured CRC32C flow):
+    /// the SDK-algorithm header rides unconditionally, the value header
+    /// only when the caller sent `x-amz-checksum-mode: ENABLED`
+    /// (responses.py:2015-2029). Range responses keep the algorithm header
+    /// but the checksum-value header is stripped (responses.py:1825-1826),
+    /// so range call sites pass `value_header: false`.
+    fn apply_checksum_headers(
+        req: &AwsRequest,
+        stored: Option<&(String, String)>,
+        value_header: bool,
+        headers: &mut Vec<(String, String)>,
+    ) {
+        let Some((algorithm, value)) = stored else {
+            return;
+        };
+        headers.push((
+            "x-amz-sdk-checksum-algorithm".to_string(),
+            algorithm.clone(),
+        ));
+        if value_header
+            && req
+                .headers
+                .get("x-amz-checksum-mode")
+                .map(|m| m.eq_ignore_ascii_case("ENABLED"))
+                .unwrap_or(false)
+        {
+            headers.push((
+                format!("x-amz-checksum-{}", algorithm.to_lowercase()),
+                value.clone(),
+            ));
+        }
+    }
+
     fn get_object(&self, req: &AwsRequest) -> AwsResponse {
         let (bucket_name, key) = Self::bucket_and_key(req);
         let state = self.get_state(req.account, &req.region);
@@ -3467,6 +3550,12 @@ impl S3Handler {
                 for (k, v) in obj.metadata.iter() {
                     resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
                 }
+                Self::apply_checksum_headers(
+                    req,
+                    obj.checksum_value.as_ref(),
+                    false,
+                    &mut resp.headers,
+                );
                 Self::apply_response_header_overrides(req, &mut resp.headers);
                 return resp;
             }
@@ -3501,6 +3590,7 @@ impl S3Handler {
             resp.headers
                 .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
         }
+        Self::apply_checksum_headers(req, obj.checksum_value.as_ref(), true, &mut resp.headers);
         Self::apply_response_header_overrides(req, &mut resp.headers);
         resp
     }
@@ -3644,6 +3734,12 @@ impl S3Handler {
                     headers,
                     body: vec![],
                 };
+                Self::apply_checksum_headers(
+                    req,
+                    obj.checksum_value.as_ref(),
+                    false,
+                    &mut resp.headers,
+                );
                 Self::apply_response_header_overrides(req, &mut resp.headers);
                 return resp;
             }
@@ -3681,6 +3777,7 @@ impl S3Handler {
             headers,
             body: vec![],
         };
+        Self::apply_checksum_headers(req, obj.checksum_value.as_ref(), true, &mut resp.headers);
         Self::apply_response_header_overrides(req, &mut resp.headers);
         resp
     }
@@ -9676,6 +9773,147 @@ mod tests {
         let token = xml_text(&body, "NextContinuationToken").expect("token");
         let decoded = decode_token(&token).expect("base64 key token");
         assert_eq!(decoded, "k>=");
+    }
+
+    // ------------------------------------------------------------------
+    // CRC32C / CRC64NVME checksum parity (live-captured moto flows)
+    // ------------------------------------------------------------------
+
+    fn put_checksummed(
+        handler: &S3Handler,
+        bucket: &str,
+        algorithm: &str,
+        value: Option<&str>,
+        body: &[u8],
+    ) -> AwsResponse {
+        let mut req = make_req("PutObject", Some(bucket), Some("ck"), body);
+        req.headers.insert(
+            "x-amz-sdk-checksum-algorithm".to_string(),
+            algorithm.to_string(),
+        );
+        if let Some(v) = value {
+            req.headers.insert(
+                format!("x-amz-checksum-{}", algorithm.to_lowercase()),
+                v.to_string(),
+            );
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        resp
+    }
+
+    fn checksum_echo(resp: &AwsResponse) -> Vec<(String, String)> {
+        resp.headers
+            .iter()
+            .filter(|(k, _)| k.contains("hecksum"))
+            .cloned()
+            .collect()
+    }
+
+    /// The value header wins verbatim, and the PUT echoes the pair
+    /// (response_headers.update + FakeKey.response_dict — live wire).
+    #[test]
+    fn test_crc32c_value_header_verbatim_and_put_echo() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("csum1"), None, b""));
+        let resp = put_checksummed(&handler, "csum1", "CRC32C", Some("bogus=="), b"payload");
+        assert_eq!(
+            checksum_echo(&resp),
+            vec![
+                ("x-amz-checksum-crc32c".to_string(), "bogus==".to_string()),
+                (
+                    "x-amz-sdk-checksum-algorithm".to_string(),
+                    "CRC32C".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// sdk-algorithm-only computes the real CRC32C (awscrt cross-check:
+    /// checksums.crc32c(b'gt') = vZJYgw==).
+    #[test]
+    fn test_crc32c_algorithm_only_computes_awscrt_oracle() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("csum2"), None, b""));
+        let resp = put_checksummed(&handler, "csum2", "CRC32C", None, b"gt");
+        assert_eq!(
+            checksum_echo(&resp)[0],
+            ("x-amz-checksum-crc32c".to_string(), "vZJYgw==".to_string())
+        );
+    }
+
+    /// sdk-algorithm-only CRC64NVME computes the real NVMe CRC (awscrt
+    /// cross-check: checksums.crc64nvme(b'gt') = 6kzUMHgW6QU=).
+    #[test]
+    fn test_crc64nvme_algorithm_only_computes_awscrt_oracle() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("csum3"), None, b""));
+        let resp = put_checksummed(&handler, "csum3", "CRC64NVME", None, b"gt");
+        assert_eq!(
+            checksum_echo(&resp)[0],
+            (
+                "x-amz-checksum-crc64nvme".to_string(),
+                "6kzUMHgW6QU=".to_string()
+            )
+        );
+    }
+
+    /// GET keeps the SDK header unconditionally; the value header appears
+    /// only with x-amz-checksum-mode: ENABLED (responses.py:2015-2029,
+    /// live-captured); HEAD mirrors it.
+    #[test]
+    fn test_get_head_checksum_mode_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("csum4"), None, b""));
+        put_checksummed(&handler, "csum4", "CRC32C", None, b"gt");
+
+        let plain = handler.handle(make_req("GetObject", Some("csum4"), Some("ck"), b""));
+        assert_eq!(
+            checksum_echo(&plain),
+            vec![(
+                "x-amz-sdk-checksum-algorithm".to_string(),
+                "CRC32C".to_string()
+            )]
+        );
+        let mut mode = make_req("GetObject", Some("csum4"), Some("ck"), b"");
+        mode.headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        let mode = handler.handle(mode);
+        assert!(checksum_echo(&mode)
+            .contains(&("x-amz-checksum-crc32c".to_string(), "vZJYgw==".to_string())));
+        let mut hmode = make_req("HeadObject", Some("csum4"), Some("ck"), b"");
+        hmode
+            .headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        let hmode = handler.handle(hmode);
+        assert!(checksum_echo(&hmode)
+            .contains(&("x-amz-checksum-crc32c".to_string(), "vZJYgw==".to_string())));
+    }
+
+    /// Range responses keep the algorithm header but the value header is
+    /// stripped (responses.py:1825-1826).
+    #[test]
+    fn test_range_get_strips_checksum_value_header() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("csum5"), None, b""));
+        put_checksummed(&handler, "csum5", "CRC32C", None, b"gtdata");
+        let mut req = make_req("GetObject", Some("csum5"), Some("ck"), b"");
+        req.headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        req.headers
+            .insert("range".to_string(), "bytes=0-1".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 206);
+        assert!(
+            !checksum_echo(&resp)
+                .iter()
+                .any(|(k, _)| k.starts_with("x-amz-checksum-crc32c")),
+            "206 must not render the value header, got {:?}",
+            checksum_echo(&resp)
+        );
+        assert!(checksum_echo(&resp)
+            .iter()
+            .any(|(k, _)| k == "x-amz-sdk-checksum-algorithm"));
     }
 }
 
