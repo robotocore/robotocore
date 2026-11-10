@@ -91,21 +91,21 @@ impl AwsResponse {
         }
     }
 
-    /// Bucket-scoped error (moto S3 `bucket_error` template): adds the
-    /// `<BucketName>` element that AWS S3 and moto include on bucket errors.
+    /// Bucket-scoped error (moto S3 `bucket_error` template): compact one-liner,
+    /// lowercase utf-8, `<BucketName>` element (AWS S3/moto include it on bucket
+    /// errors) plus per-envelope RequestId + the canned HostId
+    /// (live-captured, PR #490 wave).
     pub fn bucket_error(status: u16, code: &str, message: &str, bucket: &str) -> Self {
         let body = format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<Error>
-  <Code>{code}</Code>
-  <Message>{message}</Message>
-  <BucketName>{name}</BucketName>
-</Error>"#,
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<Error><Code>{code}</Code><Message>{message}</Message><BucketName>{name}</BucketName><RequestId>{request_id}</RequestId><HostId>{host_id}</HostId></Error>"#,
             // Bucket names arrive from the request path (`GET /bucket-with-
             // %3Cscript%3E` on a missing bucket) — escape like xml::error_response.
             code = crate::xml::xml_escape(code),
             message = crate::xml::xml_escape(message),
-            name = crate::xml::xml_escape(bucket)
+            name = crate::xml::xml_escape(bucket),
+            request_id = crate::xml::fresh_request_id(),
+            host_id = crate::xml::MOTON_HOST_ID
         );
         Self {
             status,
