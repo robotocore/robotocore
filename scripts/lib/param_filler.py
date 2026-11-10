@@ -316,7 +316,20 @@ def auto_fill_params(service_name: str, operation_name: str) -> dict | None:
     if op.input_shape is None:
         return {}
 
-    return _fill_member(op.input_shape, service_name, 0, "")
+    params = _fill_member(op.input_shape, service_name, 0, "")
+    # Transport-parity guard: botocore overrides the wire Content-Length
+    # header with the ContentLength member when one is modeled, so a
+    # synthesized ContentLength that disagrees with len(Body) declares a
+    # framing length the body doesn't have — the next pipelined request
+    # line then fuses with the leftover body bytes (live-captured: the
+    # 'robe-test-blobPUT' audit row). Reconcile the pair (uploads of
+    # local files use __RelativeToParameterFile and never get here).
+    if isinstance(params, dict) and "Body" in params and "ContentLength" in params:
+        try:
+            params["ContentLength"] = len(params["Body"])
+        except (TypeError, AttributeError):
+            del params["ContentLength"]
+    return params
 
 
 def _botocore_service_name(service_name: str) -> str:

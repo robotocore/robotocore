@@ -1,16 +1,16 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-10T18:13:12.237011+00:00",
+  "generated_at": "2026-11-10T19:33:00.983833+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
     "crates/s3/src/": "63aec6051d2901d831c7197ca044d0808dcc3e4aaffa6ed6cbc51490e3640831"
   },
-  "endpoint": "http://127.0.0.1:4620",
+  "endpoint": "http://127.0.0.1:4626",
   "counts": {
-    "working": 108,
+    "working": 110,
     "needs_params": 0,
-    "not_implemented": 2,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
@@ -293,7 +293,7 @@
     {
       "operation": "GetObjectLockConfiguration",
       "status": "working",
-      "message": "likely implemented (ObjectLockConfigurationNotFoundError: Object Lock configuration does not exist for this bucket)"
+      "message": "OK"
     },
     {
       "operation": "GetObjectRetention",
@@ -463,7 +463,7 @@
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the bucket to apply a replic)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketRequestPayment",
@@ -492,8 +492,8 @@
     },
     {
       "operation": "PutObjectAcl",
-      "status": "not_implemented",
-      "message": "not implemented (NotImplemented)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutObjectLegalHold",
@@ -557,8 +557,8 @@
     },
     {
       "operation": "UploadPartCopy",
-      "status": "not_implemented",
-      "message": "not implemented (NotImplemented)"
+      "status": "working",
+      "message": "likely implemented (NoSuchUpload: The specified multipart upload does not exist (upload might )"
     },
     {
       "operation": "WriteGetObjectResponse",
