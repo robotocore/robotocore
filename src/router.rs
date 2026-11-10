@@ -12,7 +12,8 @@
 //! 6. Query string Action parameter
 //! 7. Body-based Action detection for unsigned requests
 //! 8. Path-style S3 fallback for unsigned GET/HEAD requests and unsigned
-//!    POST uploads (S3 browser form POST object path)
+//!    browser writes (POST form uploads, anonymous PUT/DELETE) on
+//!    bucket-shaped paths
 
 use once_cell::sync::Lazy;
 use regex::Regex;
