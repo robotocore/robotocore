@@ -3203,14 +3203,14 @@ impl S3Handler {
             );
         }
 
-        let (_version_id, etag) = Self::store_bytes(
+        let (new_version_id, etag) = Self::store_bytes(
             dest,
             dest_key,
             source.data.clone(),
             content_type,
             metadata,
             &tags,
-            storage_class,
+            storage_class.clone(),
         );
         use base64::Engine as _;
         use sha2::Digest as _;
@@ -3330,11 +3330,42 @@ impl S3Handler {
         }
         // moto's copy response_headers ride new_key.response_dict
         // (headers.update at responses.py:2477-2482, rendered by
-        // models.py:304-347): the ETag header and, when a checksum is
-        // stored, the SDK-algorithm header (live wire capture — the twin
-        // previously carried neither).
+        // models.py:303-357): the quoted ETag header, last-modified always,
+        // versioned destinations add x-amz-version-id, non-STANDARD storage
+        // adds x-amz-storage-class, tagged copies add x-amz-tagging-count
+        // (354-357, live-captured reviewer blocker); when a checksum is
+        // stored the SDK-algorithm header rides too.
+        let stored = dest
+            .objects
+            .read()
+            .get(dest_key)
+            .and_then(|e| e.versions.first())
+            .cloned();
         resp.headers
             .push(("ETag".to_string(), format!("\"{etag}\"")));
+        resp.headers.push((
+            "last-modified".to_string(),
+            httpdate(
+                stored
+                    .as_ref()
+                    .map(|v| v.last_modified)
+                    .unwrap_or_else(|| chrono::Utc::now().timestamp() as u64),
+            ),
+        ));
+        if let Some(v) = &stored {
+            if !v.tags.is_empty() {
+                resp.headers
+                    .push(("x-amz-tagging-count".to_string(), v.tags.len().to_string()));
+            }
+        }
+        if dest.is_versioned() {
+            resp.headers
+                .push(("x-amz-version-id".to_string(), new_version_id));
+        }
+        if storage_class != "STANDARD" {
+            resp.headers
+                .push(("x-amz-storage-class".to_string(), storage_class));
+        }
         if let Some((algorithm, _)) = &copy_checksum {
             resp.headers.push((
                 "x-amz-sdk-checksum-algorithm".to_string(),
@@ -5595,6 +5626,21 @@ impl S3Handler {
                 return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
             }
         };
+        // moto's attrs flow reuses _get_key's precondition machinery
+        // (responses.py:2058-2060): a matching If-None-Match /
+        // If-Modified-Since answers a BARE 304 "Not Modified" — no
+        // validators, no version header (the gate precedes that push).
+        match evaluate_preconditions(Some(&obj.etag), obj.last_modified, &req.headers, false) {
+            Precondition::Failed(e) => return e,
+            Precondition::NotModified => {
+                return AwsResponse {
+                    status: 304,
+                    headers: vec![],
+                    body: vec![],
+                };
+            }
+            Precondition::Proceed => {}
+        }
         // moto reads the requested attribute list from the comma-split
         // x-amz-object-attributes header (responses.py:2063-2064) and
         // renders each field ONLY when requested (models.py:2436-2445):
@@ -5626,23 +5672,38 @@ impl S3Handler {
                 obj.storage_class
             ));
         }
-        let mut body = format!(
+        let body = format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<GetObjectAttributesOutput xmlns=\"{ns}\">{inner}</GetObjectAttributesOutput>",
             ns = S3_NS,
         );
         if let Some(vid) = req.query_params.get("versionId") {
             if vid != NULL_VERSION_ID {
-                body = body.replace(
-                    "</GetObjectAttributesOutput>",
-                    &format!("<VersionId>{}</VersionId></GetObjectAttributesOutput>", vid),
-                );
+                // moto binds the resolved version to the model-bound
+                // x-amz-version-id HEADER (responses.py:2061-2062) — the
+                // twin's <VersionId> element left boto3 reading None.
+                let mut resp = AwsResponse::xml(200, body);
+                resp.headers
+                    .push(("x-amz-version-id".to_string(), vid.clone()));
+                return Self::attrs_response(resp, &obj);
             }
         }
         let mut resp = AwsResponse::xml(200, body);
-        // moto master 086af7ac (#10415): LastModified is rendered in the
-        // Last-Modified response header (the shape binds it to that header)
-        // in RFC 822 format — moto 5.2.4 put an ISO-8601 string into the
-        // header, which other SDKs reject.
+        // moto pushes the version header when the RESOLVED version is
+        // non-null (responses.py:2061-2062): explicit query versions ride
+        // it, and so does the latest row of a versioned bucket — but the
+        // pre-versioning (null) latest does not (live-captured classes).
+        if obj.version_id != NULL_VERSION_ID {
+            resp.headers
+                .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
+        }
+        Self::attrs_response(resp, &obj)
+    }
+
+    /// moto master 086af7ac (#10415): LastModified is rendered in the
+    /// Last-Modified response header (the shape binds it to that header)
+    /// in RFC 822 format — moto 5.2.4 put an ISO-8601 string into the
+    /// header, which other SDKs reject.
+    fn attrs_response(mut resp: AwsResponse, obj: &ObjectVersion) -> AwsResponse {
         resp.headers
             .push(("Last-Modified".to_string(), httpdate(obj.last_modified)));
         resp
@@ -10206,7 +10267,14 @@ mod tests {
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("sc2"), None, b""));
         handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
-        put_at_source(&handler, "sc2", Some("SHA256"), b"p6b-doc");
+        let mut req = make_req("PutObject", Some("sc2"), Some("src"), b"p6b-doc");
+        req.headers.insert(
+            "x-amz-sdk-checksum-algorithm".to_string(),
+            "SHA256".to_string(),
+        );
+        req.headers
+            .insert("x-amz-tagging".to_string(), "k1=v1&k2=v2".to_string());
+        assert_eq!(handler.handle(req).status, 200);
         let resp = copy(&handler, "sc2", "dst", None);
         let etag_h = resp
             .headers
@@ -10218,6 +10286,20 @@ mod tests {
                 .iter()
                 .any(|(k, v)| k == "x-amz-sdk-checksum-algorithm" && v == "SHA256"),
             "copy response must carry the stored algorithm header"
+        );
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("last-modified")),
+            "copy response must carry last-modified, got {:?}",
+            resp.headers
+        );
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "x-amz-tagging-count" && v == "2"),
+            "tagged copies ride x-amz-tagging-count (models.py:354-357), got {:?}",
+            resp.headers
         );
     }
 
@@ -10259,6 +10341,77 @@ mod tests {
             "unrequested field must be omitted: {body}"
         );
         assert!(body.contains("<ObjectSize>2</ObjectSize>"), "got {body}");
+    }
+
+    /// Versioned GetObjectAttributes binds the resolved version to the
+    /// model-bound x-amz-version-id HEADER (no <VersionId> element —
+    /// boto3 read None off the element), and a matching If-None-Match
+    /// answers the bare 304 (responses.py:2058-2060: gate precedes the
+    /// version push, no validators).
+    #[test]
+    fn test_attrs_version_header_and_304() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("sc4"), None, b""));
+        handler.handle(ver_req("sc4"));
+        put_at_source(&handler, "sc4", None, b"p6b-doc");
+        let vid = handler.handle(make_req("ListObjectVersions", Some("sc4"), None, b""));
+        let versions_html = String::from_utf8_lossy(&vid.body).to_string();
+        let version_id: String = versions_html
+            .split("<VersionId>")
+            .nth(1)
+            .and_then(|s| s.split("</VersionId>").next())
+            .expect("a version row")
+            .to_string();
+        let mut req = make_req("GetObjectAttributes", Some("sc4"), Some("src"), b"");
+        req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ETag,ObjectSize".to_string(),
+        );
+        req.query_params
+            .insert("versionId".to_string(), version_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(!body.contains("<VersionId>"), "no element: {body}");
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "x-amz-version-id" && *v == version_id),
+            "versioned attrs must bind the header, got {:?}",
+            resp.headers
+        );
+
+        // matching If-None-Match → bare 304, no validators/version push
+        let mut req = make_req("GetObjectAttributes", Some("sc4"), Some("src"), b"");
+        req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ETag,ObjectSize".to_string(),
+        );
+        let etag = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k == "x-amz-version-id")
+            .map(|(_, _)| ())
+            .map(|_| etag_of(&handler, "sc4", "src"));
+        let mut req = make_req("GetObjectAttributes", Some("sc4"), Some("src"), b"");
+        req.headers.insert(
+            "x-amz-object-attributes".to_string(),
+            "ETag,ObjectSize".to_string(),
+        );
+        req.headers
+            .insert("if-none-match".to_string(), etag.unwrap());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 304);
+        assert!(resp.headers.is_empty(), "bare 304, got {:?}", resp.headers);
+    }
+
+    fn etag_of(handler: &S3Handler, bucket: &str, key: &str) -> String {
+        let resp = handler.handle(make_req("HeadObject", Some(bucket), Some(key), b""));
+        resp.headers
+            .iter()
+            .find(|(k, _)| k == "ETag")
+            .map(|(_, v)| v.clone())
+            .expect("ETag header")
     }
 
     fn ver_req(bucket: &str) -> AwsRequest {
