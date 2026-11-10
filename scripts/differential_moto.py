@@ -36,8 +36,7 @@ from botocore.config import Config
 ROBOTOCORE = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 if "ENDPOINT_URL" not in os.environ:
     print(
-        "differential: ENDPOINT_URL unset - using the fallback "
-        "http://localhost:4566",
+        "differential: ENDPOINT_URL unset - using the fallback http://localhost:4566",
         file=sys.stderr,
     )
 MOTO = "http://localhost:5000"
