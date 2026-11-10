@@ -1,12 +1,12 @@
 {
   "service": "s3",
-  "generated_at": "2026-11-10T05:09:12.722586+00:00",
+  "generated_at": "2026-11-10T06:40:33.580618+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/s3.rs": "absent",
     "rotocore/src/services/s3/": "absent",
-    "crates/s3/src/": "cdf003b0c1a3e0d1267321e960067c09464c7e7bf852d8894a9f347ec4d12661"
+    "crates/s3/src/": "cfd74e268aeac3b9d75b0e62212c84f7a58e9a7699448c1dce863475c606ce24"
   },
-  "endpoint": "http://127.0.0.1:4605",
+  "endpoint": "http://127.0.0.1:4610",
   "counts": {
     "working": 108,
     "needs_params": 0,
@@ -293,7 +293,7 @@
     {
       "operation": "GetObjectLockConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ObjectLockConfigurationNotFoundError: Object Lock configuration does not exist for this bucket)"
     },
     {
       "operation": "GetObjectRetention",
@@ -463,7 +463,7 @@
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the bucket to apply a replic)"
     },
     {
       "operation": "PutBucketRequestPayment",
