@@ -85,11 +85,19 @@ fn handle_get_caller_identity(
     // Account is already parsed and available
     let account = req.account;
 
-    // UserId from access key - format as AKIA... or similar
-    let user_id = "AKIAIOSFODNN7EXAMPLE";
-
-    // Build ARN
-    let arn = format!("arn:aws:sts::{}:user/moto", account);
+    // A caller presenting a session token minted by an Assume* in this
+    // process resolves to that session's identity, every field derived
+    // from mint time; everything else (no token, unknown token — the
+    // anonymous and root transports) keeps the root/user answer both
+    // engines give.
+    let (account, user_id, arn) = match token_caller_identity(&req.headers) {
+        Some(resolved) => resolved,
+        None => (
+            account,
+            "AKIAIOSFODNN7EXAMPLE".to_string(),
+            format!("arn:aws:sts::{}:user/moto", account),
+        ),
+    };
 
     let body = json!({
         "UserId": user_id,
@@ -141,6 +149,58 @@ fn handle_get_access_key_info(
         raw: None,
         raw_bytes: None,
     })
+}
+
+/// A live STS session minted by `Assume*`: the caller presenting its
+/// minted SessionToken answers as this session's identity (moto truth: the
+/// mock credentials' caller answers UserId `AROA…:<session>` and Arn
+/// `…:assumed-role/<role>/<session>` — the session in place, not the root
+/// user an anonymous caller gets).
+#[derive(Debug, Clone)]
+struct StsSession {
+    /// Account the session was minted into — carried so the resolved
+    /// `Account` derives from mint time (the caller's own minted key
+    /// always parses back to the default account on the wire).
+    account: u64,
+    /// The SessionToken the session was minted with — the matcher's key
+    /// (AccessKeyId is constant across mints; the token is unique, like
+    /// moto's random_session_token).
+    session_token: String,
+    arn: String,
+    user_id: String,
+}
+
+static SESSIONS: std::sync::Mutex<Vec<StsSession>> = std::sync::Mutex::new(Vec::new());
+
+/// Register a freshly minted session: the token-caller `GetCallerIdentity`
+/// now resolves to the session identity (moto truth: after assume_role, the
+/// mock credentials' caller answers UserId `AROA…:<session>` / Arn
+/// `…:assumed-role/<role>/<session>`).
+fn register_session(account: u64, session_token: &str, arn: String, user_id: String) {
+    let session = StsSession {
+        account,
+        session_token: session_token.to_string(),
+        arn,
+        user_id,
+    };
+    SESSIONS.lock().unwrap().push(session);
+}
+
+/// A live minted session whose SessionToken the caller is presenting,
+/// resolved to its `(Account, UserId, Arn)` — all derived from mint time.
+fn token_caller_identity(
+    headers: &std::collections::HashMap<String, String>,
+) -> Option<(u64, String, String)> {
+    let token = headers
+        .get("x-amz-security-token")
+        .filter(|t| !t.is_empty())?;
+    let sessions = SESSIONS.lock().unwrap();
+    let session = sessions.iter().rev().find(|s| s.session_token == *token)?;
+    Some((
+        session.account,
+        session.user_id.clone(),
+        session.arn.clone(),
+    ))
 }
 
 /// A session expiry ~12h out from now, RFC3339 UTC — matches real STS
@@ -256,6 +316,15 @@ fn handle_assume_role(
         account, role_name, session_name
     );
     let role_id = format!("AROA{}:{}", account, session_name);
+    let minted = format!(
+        "session-token-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("0000")
+    );
+    register_session(account, &minted, arn.clone(), role_id.clone());
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <{}Response xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -263,7 +332,7 @@ fn handle_assume_role(
         <Credentials>
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
-            <SessionToken>session-token-001</SessionToken>
+            <SessionToken>{}</SessionToken>
             <Expiration>{}</Expiration>
         </Credentials>
         <AssumedRoleUser>
@@ -277,6 +346,7 @@ fn handle_assume_role(
 </{}Response>"#,
         op,
         op,
+        minted,
         session_expiry(),
         xml_escape_text(&arn),
         xml_escape_text(&role_id),
@@ -290,6 +360,20 @@ fn handle_assume_role(
 fn handle_assume_root(req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let account = req.account;
     let arn = format!("arn:aws:sts::{}:assumed-role/Root/root", account);
+    let minted = format!(
+        "session-token-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("0000")
+    );
+    register_session(
+        account,
+        &minted,
+        arn.clone(),
+        "AROA000000000000000000:root".to_string(),
+    );
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <AssumeRootResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -297,7 +381,7 @@ fn handle_assume_root(req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std
         <Credentials>
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
-            <SessionToken>session-token-root</SessionToken>
+            <SessionToken>{}</SessionToken>
             <Expiration>{}</Expiration>
         </Credentials>
         <AssumedRoleUser>
@@ -309,6 +393,7 @@ fn handle_assume_root(req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </AssumeRootResponse>"#,
+        minted,
         session_expiry(),
         arn
     );
@@ -536,5 +621,145 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn token_req(account: u64, token: Option<&str>) -> ParsedRequest {
+        let mut headers = HashMap::new();
+        if let Some(token) = token {
+            headers.insert("x-amz-security-token".to_string(), token.to_string());
+        }
+        ParsedRequest {
+            service: "sts".to_string(),
+            operation: "GetCallerIdentity".to_string(),
+            params: HashMap::new(),
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers,
+        }
+    }
+
+    fn assume_role_req(account: u64, session_name: &str) -> ParsedRequest {
+        let mut params = HashMap::new();
+        params.insert(
+            "RoleArn".to_string(),
+            Value::String("arn:aws:iam::123456789012:role/hydra-role".to_string()),
+        );
+        params.insert(
+            "RoleSessionName".to_string(),
+            Value::String(session_name.to_string()),
+        );
+        ParsedRequest {
+            service: "sts".to_string(),
+            operation: "AssumeRole".to_string(),
+            params,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        }
+    }
+
+    /// The SessionToken the assume response minted, extracted from the XML
+    /// the wire actually carries — the registry keys on this value.
+    fn mint_of(resp: ParsedResponse) -> String {
+        resp.raw
+            .unwrap()
+            .split("<SessionToken>")
+            .nth(1)
+            .unwrap()
+            .split("</SessionToken>")
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    /// Moto truth (verified live on the mock engine): after assume_role, the
+    /// caller presenting the minted SessionToken answers as the assumed-role
+    /// session, not the root user the anonymous caller would get. The caller
+    /// path carries the tenant assume; the GCI itself is the wire shape —
+    /// the minted ASIA key parses back to the default account, so a mint-time
+    /// `Account` here is the field the resolution must prove.
+    #[test]
+    fn token_caller_resolves_the_minted_session_identity() {
+        let minted = mint_of(
+            handle_assume_role(&assume_role_req(135792468013, "hydra-sess"), "AssumeRole").unwrap(),
+        );
+
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["UserId"], "AROA135792468013:hydra-sess");
+        assert_eq!(
+            caller.body["Arn"],
+            "arn:aws:sts::135792468013:assumed-role/hydra-role/hydra-sess"
+        );
+        assert_eq!(caller.body["Account"], "135792468013");
+    }
+
+    /// Sequential assumes stay distinguishable: each mint's token keeps
+    /// resolving to its own printed session (moto truth: credentials1
+    /// retains its own caller after a second assume).
+    #[test]
+    fn sequential_assumes_keep_their_own_identities() {
+        let first = mint_of(
+            handle_assume_role(&assume_role_req(135792468013, "sess-a"), "AssumeRole").unwrap(),
+        );
+        let second = mint_of(
+            handle_assume_role(&assume_role_req(135792468013, "sess-b"), "AssumeRole").unwrap(),
+        );
+        assert_ne!(first, second);
+
+        let a = handle_get_caller_identity(&token_req(123456789012, Some(&first))).unwrap();
+        let b = handle_get_caller_identity(&token_req(123456789012, Some(&second))).unwrap();
+        assert_eq!(
+            a.body["Arn"],
+            "arn:aws:sts::135792468013:assumed-role/hydra-role/sess-a"
+        );
+        assert_eq!(
+            b.body["Arn"],
+            "arn:aws:sts::135792468013:assumed-role/hydra-role/sess-b"
+        );
+        assert_eq!(a.body["Account"], "135792468013");
+    }
+
+    /// AssumeRoot binds its printed AssumedRoleUser shape the same way:
+    /// the minted token resolves to the Root/root session of the account
+    /// captured at mint time (moto answers root for arbitrary credentials,
+    /// so only the live constant can adopt it).
+    #[test]
+    fn assume_root_caller_binds_the_root_session() {
+        let minted = mint_of(handle_assume_root(&token_req(509876543210, None)).unwrap());
+
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["UserId"], "AROA000000000000000000:root");
+        assert_eq!(
+            caller.body["Arn"],
+            "arn:aws:sts::509876543210:assumed-role/Root/root"
+        );
+        assert_eq!(caller.body["Account"], "509876543210");
+    }
+
+    /// Same-scoped twin answer for the anonymous transport: no token ->
+    /// root/user answer, the pre-existing behavior (unmirrored change).
+    #[test]
+    fn anonymous_caller_keeps_the_root_answer() {
+        let resp = handle_get_caller_identity(&token_req(246813579014, None)).unwrap();
+        assert_eq!(resp.body["UserId"], "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(resp.body["Arn"], "arn:aws:sts::246813579014:user/moto");
+    }
+
+    /// An unknown token is not a live session: falls through to the root
+    /// answer rather than 4xx or a fabricated identity.
+    #[test]
+    fn unknown_token_falls_through_to_the_root_answer() {
+        let resp =
+            handle_get_caller_identity(&token_req(112233445566, Some("not-a-live-token"))).unwrap();
+        assert_eq!(resp.body["UserId"], "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(resp.body["Arn"], "arn:aws:sts::112233445566:user/moto");
     }
 }
