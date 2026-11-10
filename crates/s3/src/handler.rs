@@ -3184,22 +3184,67 @@ impl S3Handler {
     /// S3 treatment moto's `MethodNotAllowed(method, resource_type="DeleteMarker")`
     /// renders), carrying the delete-marker headers, `Allow: DELETE` and the
     /// marker's `Last-Modified` (moto PR #10428; head_object precedent).
-    /// moto's LIVE answer for a GET/HEAD/attributes request addressed to a
-    /// delete-marker versionId: NoSuchVersion 404 (live-probed both
-    /// engines — moto keeps markers out of the version lookup, so the
-    /// addressed version "does not exist"; real-AWS semantics would 405
-    /// MethodNotAllowed with Allow: DELETE). The envelope inherits the
-    /// #491 RequestId+HostId mirror from AwsResponse::error.
+    /// moto's METHOD-SCOPED answer for requests addressed to a
+    /// delete-marker versionId (reviewer-traced from moto 5.2.5 source):
+    /// GET/attributes = 404 NoSuchVersion XML (markers are out of the
+    /// version lookup" — responses.py:2188-2229 + models.py:2454-2492);
+    /// HEAD = 405 PLAIN-TEXT "Method Not Allowed" with `allow: DELETE` +
+    /// marker headers (responses.py:2627-2681, HeadOnDeleteMarker catch);
+    /// PUT-tagging = 405 XML MethodNotAllowed with Method/ResourceType
+    /// (responses.py:2496-2513). Real-AWS would render a different HEAD
+    /// shape — moto live is the oracle.
     fn delete_marker_version_error(
-        _method: &str,
-        _version_id: &str,
-        _last_modified: u64,
+        method: &str,
+        version_id: &str,
+        last_modified: u64,
     ) -> AwsResponse {
-        AwsResponse::error(
-            404,
-            "NoSuchVersion",
-            "The specified version does not exist.",
-        )
+        match method {
+            "HEAD" => {
+                let mut resp =
+                    AwsResponse::error(405, "PlainMethodNotAllowed", "Method Not Allowed");
+                resp.body = b"Method Not Allowed".to_vec();
+                resp.headers
+                    .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                resp.headers
+                    .push(("x-amz-version-id".to_string(), version_id.to_string()));
+                resp.headers
+                    .push(("Allow".to_string(), "DELETE".to_string()));
+                resp.headers
+                    .push(("Last-Modified".to_string(), httpdate(last_modified)));
+                resp
+            }
+            "PUT" => {
+                let mut resp = AwsResponse::error(
+                    405,
+                    "MethodNotAllowed",
+                    "The specified method is not allowed against this resource.",
+                );
+                resp.headers
+                    .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                resp.body = format!(
+                    concat!(
+                    r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                    "\n<Error><Code>MethodNotAllowed</Code>",
+                    "<Message>The specified method is not allowed against this resource.</Message>",
+                    "<Method>PUT</Method>",
+                    "<ResourceType>DeleteMarker</ResourceType>",
+                    "<RequestId>{request_id}</RequestId>",
+                    "<HostId>{host_id}</HostId></Error>"
+                ),
+                    request_id = crate::xml::fresh_request_id(),
+                    host_id = crate::xml::MOTON_HOST_ID
+                )
+                .into_bytes();
+                resp
+            }
+            // GET (and any other method that resolves through the marker
+            // branch): the NoSuchVersion XML with the #491 envelope.
+            _ => AwsResponse::error(
+                404,
+                "NoSuchVersion",
+                "The specified version does not exist.",
+            ),
+        }
     }
 
     /// The `response-*` query-parameter overrides a successful GET/HEAD
@@ -5320,12 +5365,10 @@ impl S3Handler {
         };
         let obj = match obj {
             Some(o) => o,
+            // moto _get_key raises MissingKey (NoSuchKey) when versionId
+            // is ABSENT — for both a missing key and a marked key.
             None => {
-                return AwsResponse::error(
-                    404,
-                    "NoSuchVersion",
-                    "The specified version does not exist.",
-                )
+                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
             }
         };
         let mut body = format!(
