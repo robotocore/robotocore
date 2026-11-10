@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -87,20 +88,42 @@ def sh(cmd, **kw):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True, **kw)
 
 
+def port_holder_pid(port) -> int:
+    """PID of the process listening on TCP `port`, 0 when none (or ss
+    withholds it)."""
+    r = sh(f"ss -ltnp 'sport = :{port}'")
+    m = re.search(r"pid=(\d+)", r.stdout)
+    return int(m.group(1)) if m else 0
+
+
 def ensure_rust_server():
     """Ensure the Rust robotocore server is up (PID-file managed, sidecar-free)."""
     log("[..] (Re)starting Rust server (rotocore native)...")
     sh(f"cd {RUST_REPO} && cargo build --release", timeout=600)
-    pid_file = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.pid"
-    old_pid = None
-    if os.path.exists(pid_file):
+    # The incumbent is the robotocore-rust twin on the scripted port —
+    # flagged-order and pidfile-state agnostic (a blind pidfile kill misses
+    # foreign incumbents, and the spawned server's bind failure would then
+    # answer health from the old process: the start_parity_servers.sh
+    # false-up shape). Anything ELSE holding the port (ssh relay, stand-in
+    # server) is refused loudly, never killed silently: the spawn's bind
+    # failure then surfaces through the identity assert below.
+    holder = port_holder_pid(RUST_PORT)
+    if holder:
+        cmdline = ""
         try:
-            old_pid = int(open(pid_file).read().strip())
-        except ValueError:
-            old_pid = None
-    if old_pid:
-        sh(f"kill -0 {old_pid} 2>/dev/null && kill {old_pid} 2>/dev/null; true", timeout=10)
-        time.sleep(1)
+            cmdline = (
+                open(f"/proc/{holder}/cmdline", "rb").read().decode("utf-8", "replace")
+            )
+        except OSError:
+            pass
+        if "robotocore-rust" not in cmdline:
+            log(
+                f"[!!] Port {RUST_PORT} held by PID {holder}, not robotocore-rust — not killing it"
+            )
+            holder = 0
+        else:
+            sh(f"kill {holder}", timeout=10)
+            time.sleep(1)
     env = dict(os.environ)
     # The twin's python-lambda runtime shells out to a python interpreter;
     # ROBOTOCORE_PY must point at an interpreter with the driver deps (boto3)
@@ -111,14 +134,21 @@ def ensure_rust_server():
     proc = subprocess.Popen([RUST_BIN, "--host", "127.0.0.1", "--port", RUST_PORT],
                             stdout=open(f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.log", "w"),
                             stderr=subprocess.STDOUT, start_new_session=True, env=env)
-    with open(pid_file, "w") as f:
+    with open(f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.pid", "w") as f:
         f.write(str(proc.pid))
     for _ in range(20):
         time.sleep(1)
         r = sh(f"curl -sf --max-time 3 {RUST_URL}/_robotocore/health", timeout=10)
         if r.returncode == 0:
-            log(f"[ok] Rust server up at {RUST_URL}")
-            return True
+            # A stale incumbent can answer the health probe if this
+            # server's bind failed — fail loud unless the port is held
+            # by the PID we just spawned.
+            holder = port_holder_pid(RUST_PORT)
+            if holder == proc.pid:
+                log(f"[ok] Rust server up at {RUST_URL}")
+                return True
+            log(f"[!!] Port {RUST_PORT} is held by PID {holder}, not the new server {proc.pid}")
+            return False
     log("[!!] Rust server failed to start (see /tmp/parity_rust.log)")
     return False
 
