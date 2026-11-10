@@ -278,9 +278,10 @@ def corpus_s3(engine):
             ),
         ),
         (
-            # moto drops the copied class to STANDARD (dest readable);
-            # the twin keeps GLACIER per real-AWS inheritance -> the dest
-            # GET distinguishes the two
+            # both engines reset an archived copy's class to STANDARD
+            # (models.py:160 via the copy path) - the dest GET agrees on
+            # both (the twin-preferred get_archived_copy diff was closed
+            # by the copy class resolution lane)
             "get_archived_copy",
             err_wrap(lambda: s3.get_object(Bucket=b, Key="warm.txt")),
         ),

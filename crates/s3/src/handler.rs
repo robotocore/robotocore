@@ -2308,7 +2308,16 @@ impl S3Handler {
             crate::xml::fresh_request_id(),
             crate::xml::MOTON_HOST_ID
         ));
-        AwsResponse::xml(status, body)
+        let mut resp = AwsResponse::xml(status, body);
+        // moto's werkzeug framing carries a Server header on EVERY
+        // response uniformly (the values differ — a transport-level
+        // difference); the twin's own builders push `server: robotocore`
+        // on AwsResponse::error/bucket_error, so the POST-flow errors now
+        // match their own convention instead of standing out intra-twin
+        // (the #495 review's asymmetry note).
+        resp.headers
+            .push(("server".to_string(), "robotocore".to_string()));
+        resp
     }
 
     /// The multipart/form-data browser upload (AWS "POST Object" wire path,
@@ -10425,6 +10434,55 @@ mod tests {
     // ------------------------------------------------------------------
     // Copy class resolution + lenient dates (live-captured moto).
     // ------------------------------------------------------------------
+
+    /// aws_error_with stays byte-congruent with xml::error_response:
+    /// empty-extra render == error_response with identical code/message
+    /// (RequestId masked), and extras insert inline before the shared
+    /// RequestId/HostId tail (the #495 review's congruence suggestion).
+    #[test]
+    fn test_aws_error_with_congruent_with_error_response() {
+        let msg = "The specified method is not allowed against this resource.";
+        let plain_error = crate::xml::error_response("MethodNotAllowed", msg);
+        let aws = S3Handler::aws_error_with(405, "MethodNotAllowed", msg, &[]);
+        let aws_body = String::from_utf8_lossy(&aws.body).to_string();
+        let plain = String::from_utf8_lossy(plain_error.as_bytes()).to_string();
+        fn split(s: &str) -> (String, String, String) {
+            let (head, tail) = s.split_once("<RequestId>").expect("RequestId present");
+            let (rid, rest) = tail.split_once("</RequestId>").expect("closed");
+            (head.to_string(), rid.to_string(), rest.to_string())
+        }
+        let (a_head, a_rid, a_rest) = split(&aws_body);
+        let (p_head, _p_rid, p_rest) = split(&plain);
+        assert_eq!(a_head, p_head, "declaration/Code/Message shapes drift");
+        assert_eq!(a_rid.len(), 52, "per-envelope 52-char RequestId");
+        assert_eq!(a_rest, p_rest, "HostId/Error tail shapes diverged");
+        assert!(aws_body.ends_with("</Error>"));
+
+        // with extras: extras inline, then the SAME RequestId/HostId tail
+        let extras_body = String::from_utf8_lossy(
+            &S3Handler::aws_error_with(
+                400,
+                "InvalidArgument",
+                "bad",
+                &[("ArgumentName", "key"), ("ArgumentValue", "")],
+            )
+            .body,
+        )
+        .to_string();
+        assert!(extras_body.contains(
+            "<Message>bad</Message><ArgumentName>key</ArgumentName><ArgumentValue></ArgumentValue><RequestId>"
+        ));
+        let (_e_head, _e_rid, e_rest) = split(&extras_body);
+        assert_eq!(e_rest, p_rest);
+        // the #495 asymmetry fix: it carries the server header like the
+        // error/bucket_error builders
+        assert!(
+            aws.headers
+                .iter()
+                .any(|(k, v)| k == "server" && v == "robotocore"),
+            "aws_error_with must carry the twin's server header"
+        );
+    }
 
     /// moto's copy destination class = the REQUESTED class else STANDARD
     /// (models.py:160) — no source inheritance (an IA source copies to a
