@@ -3329,7 +3329,8 @@ impl S3Handler {
             ));
         }
         // moto's copy response_headers ride new_key.response_dict
-        // (responses.py:2332 push): the ETag header and, when a checksum is
+        // (headers.update at responses.py:2477-2482, rendered by
+        // models.py:304-347): the ETag header and, when a checksum is
         // stored, the SDK-algorithm header (live wire capture — the twin
         // previously carried neither).
         resp.headers
@@ -5603,7 +5604,7 @@ impl S3Handler {
         let requested: Vec<String> = req
             .headers
             .get("x-amz-object-attributes")
-            .map(|h| h.split(',').map(|s| s.trim().to_string()).collect())
+            .map(|h| h.split(',').map(|s| s.to_string()).collect())
             .unwrap_or_default();
         let mut inner = String::new();
         if requested.iter().any(|s| s == "ETag") {
