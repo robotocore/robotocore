@@ -16,6 +16,7 @@ Usage:
 import argparse
 import datetime
 import json
+import os
 import pathlib as _pathlib
 import re
 import subprocess
@@ -30,7 +31,15 @@ from typing import Any
 import boto3
 from botocore.config import Config
 
-ROBOTOCORE = "http://localhost:4566"
+# AGENTS.md rule 5: env derives the endpoint; the constant is only the
+# fallback, and it logs when it is the one in play.
+ROBOTOCORE = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
+if "ENDPOINT_URL" not in os.environ:
+    print(
+        "differential: ENDPOINT_URL unset - using the fallback "
+        "http://localhost:4566",
+        file=sys.stderr,
+    )
 MOTO = "http://localhost:5000"
 MOTO_START_TIMEOUT = 90
 
