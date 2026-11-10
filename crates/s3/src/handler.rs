@@ -495,7 +495,17 @@ fn parse_copy_source(value: &str) -> (String, String, Option<String>) {
     }
 }
 
+/// moto's ChecksumCRC32: the base64 of the payload's CRC-32 coded big-endian
+/// (network order) — live-probed jNwWgw== for body 'x' = zlib.crc32(b'x')
+/// .to_be_bytes() — same in CopyObjectResult, CopyPartResult, and the
+/// CompleteMultipartUploadResult (crc32 over the concatenated parts).
+fn b64_be_crc32(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(crc32(data).to_be_bytes())
+}
+
 /// A listing content row: `(key, etag, size, last_modified, storage_class)`.
+
 pub type ListingRow = (String, String, usize, u64, String);
 
 /// CRC-32 (IEEE), required for AWS event-stream framing.
@@ -3122,10 +3132,11 @@ impl S3Handler {
         let mut resp = AwsResponse::xml(
             200,
             format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CopyObjectResult xmlns=\"{ns}\">\n  <LastModified>{dt}</LastModified>\n  <ETag>&quot;{et}&quot;</ETag>\n</CopyObjectResult>",
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?><CopyObjectResult xmlns=\"{ns}\"><ETag>\"{et}\"</ETag><LastModified>{dt}</LastModified><ChecksumCRC32>{checksum}</ChecksumCRC32></CopyObjectResult>",
                 ns = S3_NS,
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
-                et = etag
+                et = etag,
+                checksum = b64_be_crc32(&source.data)
             ),
         );
         // moto responses.py:2446-2447: the source's version id rides the
@@ -4829,10 +4840,19 @@ impl S3Handler {
             upload.parts.write().insert(part_number, part);
         }
 
+        // moto's checker default: the CopyPartResult carries the part
+        // payload's ChecksumCRC32 (the base64 of the 4-byte BIG-endian
+        // CRC-32 — the S3 checksum encoding — live-probed jNwWgw== for
+        // payload 'x' which is zlib.crc32(x).to_be_bytes()). Same shape
+        // and ordering as the CopyObjectResult (ETag first per the
+        // botocore CopyObjectResult shape members).
         AwsResponse::xml(
             200,
             format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CopyPartResult xmlns=\"{ns}\">\n  <LastModified>{dt}</LastModified>\n  <ETag>&quot;{et}&quot;</ETag>\n</CopyPartResult>",
+                // moto's CopyPartResult carries NO ChecksumCRC32
+                // (responses.py:2613-2619 — ETag + LastModified only,
+                // shape member order), unlike CopyObjectResult.
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?><CopyPartResult xmlns=\"{ns}\"><ETag>\"{et}\"</ETag><LastModified>{dt}</LastModified></CopyPartResult>",
                 ns = S3_NS,
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
                 et = etag
@@ -4943,6 +4963,7 @@ impl S3Handler {
             combined.extend_from_slice(&part.data);
         }
         let total_size = combined.len();
+        let combined_checksum = b64_be_crc32(&combined);
 
         let (version_id, _stored_etag) = Self::store_bytes(
             &bucket,
@@ -5006,12 +5027,13 @@ impl S3Handler {
             xml_escape(&key)
         );
         let body = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CompleteMultipartUploadResult xmlns=\"{ns}\">\n  <Location>{loc}</Location>\n  <Bucket>{b}</Bucket>\n  <Key>{k}</Key>\n  <ETag>&quot;{et}&quot;</ETag>\n</CompleteMultipartUploadResult>",
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><CompleteMultipartUploadResult xmlns=\"{ns}\"><Location>{loc}</Location><Bucket>{b}</Bucket><Key>{k}</Key><ETag>\"{et}\"</ETag><ChecksumCRC32>{checksum}</ChecksumCRC32></CompleteMultipartUploadResult>",
             ns = S3_NS,
             loc = xml_escape(&location),
             b = xml_escape(&bucket_name),
             k = xml_escape(&key),
-            et = etag
+            et = etag,
+            checksum = combined_checksum
         );
         let mut resp = AwsResponse::xml(200, body);
         if version_id != NULL_VERSION_ID {
