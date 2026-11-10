@@ -3184,37 +3184,22 @@ impl S3Handler {
     /// S3 treatment moto's `MethodNotAllowed(method, resource_type="DeleteMarker")`
     /// renders), carrying the delete-marker headers, `Allow: DELETE` and the
     /// marker's `Last-Modified` (moto PR #10428; head_object precedent).
+    /// moto's LIVE answer for a GET/HEAD/attributes request addressed to a
+    /// delete-marker versionId: NoSuchVersion 404 (live-probed both
+    /// engines — moto keeps markers out of the version lookup, so the
+    /// addressed version "does not exist"; real-AWS semantics would 405
+    /// MethodNotAllowed with Allow: DELETE). The envelope inherits the
+    /// #491 RequestId+HostId mirror from AwsResponse::error.
     fn delete_marker_version_error(
-        method: &str,
-        version_id: &str,
-        last_modified: u64,
+        _method: &str,
+        _version_id: &str,
+        _last_modified: u64,
     ) -> AwsResponse {
-        let mut resp = AwsResponse::error(
-            405,
-            "MethodNotAllowed",
-            "The specified method is not allowed against this resource.",
-        );
-        resp.headers
-            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
-        resp.headers
-            .push(("x-amz-version-id".to_string(), version_id.to_string()));
-        resp.headers
-            .push(("Allow".to_string(), "DELETE".to_string()));
-        resp.headers
-            .push(("Last-Modified".to_string(), httpdate(last_modified)));
-        // moto's method_resource_error extension adds the requested method
-        // and resource type to the error document.
-        resp.body = format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<Error>
-  <Code>MethodNotAllowed</Code>
-  <Message>The specified method is not allowed against this resource.</Message>
-  <Method>{method}</Method>
-  <ResourceType>DeleteMarker</ResourceType>
-</Error>"#
+        AwsResponse::error(
+            404,
+            "NoSuchVersion",
+            "The specified version does not exist.",
         )
-        .into_bytes();
-        resp
     }
 
     /// The `response-*` query-parameter overrides a successful GET/HEAD
@@ -5313,6 +5298,19 @@ impl S3Handler {
             let entry = objects.get(&key);
             match req.query_params.get("versionId") {
                 Some(vid) => {
+                    // moto-live: a delete-marker versionId answers the SAME
+                    // NoSuchVersion as a nonexistent version (markers live
+                    // out of the attribute-lookup) — aligned with the
+                    // GetObject marker flow's #490-wave mirror.
+                    if let Some(e) = entry {
+                        if let Some(m) = e.markers.iter().find(|m| m.version_id == *vid) {
+                            return Self::delete_marker_version_error(
+                                &req.method,
+                                &m.version_id,
+                                m.last_modified,
+                            );
+                        }
+                    }
                     entry.and_then(|e| e.versions.iter().find(|v| v.version_id == *vid).cloned())
                 }
                 None => entry
@@ -5323,7 +5321,11 @@ impl S3Handler {
         let obj = match obj {
             Some(o) => o,
             None => {
-                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                return AwsResponse::error(
+                    404,
+                    "NoSuchVersion",
+                    "The specified version does not exist.",
+                )
             }
         };
         let mut body = format!(
@@ -9159,34 +9161,28 @@ mod tests {
             .cloned()
             .expect("marker version id");
 
-        // The requested version is a delete marker: 405 MethodNotAllowed
-        // with Allow: DELETE, not NoSuchVersion/NoSuchKey.
+        // The requested version is a delete marker: moto's LIVE answer is
+        // 404 NoSuchVersion ("The specified version does not exist.") —
+        // moto keeps markers out of the version lookup for GET; real-AWS
+        // semantics would 405 MethodNotAllowed, but moto is the oracle
+        // (live-probed both engines, this wave).
         let mut req = make_req("GetObject", Some("dm2"), Some("the-key"), b"");
         req.query_params
             .insert("versionId".to_string(), marker_id.clone());
         let resp = handler.handle(req);
-        assert_eq!(resp.status, 405);
+        assert_eq!(resp.status, 404);
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(
-            body.contains("<Code>MethodNotAllowed</Code>"),
-            "body: {body}"
-        );
-        assert!(body.contains("<Method>GET</Method>"), "body: {body}");
-        assert!(
-            body.contains("<ResourceType>DeleteMarker</ResourceType>"),
-            "body: {body}"
-        );
-        let headers = header_map(&resp);
-        assert_eq!(
-            headers.get("x-amz-delete-marker").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(
-            headers.get("x-amz-version-id").map(String::as_str),
-            Some(marker_id.as_str())
-        );
-        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
-        assert!(headers.contains_key("Last-Modified"));
+        assert!(body.contains("<Code>NoSuchVersion</Code>"), "body: {body}");
+        assert!(body.contains("The specified version does not exist."));
+
+        // GetObjectAttributes on a marker version: the same NoSuchVersion.
+        let mut req = make_req("GetObjectAttributes", Some("dm2"), Some("the-key"), b"");
+        req.query_params
+            .insert("versionId".to_string(), marker_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 404);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>NoSuchVersion</Code>"), "body: {body}");
     }
 
     #[test]
@@ -9206,7 +9202,8 @@ mod tests {
         let headers = header_map(&resp);
         assert!(!headers.contains_key("x-amz-delete-marker"));
 
-        // The delete-marker version itself still answers 405 after the re-put.
+        // The delete-marker version itself still answers moto's live
+        // 404 NoSuchVersion after the re-put (mirrors the flowing rule).
         let resp = handler.handle(make_req("DeleteObject", Some("dm3"), Some("the-key"), b""));
         let marker_id = header_map(&resp)
             .get("x-amz-version-id")
@@ -9214,7 +9211,7 @@ mod tests {
             .expect("second marker version id");
         let mut req = make_req("GetObject", Some("dm3"), Some("the-key"), b"");
         req.query_params.insert("versionId".to_string(), marker_id);
-        assert_eq!(handler.handle(req).status, 405);
+        assert_eq!(handler.handle(req).status, 404);
     }
 
     #[test]
@@ -9245,7 +9242,10 @@ mod tests {
     }
 
     #[test]
-    fn delete_marker_get_head_with_marker_version_id_returns_405() {
+    fn delete_marker_get_head_with_marker_version_id_returns_404_no_such_version() {
+        // moto-live: a HEAD addressed to a delete-marker version id
+        // answers 404 NoSuchVersion too (live-probed both engines — the
+        // marker lives out of moto's version lookup).
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("dm5"), None, b""));
         enable_versioning(&handler, "dm5");
@@ -9260,17 +9260,7 @@ mod tests {
         req.query_params
             .insert("versionId".to_string(), marker_id.clone());
         let resp = handler.handle(req);
-        assert_eq!(resp.status, 405);
-        let headers = header_map(&resp);
-        assert_eq!(
-            headers.get("x-amz-delete-marker").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
-        assert_eq!(
-            headers.get("x-amz-version-id").map(String::as_str),
-            Some(marker_id.as_str())
-        );
+        assert_eq!(resp.status, 404);
     }
 
     #[test]
@@ -9292,7 +9282,7 @@ mod tests {
         assert_eq!(resp.status, 404);
         let mut req = make_req("GetObject", Some("dm6"), Some("the-key"), b"");
         req.query_params.insert("versionId".to_string(), marker_id);
-        assert_eq!(handler.handle(req).status, 405);
+        assert_eq!(handler.handle(req).status, 404);
 
         let resp = handler.handle(make_req("ListObjectVersions", Some("dm6"), None, b""));
         assert_eq!(resp.status, 200);
