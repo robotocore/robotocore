@@ -3248,7 +3248,11 @@ impl S3Handler {
         };
         if let Some((algorithm, value)) = &copy_checksum {
             if let Some(entry) = dest.objects.write().get_mut(dest_key) {
-                if let Some(v) = entry.versions.last_mut() {
+                // store_bytes inserts NEWEST-FIRST (versions.insert(0, …)),
+                // so first_mut() is the just-stored version — a last_mut()
+                // would stamp the oldest one on versioned destinations
+                // (live-confirmed by the reviewer's leg G).
+                if let Some(v) = entry.versions.first_mut() {
                     v.checksum_value = Some((algorithm.clone(), value.clone()));
                 }
             }
@@ -3279,7 +3283,11 @@ impl S3Handler {
                 false,
             );
             if let Some(entry) = dest.objects.write().get_mut(dest_key) {
-                if let Some(v) = entry.versions.last_mut() {
+                // newest-first ordering: first_mut() = the just-stored copy
+                // (same correctness frame as the checksum store above —
+                // last_mut() lost REPLACE tags on versioned destinations,
+                // reviewer-verified live).
+                if let Some(v) = entry.versions.first_mut() {
                     v.tags = good;
                 }
             }
@@ -10054,6 +10062,70 @@ mod tests {
         let expected = base64::engine::general_purpose::STANDARD.encode(hash.finalize());
         assert!(String::from_utf8_lossy(&resp.body)
             .contains(&format!("<ChecksumWEIRD>{expected}</ChecksumWEIRD>")));
+    }
+
+    /// Versioned destination: store_bytes inserts newest-first, so the
+    /// copy's stored pair must land on the JUST-stored (live) version — a
+    /// last_mut() addressed the oldest row and lost the pair (reviewer
+    /// leg G). The tag REPLACE variant shared the bug (pre-existing).
+    #[test]
+    fn test_copy_onto_versioned_dst_stamps_live_version() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cr4"), None, b""));
+        handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
+        put_at_source(&handler, "cr4", Some("SHA256"), b"p6b-doc");
+        // make the destination versioned
+        assert_eq!(handler.handle(ver_req("dst-bucket")).status, 200);
+        handler.handle(make_req(
+            "PutObject",
+            Some("dst-bucket"),
+            Some("dst"),
+            b"seed",
+        ));
+
+        // overwrite-copy with a request algorithm: pair on the live version
+        let mut req = make_req("PutObject", Some("dst-bucket"), Some("dst"), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), "cr4/src".to_string());
+        req.headers
+            .insert("x-amz-checksum-algorithm".to_string(), "CRC32C".to_string());
+        assert_eq!(handler.handle(req).status, 200);
+        let mut get = make_req("GetObject", Some("dst-bucket"), Some("dst"), b"");
+        get.headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        assert!(checksum_echo(&handler.handle(get))
+            .contains(&("x-amz-checksum-crc32c".to_string(), "OlnZNg==".to_string())));
+
+        // tag REPLACE variant over the same flow keeps its tags on the
+        // live version (moto keeps `new=2`, reviewer-verified live).
+        let mut req = make_req("PutObject", Some("dst-bucket"), Some("dst"), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), "cr4/src".to_string());
+        req.headers
+            .insert("x-amz-tagging-directive".to_string(), "REPLACE".to_string());
+        req.headers
+            .insert("x-amz-tagging".to_string(), "new=2".to_string());
+        assert_eq!(handler.handle(req).status, 200);
+        let tags = handler.handle(make_req(
+            "GetObjectTagging",
+            Some("dst-bucket"),
+            Some("dst"),
+            b"",
+        ));
+        assert!(String::from_utf8_lossy(&tags.body).contains("new"));
+    }
+
+    fn ver_req(bucket: &str) -> AwsRequest {
+        let mut req = make_req(
+            "PutBucketVersioning",
+            Some(bucket),
+            None,
+            b"<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\
+              <Status>Enabled</Status></VersioningConfiguration>",
+        );
+        req.query_params
+            .insert("versioning".to_string(), String::new());
+        req
     }
 }
 
