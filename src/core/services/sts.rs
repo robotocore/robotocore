@@ -93,7 +93,7 @@ fn handle_get_caller_identity(
     let (account, user_id, arn) = match token_caller_identity(&req.headers) {
         Some(resolved) => resolved,
         None => (
-            account,
+            account.to_string(),
             "AKIAIOSFODNN7EXAMPLE".to_string(),
             format!("arn:aws:sts::{}:user/moto", account),
         ),
@@ -101,7 +101,7 @@ fn handle_get_caller_identity(
 
     let body = json!({
         "UserId": user_id,
-        "Account": account.to_string(),
+        "Account": account,
         "Arn": arn
     });
 
@@ -158,10 +158,12 @@ fn handle_get_access_key_info(
 /// user an anonymous caller gets).
 #[derive(Debug, Clone)]
 struct StsSession {
-    /// Account the session was minted into — carried so the resolved
-    /// `Account` derives from mint time (the caller's own minted key
-    /// always parses back to the default account on the wire).
-    account: u64,
+    /// Account the session was minted into, verbatim (iam account ids keep
+    /// leading zeros — the repo's own per-test recipes zfill to 12) —
+    /// carried so the resolved `Account` derives from mint time (the
+    /// caller's own minted key always parses back to the default account
+    /// on the wire).
+    account: String,
     /// The SessionToken the session was minted with — the matcher's key
     /// (AccessKeyId is constant across mints; the token is unique, like
     /// moto's random_session_token).
@@ -172,11 +174,29 @@ struct StsSession {
 
 static SESSIONS: std::sync::Mutex<Vec<StsSession>> = std::sync::Mutex::new(Vec::new());
 
+/// Moto's session-account derivation (moto/sts/models.py: a
+/// `^arn:<partition>:iam::<digits>.+` search over the RoleArn): the iam
+/// account segment verbatim — service iam and an EMPTY region anchor the
+/// match; any other ARN (other service, region-carrying, malformed,
+/// segment-less) names no account.
+fn role_arn_account(role_arn: &str) -> Option<String> {
+    static ROLE_ARN_ACCOUNT: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| {
+            regex::Regex::new(
+                r"^arn:(aws|aws-cn|aws-eusc|aws-iso|aws-iso-b|aws-us-gov):iam::([0-9]+).+",
+            )
+            .unwrap()
+        });
+    ROLE_ARN_ACCOUNT
+        .captures(role_arn)
+        .and_then(|c| c.get(2).map(|m| m.as_str().to_string()))
+}
+
 /// Register a freshly minted session: the token-caller `GetCallerIdentity`
 /// now resolves to the session identity (moto truth: after assume_role, the
 /// mock credentials' caller answers UserId `AROA…:<session>` / Arn
 /// `…:assumed-role/<role>/<session>`).
-fn register_session(account: u64, session_token: &str, arn: String, user_id: String) {
+fn register_session(account: String, session_token: &str, arn: String, user_id: String) {
     let session = StsSession {
         account,
         session_token: session_token.to_string(),
@@ -190,14 +210,14 @@ fn register_session(account: u64, session_token: &str, arn: String, user_id: Str
 /// resolved to its `(Account, UserId, Arn)` — all derived from mint time.
 fn token_caller_identity(
     headers: &std::collections::HashMap<String, String>,
-) -> Option<(u64, String, String)> {
+) -> Option<(String, String, String)> {
     let token = headers
         .get("x-amz-security-token")
         .filter(|t| !t.is_empty())?;
     let sessions = SESSIONS.lock().unwrap();
     let session = sessions.iter().rev().find(|s| s.session_token == *token)?;
     Some((
-        session.account,
+        session.account.clone(),
         session.user_id.clone(),
         session.arn.clone(),
     ))
@@ -284,6 +304,11 @@ fn handle_assume_role(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("arn:aws:iam::{}:role/lambda-role", account));
+    // The assumed session acts in the account the RoleArn names (moto
+    // derives it from the RoleArn too): the iam:: account segment verbatim
+    // when the RoleArn is an iam ARN with an empty region, the caller's
+    // account otherwise.
+    let account: String = role_arn_account(&role_arn).unwrap_or_else(|| account.to_string());
     let session_name = req
         .params
         .get("RoleSessionName")
@@ -369,7 +394,7 @@ fn handle_assume_root(req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std
             .unwrap_or("0000")
     );
     register_session(
-        account,
+        account.to_string(),
         &minted,
         arn.clone(),
         "AROA000000000000000000:root".to_string(),
@@ -642,12 +667,9 @@ mod tests {
         }
     }
 
-    fn assume_role_req(account: u64, session_name: &str) -> ParsedRequest {
+    fn assume_role_req_arn(account: u64, session_name: &str, role_arn: &str) -> ParsedRequest {
         let mut params = HashMap::new();
-        params.insert(
-            "RoleArn".to_string(),
-            Value::String("arn:aws:iam::123456789012:role/hydra-role".to_string()),
-        );
+        params.insert("RoleArn".to_string(), Value::String(role_arn.to_string()));
         params.insert(
             "RoleSessionName".to_string(),
             Value::String(session_name.to_string()),
@@ -689,7 +711,15 @@ mod tests {
     #[test]
     fn token_caller_resolves_the_minted_session_identity() {
         let minted = mint_of(
-            handle_assume_role(&assume_role_req(135792468013, "hydra-sess"), "AssumeRole").unwrap(),
+            handle_assume_role(
+                &assume_role_req_arn(
+                    135792468013,
+                    "hydra-sess",
+                    "arn:aws:iam::135792468013:role/hydra-role",
+                ),
+                "AssumeRole",
+            )
+            .unwrap(),
         );
 
         let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
@@ -707,10 +737,26 @@ mod tests {
     #[test]
     fn sequential_assumes_keep_their_own_identities() {
         let first = mint_of(
-            handle_assume_role(&assume_role_req(135792468013, "sess-a"), "AssumeRole").unwrap(),
+            handle_assume_role(
+                &assume_role_req_arn(
+                    135792468013,
+                    "sess-a",
+                    "arn:aws:iam::135792468013:role/hydra-role",
+                ),
+                "AssumeRole",
+            )
+            .unwrap(),
         );
         let second = mint_of(
-            handle_assume_role(&assume_role_req(135792468013, "sess-b"), "AssumeRole").unwrap(),
+            handle_assume_role(
+                &assume_role_req_arn(
+                    135792468013,
+                    "sess-b",
+                    "arn:aws:iam::135792468013:role/hydra-role",
+                ),
+                "AssumeRole",
+            )
+            .unwrap(),
         );
         assert_ne!(first, second);
 
@@ -742,6 +788,102 @@ mod tests {
             "arn:aws:sts::509876543210:assumed-role/Root/root"
         );
         assert_eq!(caller.body["Account"], "509876543210");
+    }
+
+    /// A cross-account assume acts in the account the RoleArn names, both
+    /// on the printed AssumedRoleUser and on the minted credentials'
+    /// GetCallerIdentity (moto derives the session account from the
+    /// RoleArn; the legacy-issued-keys suite pins exactly this flow:
+    /// caller 111111111111, RoleArn …:iam::222222222222:role/DeployRole).
+    #[test]
+    fn cross_account_assume_acts_in_the_rolearn_account() {
+        let minted = mint_of(
+            handle_assume_role(
+                &assume_role_req_arn(
+                    111111111111,
+                    "tf",
+                    "arn:aws:iam::222222222222:role/DeployRole",
+                ),
+                "AssumeRole",
+            )
+            .unwrap(),
+        );
+
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["UserId"], "AROA222222222222:tf");
+        assert_eq!(
+            caller.body["Arn"],
+            "arn:aws:sts::222222222222:assumed-role/DeployRole/tf"
+        );
+        assert_eq!(caller.body["Account"], "222222222222");
+    }
+
+    /// Moto's derivation is an anchored iam search, not "any ARN segment":
+    /// leading-zeros survive verbatim; a segment-less iam ARN, a
+    /// region-carrying iam ARN, and a non-iam ARN all name no account and
+    /// fall back to the caller's (live-pinned against moto 5.2.5).
+    #[test]
+    fn rolearn_account_edges_match_moto() {
+        // Leading zeros stay verbatim (the repo's own recipes zfill to 12).
+        let resp = handle_assume_role(
+            &assume_role_req_arn(111111111111, "z", "arn:aws:iam::000000000123:role/X"),
+            "AssumeRole",
+        )
+        .unwrap()
+        .raw
+        .unwrap();
+        assert!(resp.contains("arn:aws:sts::000000000123:assumed-role/X/z"));
+        let minted = mint_of(
+            handle_assume_role(
+                &assume_role_req_arn(111111111111, "z", "arn:aws:iam::000000000123:role/X"),
+                "AssumeRole",
+            )
+            .unwrap(),
+        );
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["Account"], "000000000123");
+
+        for (arn, label) in [
+            ("arn:aws:iam:::role/X", "segment-less"),
+            (
+                "arn:aws:iam:us-east-1:222222222222:role/X",
+                "region-carrying",
+            ),
+            ("arn:aws:sqs:us-east-1:333333333333:queue/q", "non-iam"),
+        ] {
+            let minted = mint_of(
+                handle_assume_role(&assume_role_req_arn(111111111111, "f", arn), "AssumeRole")
+                    .unwrap(),
+            );
+            let caller =
+                handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+            assert_eq!(caller.body["Account"], "111111111111", "{label}");
+        }
+
+        // Moto's own regex backtrack: a bare `…:iam::` + digits ARN has no
+        // trailing `.+` to satisfy, so one digit is eaten into it — the
+        // account publishes as a one-digit-short run on BOTH engines.
+        let minted = mint_of(
+            handle_assume_role(
+                &assume_role_req_arn(111111111111, "b", "arn:aws:iam::222222222222"),
+                "AssumeRole",
+            )
+            .unwrap(),
+        );
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["Account"], "22222222222");
+
+        // aws-cn captures the full segment: the `aws` alternative fails at
+        // `:iam::` and the engine retries the alternation (leftmost-first).
+        let minted = mint_of(
+            handle_assume_role(
+                &assume_role_req_arn(111111111111, "c", "arn:aws-cn:iam::222222222222:role/X"),
+                "AssumeRole",
+            )
+            .unwrap(),
+        );
+        let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
+        assert_eq!(caller.body["Account"], "222222222222");
     }
 
     /// Same-scoped twin answer for the anonymous transport: no token ->
