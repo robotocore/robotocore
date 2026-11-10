@@ -1,8 +1,8 @@
 {
   "service": "sts",
-  "generated_at": "2026-11-10T21:43:55.391928+00:00",
+  "generated_at": "2026-11-10T22:32:13.803985+00:00",
   "impl_fingerprint": {
-    "src/core/services/sts.rs": "5fcb503756af70acffda3aeb361b7935d30657f9dc6425d78cde63f5d106295a"
+    "src/core/services/sts.rs": "febf81e6097017046c0915b2d4c6581c6cc09d392ebd589a70ab9deb2976449b"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

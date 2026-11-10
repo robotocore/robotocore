@@ -62,6 +62,22 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **STS: cross-account AssumeRole acts in the account the RoleArn
+  names.** moto derives the assumed session's account from an anchored
+  iam search over the RoleArn (`^arn:<partition>:iam::<digits>.+`,
+  sts/models.py — leading zeros preserved, any other ARN falls back to
+  the caller's account); the twin minted the caller's account, so its
+  printed `AssumedRoleUser.Arn` and the token-caller `GetCallerIdentity`
+  both published the wrong account on every cross-account assume
+  (the legacy-issued-keys pin asserted moto's answer and failed). The
+  mint handler now mirrors the anchored search verbatim. A 14+-digit
+  run stays intentionally divergent: moto's own XML writer
+  garbage-crashes there (non-XML `ResponseParserError`) while the twin
+  answers 200 with the verbatim run — matching a crash is off the bar.
+  Pins:
+  tests/compatibility/legacy-py-provider/test_sts_issued_keys_compat.py,
+  cross_account_assume_acts_in_the_rolearn_account,
+  rolearn_account_edges_match_moto.
 - **S3: replication rides the MPU-complete path.** The twin's
   replication engine mirrored store semantics on the direct put paths
   but the multipart-completed object missed it (#475-review lead).
