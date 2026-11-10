@@ -176,6 +176,7 @@ mod tests {
                     tags: Vec::new(),
                     legal_hold: None,
                     retention: None,
+                    checksum_value: None,
                 }],
                 markers: vec![],
             },
