@@ -373,10 +373,25 @@ fn evaluate_preconditions(
             "At least one of the pre-conditions you specified did not hold",
         ))
     }
-    if let Some(v) = headers.get("if-unmodified-since") {
-        let ts = chrono::DateTime::parse_from_rfc2822(v)
+    // moto parses If-(Un)Modified-Since via datetime.strptime(RFC1123 =
+    // "%a, %d %b %Y %H:%M:%S GMT", core/utils.py:174,207): a weekday TOKEN
+    // is required (missing → ValueError → moto 500) but its CONSISTENCY
+    // is ignored (a wrong weekday on a future date still 304s — live-
+    // captured) — chrono's RFC 2822 verifies the consistency and errors
+    // on mismatch, so both date parsers drop the token before matching
+    // (verdict-equivalent: every moto-parseable input carries ", ").
+    fn parse_since_like_moto(v: &str) -> Option<i64> {
+        let needle = if let Some((_, rest)) = v.split_once(", ") {
+            rest
+        } else {
+            v
+        };
+        chrono::DateTime::parse_from_rfc2822(needle)
             .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc).timestamp());
+            .map(|dt| dt.with_timezone(&chrono::Utc).timestamp())
+    }
+    if let Some(v) = headers.get("if-unmodified-since") {
+        let ts = parse_since_like_moto(v);
         if ts.is_some_and(|ts| (last_modified as i64) > ts) {
             return precondition_failed();
         }
@@ -401,11 +416,7 @@ fn evaluate_preconditions(
     }
     let modified_since = headers
         .get("if-modified-since")
-        .and_then(|v| {
-            chrono::DateTime::parse_from_rfc2822(v)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc).timestamp())
-        })
+        .and_then(|v| parse_since_like_moto(v))
         .is_some_and(|ts| (last_modified as i64) <= ts);
     let none_match = headers.get("if-none-match").is_some_and(|v| {
         etag.is_some_and(|etag| {
@@ -3131,13 +3142,19 @@ impl S3Handler {
         } else {
             source.metadata.clone()
         };
+        // moto's copy destination storage: the REQUESTED class, else the
+        // FakeKey default STANDARD (models.py:160 `storage if storage else
+        // "STANDARD"` — live-captured: an IA source copies to a headerless
+        // STANDARD dst; no inheritance). The stale comment above the
+        // whitelist said otherwise; the whitelist itself is unchanged.
         let storage_class = req
             .headers
             .get("x-amz-storage-class")
             .cloned()
-            .unwrap_or_else(|| source.storage_class.clone());
-        // moto CopyObject validates the requested storage class against the
-        // same whitelist (it inherits the source's class otherwise).
+            .unwrap_or_else(|| "STANDARD".to_string());
+        // moto CopyObject validates a REQUESTED storage class against the
+        // whitelist (models.py:2416 passes only what the client sent;
+        // copies without one take the default STANDARD outright).
         const COPY_STORAGE_CLASSES: [&str; 9] = [
             "STANDARD",
             "REDUCED_REDUNDANCY",
@@ -10403,6 +10420,77 @@ mod tests {
         let resp = handler.handle(req);
         assert_eq!(resp.status, 304);
         assert!(resp.headers.is_empty(), "bare 304, got {:?}", resp.headers);
+    }
+
+    // ------------------------------------------------------------------
+    // Copy class resolution + lenient dates (live-captured moto).
+    // ------------------------------------------------------------------
+
+    /// moto's copy destination class = the REQUESTED class else STANDARD
+    /// (models.py:160) — no source inheritance (an IA source copies to a
+    /// headerless STANDARD dst, live-captured).
+    #[test]
+    fn test_copy_class_requested_else_standard() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cl1"), None, b""));
+        let mut req = make_req("PutObject", Some("cl1"), Some("src"), b"doc");
+        req.headers
+            .insert("x-amz-storage-class".to_string(), "STANDARD_IA".to_string());
+        assert_eq!(handler.handle(req).status, 200);
+        let mut copy = make_req("PutObject", Some("cl1"), Some("dst"), b"");
+        copy.headers
+            .insert("x-amz-copy-source".to_string(), "cl1/src".to_string());
+        assert_eq!(handler.handle(copy).status, 200);
+        let head = handler.handle(make_req("HeadObject", Some("cl1"), Some("dst"), b""));
+        let cls = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "x-amz-storage-class")
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("STANDARD");
+        assert_eq!(cls, "STANDARD", "moto resets dst to STANDARD");
+        // a REQUESTED class rides onto the dst like #500's battery leg
+        let mut req = make_req("CopyObject", Some("cl1"), Some("dst2"), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), "cl1/src".to_string());
+        req.headers
+            .insert("x-amz-storage-class".to_string(), "GLACIER_IR".to_string());
+        assert_eq!(handler.handle(req).status, 200);
+        let head = handler.handle(make_req("HeadObject", Some("cl1"), Some("dst2"), b""));
+        let cls = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "x-amz-storage-class")
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("STANDARD");
+        assert_eq!(cls, "GLACIER_IR");
+    }
+
+    /// moto parses If-(Un)Modified-Since dates via strptime(RFC1123),
+    /// requiring the weekday token but ignoring its consistency (live-
+    /// captured: a future date with a wrong weekday still 304s).
+    #[test]
+    fn test_precondition_ignores_weekday_token() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cl2"), None, b""));
+        handler.handle(make_req("PutObject", Some("cl2"), Some("k"), b"doc"));
+        let mut req = make_req("GetObject", Some("cl2"), Some("k"), b"");
+        req.headers.insert(
+            "if-modified-since".to_string(),
+            "Mon, 21 Oct 2099 00:00:00 GMT".to_string(),
+        );
+        assert!(matches!(
+            evaluate_preconditions(Some("\"etag\""), 1_600_000_000, &req.headers, false),
+            Precondition::NotModified
+        ));
+        // an UNPARSEABLE date behaves absent (the shared malformed-date
+        // contract); the weekday-strip leaves bare garbage unparseable
+        req.headers
+            .insert("if-modified-since".to_string(), "garbage".to_string());
+        assert!(matches!(
+            evaluate_preconditions(Some("\"etag\""), 1_600_000_000, &req.headers, false),
+            Precondition::Proceed
+        ));
     }
 
     fn etag_of(handler: &S3Handler, bucket: &str, key: &str) -> String {
