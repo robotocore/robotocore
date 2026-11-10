@@ -2127,16 +2127,55 @@ impl S3Handler {
         // checksum). CopyObjectResult renders it conditionally
         // (responses.py:2463-2470 `if new_key.checksum_value`); the
         // checksum members never ride the Complete envelope.
-        if let Some(value) = req
-            .headers
-            .get("x-amz-checksum-crc32")
-            .cloned()
-            .or_else(|| {
-                req.headers
-                    .get("x-amz-checksum-algorithm")
-                    .map(|_| b64_be_crc32(&req.body))
-            })
-        {
+        // The algorithm slice: the client's own x-amz-checksum-{alg}
+        // value rides verbatim (moto trusts the client's checksum the
+        // same way — live-probed SHA256 flow); when only the ALGORITHM
+        // is given, the twin computes the CRC32 fallback like moto's
+        // default checker. The member NAME derives from the algorithm
+        // (ChecksumSHA256 vs ChecksumCRC32 — the #492 follow-up).
+        use base64::Engine;
+        use sha2::Digest as _;
+        let checksum_from_headers = [
+            ("SHA256", "x-amz-checksum-sha256"),
+            ("SHA1", "x-amz-checksum-sha1"),
+            ("CRC32", "x-amz-checksum-crc32"),
+        ]
+        .iter()
+        .find_map(|(alg, hdr)| {
+            let lower = alg.to_lowercase();
+            let _ = lower;
+            req.headers
+                .get(*hdr)
+                .cloned()
+                .map(|value| format!("{alg}|{value}"))
+                .or_else(|| {
+                    let sdk_alg = req
+                        .headers
+                        .get("x-amz-checksum-algorithm")
+                        .map(|a| a.eq_ignore_ascii_case(alg))
+                        .unwrap_or(false);
+                    if sdk_alg {
+                        let computed = match *alg {
+                            "SHA256" => {
+                                let mut hash = Sha256::new();
+                                hash.update(&req.body);
+                                base64::engine::general_purpose::STANDARD.encode(hash.finalize())
+                            }
+                            "SHA1" => {
+                                let mut hash = sha1::Sha1::new();
+                                hash.update(&req.body);
+                                base64::engine::general_purpose::STANDARD.encode(hash.finalize())
+                            }
+                            _ => b64_be_crc32(&req.body),
+                        };
+                        Some(format!("{alg}|{computed}"))
+                    } else {
+                        None
+                    }
+                })
+        });
+        if let Some(joined) = checksum_from_headers {
+            let (algorithm, value) = joined.split_once('|').unwrap();
             let mut objects = bucket.objects.write();
             if let Some(entry) = objects.get_mut(&key) {
                 if let Some(v) = entry
@@ -2144,7 +2183,7 @@ impl S3Handler {
                     .iter_mut()
                     .find(|v| v.version_id == version_id)
                 {
-                    v.checksum_value = Some(("CRC32".to_string(), value));
+                    v.checksum_value = Some((algorithm.to_string(), value.to_string()));
                 }
             }
         }
@@ -3164,7 +3203,9 @@ impl S3Handler {
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
                 et = etag,
                 checksum_member = match &source.checksum_value {
-                    Some((_, value)) => format!("<ChecksumCRC32>{value}</ChecksumCRC32>"),
+                    Some((algorithm, value)) => {
+                        format!("<Checksum{algorithm}>{value}</Checksum{algorithm}>")
+                    }
                     None => String::new(),
                 }
             ),
