@@ -2222,23 +2222,32 @@ impl S3Handler {
         message: &str,
         extra: &[(&str, &str)],
     ) -> AwsResponse {
+        // the #491 envelope convention: compact one-liner, lowercase
+        // encoding, per-envelope RequestId + the canned HostId. moto has
+        // no live POST-flow oracle for these sites (its policy/uploader
+        // path validates nothing), so the envelope shape mirrors the
+        // error builders rather than a moto capture.
         let mut body = format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<Error>
-  <Code>{}</Code>
-  <Message>{}</Message>"#,
+            concat!(
+                r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                "\n<Error><Code>{}</Code><Message>{}</Message>"
+            ),
             xml_escape(code),
             xml_escape(message),
         );
         for (tag, value) in extra {
             body.push_str(&format!(
-                "\n  <{}>{}</{}>",
+                "<{}>{}</{}>",
                 xml_escape(tag),
                 xml_escape(value),
                 xml_escape(tag)
             ));
         }
-        body.push_str("\n</Error>");
+        body.push_str(&format!(
+            "<RequestId>{}</RequestId><HostId>{}</HostId></Error>",
+            crate::xml::fresh_request_id(),
+            crate::xml::MOTON_HOST_ID
+        ));
         AwsResponse::xml(status, body)
     }
 
