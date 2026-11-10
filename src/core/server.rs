@@ -2452,6 +2452,13 @@ fn s3_options_preflight(
             response.headers_mut().append(name, value);
         }
     }
+    // The preflight relay builds its own axum Response (bypassing
+    // response_from_parsed), so the frame's server insert must be
+    // mirrored here — otherwise bucket_error paths can never carry it
+    // (the #504 review's wire-blocker catch).
+    response
+        .headers_mut()
+        .insert(http::header::SERVER, HeaderValue::from_static("robotocore"));
     Some(response)
 }
 
