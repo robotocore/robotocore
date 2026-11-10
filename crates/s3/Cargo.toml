@@ -27,3 +27,4 @@ sqs = { path = "../sqs" }
 # SNS topic targets publish through the events crate's hook registry (the
 # gateway binds it to the SNS handler), keeping s3 and sns crates acyclic.
 events = { path = "../events" }
+crc = "3.3"
