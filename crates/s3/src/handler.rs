@@ -3212,6 +3212,47 @@ impl S3Handler {
             &tags,
             storage_class,
         );
+        use base64::Engine as _;
+        use sha2::Digest as _;
+        // moto's copy checksum override (responses.py:2454-2468) +
+        // propagation (models.py:3112-3113): the unsuffixed
+        // x-amz-checksum-algorithm (the documented CopyObject header —
+        // distinct from puts' SDK header) overrides: the pair is RECOMPUTED
+        // over the copied value and stored under the RAW header name
+        // (moto's else-branch answers sha256 under a bogus name); absent,
+        // the source's stored pair propagates onto the destination. The
+        // twin computes real values (the #496 tell: local moto's
+        // optional-lib miss answers CRC32-IEEE under CRC32C).
+        let copy_checksum: Option<(String, String)> = {
+            match req.headers.get("x-amz-checksum-algorithm").cloned() {
+                Some(name) => {
+                    let computed = match name.as_str() {
+                        "SHA1" => {
+                            let mut hash = sha1::Sha1::new();
+                            hash.update(&source.data);
+                            base64::engine::general_purpose::STANDARD.encode(hash.finalize())
+                        }
+                        "CRC32" => b64_be_crc32(&source.data),
+                        "CRC32C" => b64_be_crc32c(&source.data),
+                        "CRC64NVME" => b64_be_crc64nvme(&source.data),
+                        _ => {
+                            let mut hash = Sha256::new();
+                            hash.update(&source.data);
+                            base64::engine::general_purpose::STANDARD.encode(hash.finalize())
+                        }
+                    };
+                    Some((name, computed))
+                }
+                None => source.checksum_value.clone(),
+            }
+        };
+        if let Some((algorithm, value)) = &copy_checksum {
+            if let Some(entry) = dest.objects.write().get_mut(dest_key) {
+                if let Some(v) = entry.versions.last_mut() {
+                    v.checksum_value = Some((algorithm.clone(), value.clone()));
+                }
+            }
+        }
         // moto's copy STORES first and routes REPLACE through the backend's
         // put_object_tagging after (responses.py:2442-2445): the failed
         // validation leaves the copied object carrying the COPIED (source)
@@ -3260,7 +3301,10 @@ impl S3Handler {
                 ns = S3_NS,
                 dt = iso8601(chrono::Utc::now().timestamp() as u64),
                 et = etag,
-                checksum_member = match &source.checksum_value {
+                // moto renders from the FINAL stored pair — the request-
+                // provided override when present, the propagated source
+                // pair otherwise (responses.py:2464-2470).
+                checksum_member = match &copy_checksum {
                     Some((algorithm, value)) => {
                         format!("<Checksum{algorithm}>{value}</Checksum{algorithm}>")
                     }
@@ -9914,6 +9958,102 @@ mod tests {
         assert!(checksum_echo(&resp)
             .iter()
             .any(|(k, _)| k == "x-amz-sdk-checksum-algorithm"));
+    }
+
+    // ------------------------------------------------------------------
+    // CopyObject checksum override + propagation (live-captured moto)
+    // responses.py:2454-2470 reads the unsuffixed x-amz-checksum-algorithm,
+    // recomputes over the copied value, stores under the raw name (else-
+    // branch = sha256 under a bogus name); absent, models.py:3112-3113
+    // propagates the source pair onto the destination.
+    // ------------------------------------------------------------------
+
+    fn put_at_source(handler: &S3Handler, bucket: &str, algorithm: Option<&str>, body: &[u8]) {
+        let mut req = make_req("PutObject", Some(bucket), Some("src"), body);
+        if let Some(alg) = algorithm {
+            req.headers
+                .insert("x-amz-sdk-checksum-algorithm".to_string(), alg.to_string());
+        }
+        assert_eq!(handler.handle(req).status, 200);
+    }
+
+    fn copy(
+        handler: &S3Handler,
+        src_bucket: &str,
+        dst_key: &str,
+        alg: Option<&str>,
+    ) -> AwsResponse {
+        let mut req = make_req("PutObject", Some("dst-bucket"), Some(dst_key), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), format!("{src_bucket}/src"));
+        if let Some(alg) = alg {
+            req.headers
+                .insert("x-amz-checksum-algorithm".to_string(), alg.to_string());
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        resp
+    }
+
+    /// A request-provided algorithm recomputes over the copied value and
+    /// renders the REQUEST-derived member (awscrt cross-check:
+    /// crc32c(b'p6b-doc') = OlnZNg== — local moto's lib-missing CRC32
+    /// fallback answers a42cXQ==).
+    #[test]
+    fn test_copy_request_algorithm_recomputes() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cr1"), None, b""));
+        handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
+        put_at_source(&handler, "cr1", Some("SHA256"), b"p6b-doc");
+        let resp = copy(&handler, "cr1", "dst", Some("CRC32C"));
+        assert!(String::from_utf8_lossy(&resp.body)
+            .contains("<ChecksumCRC32C>OlnZNg==</ChecksumCRC32C>"));
+        // And the pair is STORED on the destination: GET renders it.
+        let mut get = make_req("GetObject", Some("dst-bucket"), Some("dst"), b"");
+        get.headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        assert!(checksum_echo(&handler.handle(get))
+            .contains(&("x-amz-checksum-crc32c".to_string(), "OlnZNg==".to_string())));
+    }
+
+    /// Without a request algorithm, the source's stored pair propagates
+    /// onto the destination for both the member and the storage.
+    #[test]
+    fn test_copy_without_algorithm_propagates_source() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cr2"), None, b""));
+        handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
+        put_at_source(&handler, "cr2", Some("SHA256"), b"p6b-doc");
+        let resp = copy(&handler, "cr2", "dst", None);
+        assert!(String::from_utf8_lossy(&resp.body).contains("<ChecksumSHA256>"));
+        let mut get = make_req("GetObject", Some("dst-bucket"), Some("dst"), b"");
+        get.headers
+            .insert("x-amz-checksum-mode".to_string(), "ENABLED".to_string());
+        let echoes = checksum_echo(&handler.handle(get));
+        assert!(
+            echoes
+                .iter()
+                .any(|(k, _)| k == "x-amz-sdk-checksum-algorithm"),
+            "destination must carry the propagated algorithm, got {:?}",
+            echoes
+        );
+    }
+
+    /// moto's else-branch: a bogus algorithm name answers sha256 under the
+    /// RAW requested name (responses.py:2455-2468).
+    #[test]
+    fn test_copy_bogus_algorithm_sha256_under_raw_name() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cr3"), None, b""));
+        handler.handle(make_req("CreateBucket", Some("dst-bucket"), None, b""));
+        put_at_source(&handler, "cr3", None, b"p6b-doc");
+        let resp = copy(&handler, "cr3", "dst", Some("WEIRD"));
+        use sha2::Digest as _;
+        let mut hash = Sha256::new();
+        hash.update(b"p6b-doc");
+        let expected = base64::engine::general_purpose::STANDARD.encode(hash.finalize());
+        assert!(String::from_utf8_lossy(&resp.body)
+            .contains(&format!("<ChecksumWEIRD>{expected}</ChecksumWEIRD>")));
     }
 }
 
