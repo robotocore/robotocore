@@ -41,6 +41,16 @@ pub struct ObjectVersion {
     /// while a completed restore marker is present.
     #[serde(default)]
     pub restore: Option<String>,
+    /// moto's per-object checksum_value (models.py:184 + transfers on
+    /// copy): stored ONLY when the upload carried a checksum-algorithm
+    /// request header (CRC32 slice) — CopyObjectResult renders it
+    /// conditionally (`if new_key.checksum_value`, responses.py:
+    /// 2463-2470) and copies propagate it from the source unless
+    /// overridden. CompleteMultipartUploadResult never renders a
+    /// checksum (hard-coded Location/Bucket/Key/ETag, responses.py:
+    /// 3209-3217).
+    #[serde(default)]
+    pub checksum_value: Option<(String, String)>,
 }
 
 impl ObjectVersion {
@@ -61,6 +71,7 @@ impl ObjectVersion {
             legal_hold: None,
             retention: None,
             restore: None,
+            checksum_value: None,
         }
     }
 }
