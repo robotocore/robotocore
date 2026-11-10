@@ -6958,6 +6958,14 @@ impl S3Handler {
         if has_key && second == "WriteGetObjectResponse" && method == "POST" {
             return Some("WriteGetObjectResponse".to_string());
         }
+        // botocore's own write-back wire is the ONE-segment
+        // POST /WriteGetObjectResponse (routed hosts arrive as the
+        // two-segment form above); both name the same op — the s3
+        // crate's `s3-object-lambda` scope alias delivers the signed
+        // call here (router.rs SERVICE_NAME_ALIASES).
+        if first == "WriteGetObjectResponse" && method == "POST" {
+            return Some("WriteGetObjectResponse".to_string());
+        }
 
         let q = |k: &str| query_params.contains_key(k);
 
