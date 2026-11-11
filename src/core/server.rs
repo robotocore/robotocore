@@ -212,14 +212,14 @@ impl SqsServiceHandler {
     /// with a 52-char alnum id echoed in x-amzn-requestid — moto's
     /// gen_amzn_requestid_long).
     /// Error responses already render as XML envelopes on the form wire;
-    /// the pin covers SetQueueAttributes first (the wider success-op set
-    /// stays on the ledger runway).
+    /// the pin covers SetQueueAttributes and DeleteQueue (the wider
+    /// payload-less set stays on the audit runway).
     fn renders_query_envelope(req: &ParsedRequest) -> bool {
         let is_form = req
             .headers
             .get("content-type")
             .is_some_and(|t| t.starts_with("application/x-www-form-urlencoded"));
-        is_form && req.operation == "SetQueueAttributes"
+        is_form && matches!(req.operation.as_str(), "SetQueueAttributes" | "DeleteQueue")
     }
 
     /// moto's gen_amzn_requestid_long: 52 chars over [A-Za-z0-9]
@@ -3973,8 +3973,87 @@ mod tests {
         );
         assert!(raw.contains(&format!("<RequestId>{request_id}")));
 
-        // The SDK JSON body stays amz-json bare on the same adapter: the
-        // JSON negative pin (the gate is form-content-type only).
+        // DeleteQueue joins the envelope scope (moto's live pin: the
+        // same XML envelope on the form wire); a delete on the MISSING
+        // queue returns moto's XML Error envelope with
+        // AWS.SimpleQueueService.NonExistentQueue (pre-#516 the twin
+        // answered 200 {}).
+        let delete = parse_query_protocol(
+            b"Action=DeleteQueue&Version=2012-11-05\
+            &QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F000000000000%2Fenv-pin-q",
+        )
+        .unwrap_or_default();
+        let delete_req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "DeleteQueue".to_string(),
+            params: delete,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: headers.clone(),
+        };
+        let dout = handler.handle_sync(&delete_req).unwrap();
+        assert_eq!(dout.status, StatusCode::OK);
+        let draw = dout.raw.as_deref().expect("envelope body must land in raw");
+        assert!(
+            draw.starts_with(
+                "<DeleteQueueResponse xmlns=\"http://queue.amazonaws.com/doc/2012-11-05/\">"
+            ),
+            "raw = {draw}"
+        );
+
+        let dmiss = handler.handle_sync(&delete_req).unwrap();
+        assert_eq!(dmiss.status, StatusCode::BAD_REQUEST);
+        let mraw = dmiss.raw.as_deref().expect("xml error body");
+        assert!(
+            mraw.contains("<Code>AWS.SimpleQueueService.NonExistentQueue</Code>"),
+            "raw = {mraw}"
+        );
+        // Recorded error-envelope deltas for this wire (live oracle, full
+        // body): moto swaps the Message to the wsdl-version overlay text
+        // ("...does not exist for this wsdl version.", the moto-extras
+        // compatibility overlay), adds a separate lowercase <message>
+        // element, and renders its live 52-char id in <RequestId>
+        // mirrored from the x-amzn-requestid echo. The twin keeps the
+        // canonical message, no <message> duplicate, and the frozen
+        // zero-uuid id (the requestid-idiom audit row). The XML
+        // declaration + pretty-printing are additional pre-existing
+        // deltas — moto's wire body has neither.
+    }
+
+    /// The SDK JSON body stays amz-json bare on the same adapter: the
+    /// JSON negative pin (the gate is form-content-type only). Runs on
+    /// its own handler so the legacy-delete legs above can't drain it.
+    #[test]
+    fn test_sqs_json_wire_set_queue_attributes_stays_bare() {
+        let handler = SqsServiceHandler {
+            inner: Arc::new(sqs::DefaultSqsHandler::new()),
+        };
+        let mut headers = HashMap::new();
+        headers.insert(
+            "content-type".to_string(),
+            "application/x-www-form-urlencoded".to_string(),
+        );
+        let create =
+            parse_query_protocol(b"Action=CreateQueue&Version=2012-11-05&QueueName=env-pin-json")
+                .unwrap_or_default();
+        let create_req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "CreateQueue".to_string(),
+            params: create,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: headers.clone(),
+        };
+        assert_eq!(handler.handle_sync(&create_req).unwrap().status, 200);
+
         let mut json_headers = HashMap::new();
         json_headers.insert(
             "content-type".to_string(),
@@ -3983,7 +4062,9 @@ mod tests {
         let mut json_params = HashMap::new();
         json_params.insert(
             "QueueUrl".to_string(),
-            serde_json::Value::String("http://localhost:4566/000000000000/env-pin-q".to_string()),
+            serde_json::Value::String(
+                "http://localhost:4566/000000000000/env-pin-json".to_string(),
+            ),
         );
         json_params.insert(
             "Attributes".to_string(),

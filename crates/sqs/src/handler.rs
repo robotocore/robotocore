@@ -1557,11 +1557,19 @@ impl DefaultSqsHandler {
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
 
         let store = self.get_store(account, region);
-        // Remove the queue entry and drop its pending cross-service
+        // Delete the queue entry and drop its pending cross-service
         // deliveries inside the same map-write critical section: a bridge
         // producer buffering in between the two steps would either be wiped
         // after the entry is already gone or leave a stale delivery behind
         // for a re-created queue of the same name.
+        // moto raises QueueDoesNotExist for a delete on a missing queue
+        // (the backend lookup precedes the removal — the legacy-form 400
+        // XML envelope was the #515 audit-row live pin).
+        if store.get_queue(&queue_name).is_none() {
+            return Err(SqsError::NonExistentQueue(
+                "The specified queue does not exist.".to_string(),
+            ));
+        }
         store.with_queues_write(|queues| {
             queues.remove(&queue_name);
             super::bridge::clear_pending(account, region, &queue_name);
