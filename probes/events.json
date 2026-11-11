@@ -1,6 +1,11 @@
 {
   "service": "events",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-11T06:58:34.918274+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/events.rs": "absent",
+    "rotocore/src/services/events/": "absent",
+    "crates/events/src/": "10211e0d81edf75a907afa4a9b4454930362b6c63171feb24eecbd79f28694e5"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 57,
@@ -295,10 +300,5 @@
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/events.rs": "absent",
-    "rotocore/src/services/events/": "absent",
-    "crates/events/src/": "737aa7e4c2be8c3371d2905637e44deba108a079c277de10ffbd88100d1e709f"
-  }
+  ]
 }
