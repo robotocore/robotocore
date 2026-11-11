@@ -120,6 +120,31 @@ pub struct DefaultSqsHandler {
     pub(crate) stores: StoreMap,
 }
 
+/// moto's `_get_queue_name` (responses.py:46-58) as a free function — the
+/// shared resolution the engine and the IAM enforcement ARN mints both
+/// consume (a copy-maintained mirror caused ARN drift, #518-review).
+pub fn extract_queue_name(url: &str) -> Result<String, SqsError> {
+    // URL format: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
+    // Or: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}.fifo
+
+    // moto's _get_queue_name (responses.py:46-58): only an http(s)
+    // scheme resolves through the path — ANY other form (including a
+    // bare queue name) is taken verbatim ("The parameter could be the
+    // name itself, which AWS also accepts").
+    if url.starts_with("http://") || url.starts_with("https://") {
+        if let Some(last_slash) = url.rfind('/') {
+            let queue_part = &url[last_slash + 1..];
+            if !queue_part.is_empty() {
+                return Ok(queue_part.to_string());
+            }
+        }
+    }
+
+    // moto never fails during QueueUrl parsing: it always resolves the
+    // queue_name (however malformed) and answers a missing queue.
+    Ok(url.to_string())
+}
+
 impl DefaultSqsHandler {
     pub fn new() -> Self {
         Self {
@@ -1871,25 +1896,7 @@ impl DefaultSqsHandler {
     }
 
     fn extract_queue_name_from_url(&self, url: &str) -> Result<String, SqsError> {
-        // URL format: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
-        // Or: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}.fifo
-
-        // moto's _get_queue_name (responses.py:46-58): only an http(s)
-        // scheme resolves through the path — ANY other form (including a
-        // bare queue name) is taken verbatim ("The parameter could be the
-        // name itself, which AWS also accepts").
-        if url.starts_with("http://") || url.starts_with("https://") {
-            if let Some(last_slash) = url.rfind('/') {
-                let queue_part = &url[last_slash + 1..];
-                if !queue_part.is_empty() {
-                    return Ok(queue_part.to_string());
-                }
-            }
-        }
-
-        // moto never fails during QueueUrl parsing: it always resolves the
-        // queue_name (however malformed) and answers a missing queue.
-        Ok(url.to_string())
+        extract_queue_name(url)
     }
 
     fn handle_set_queue_attributes(

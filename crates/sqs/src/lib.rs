@@ -9,7 +9,7 @@ pub mod models;
 pub mod protocol;
 pub mod snapshot;
 
-pub use handler::DefaultSqsHandler;
+pub use handler::{extract_queue_name, DefaultSqsHandler};
 pub use protocol::{AwsRequest, AwsResponse, SqsHandler};
 
 #[cfg(test)]
