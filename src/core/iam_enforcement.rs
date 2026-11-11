@@ -316,7 +316,10 @@ fn build_resource_arn(
             }
         }
         "sns" => {
-            if let Some(topic_arn) = query_val("TopicArn") {
+            // Modern botocore sns is protocol-query: TopicArn rides the
+            // FORM body (the #519-review live pin) — params first, the
+            // query carrier stays for URL-query callers.
+            if let Some(topic_arn) = url_param("TopicArn").or_else(|| query_val("TopicArn")) {
                 return topic_arn;
             }
             format!("arn:aws:sns:{region}:{account}:*")
@@ -331,7 +334,15 @@ fn build_resource_arn(
                 None => format!("arn:aws:lambda:{region}:{account}:function:*"),
             }
         }
-        "dynamodb" => format!("arn:aws:dynamodb:{region}:{account}:table/*"),
+        "dynamodb" => {
+            // TableName rides the JSON body (protocol json) — a named
+            // table mints its own ARN; table-less ops keep the wildcard.
+            if let Some(table) = url_param("TableName").filter(|t| !t.is_empty()) {
+                format!("arn:aws:dynamodb:{region}:{account}:table/{table}")
+            } else {
+                format!("arn:aws:dynamodb:{region}:{account}:table/*")
+            }
+        }
         other => format!("arn:aws:{other}:{region}:{account}:*"),
     }
 }
