@@ -1,10 +1,10 @@
 {
   "service": "lambda",
-  "generated_at": "2026-11-10T00:52:43.224955+00:00",
+  "generated_at": "2026-11-11T21:07:53.916652+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/lambda.rs": "absent",
     "rotocore/src/services/lambda/": "absent",
-    "crates/lambda/src/": "b7b62686c9930d1cb91d6bcf8c8000b9f0faa9239c2b3b18b392e7f0367bf174"
+    "crates/lambda/src/": "efb2a2e8698da3f2786b7a0d4d9df7a49f6f50f21e492ea3fe0b344ab334ad35"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -53,7 +53,7 @@
     {
       "operation": "CreateFunction",
       "status": "working",
-      "message": "OK (required-only fill)"
+      "message": "implemented via required-only (ValidationException)"
     },
     {
       "operation": "CreateFunctionUrlConfig",
@@ -83,12 +83,12 @@
     {
       "operation": "DeleteFunctionCodeSigningConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteFunctionConcurrency",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteFunctionEventInvokeConfig",
@@ -158,12 +158,12 @@
     {
       "operation": "GetFunctionCodeSigningConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionConcurrency",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionConfiguration",
@@ -178,7 +178,7 @@
     {
       "operation": "GetFunctionRecursionConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionScalingConfig",
@@ -228,7 +228,7 @@
     {
       "operation": "InvokeAsync",
       "status": "working",
-      "message": "likely implemented (InvalidRequestContent: The request payload is not valid JSON.)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "InvokeWithResponseStream",
@@ -238,7 +238,7 @@
     {
       "operation": "ListAliases",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListCapacityProviders",
@@ -263,12 +263,12 @@
     {
       "operation": "ListFunctionEventInvokeConfigs",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListFunctionUrlConfigs",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListFunctionVersionsByCapacityProvider",
@@ -298,17 +298,17 @@
     {
       "operation": "ListProvisionedConcurrencyConfigs",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListVersionsByFunction",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PublishLayerVersion",
@@ -318,17 +318,17 @@
     {
       "operation": "PublishVersion",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionCodeSigningConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionConcurrency",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionEventInvokeConfig",
@@ -338,7 +338,7 @@
     {
       "operation": "PutFunctionRecursionConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionScalingConfig",
@@ -388,12 +388,12 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAlias",
@@ -418,12 +418,12 @@
     {
       "operation": "UpdateFunctionCode",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFunctionConfiguration",
       "status": "working",
-      "message": "OK (required-only fill)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFunctionEventInvokeConfig",

@@ -34,7 +34,12 @@ impl IamHandler {
 
     pub(crate) fn get_state(&self, account: u64) -> IamState {
         let mut states = self.state.write();
-        states.entry(account).or_default().clone()
+        let state = states.entry(account).or_default().clone();
+        drop(states);
+        // Every IAM touch keeps the cross-service bridge live (see
+        // bridge.rs) so Lambda's create-path role gate reads this state.
+        crate::bridge::register_state(account, &state);
+        state
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {

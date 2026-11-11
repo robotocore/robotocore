@@ -18,6 +18,60 @@ use crate::models::{
 use crate::protocol::{function_not_found, path_segments, resolve_fn, AwsRequest, AwsResponse};
 use crate::runtime;
 
+/// moto `InvalidRoleFormat.pattern` (awslambda/exceptions.py:37), matched
+/// with `re.match` semantics: anchored at the start only — trailing text
+/// past the character class still matches (moto only validates the
+/// prefix; put_function's next gate, the exact-ARN IAM lookup, catches a
+/// role whose full string matches no stored role).
+const ROLE_ARN_PATTERN: &str = r"arn:(aws[a-zA-Z-]*)?:iam::(\d{12}):role/?[a-zA-Z_0-9+=,.@\-_/]+";
+
+fn role_arn_match(role: &str) -> Option<regex::Captures<'_>> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        // `^…` start anchor + no end anchor = moto's re.match on this
+        // pattern (the pattern itself carries no ^; here it is pinned in).
+        regex::Regex::new(&format!("^{ROLE_ARN_PATTERN}")).unwrap()
+    })
+    .captures(role)
+}
+
+/// moto `LambdaBackend.put_function` (awslambda/models.py:2254-2262) role
+/// gates on the create path, in order: `InvalidRoleFormat` (regex shape),
+/// `CrossAccountNotAllowed` (the ARN's account ≠ the function's account),
+/// then the IAM `get_role_by_arn` lookup (a miss raises
+/// `InvalidParameterValueException`, "The role defined for the function
+/// cannot be assumed by Lambda."). Needs a registered `iam::bridge` state
+/// for `account`; an IAM-untouched account has no role, matching moto's
+/// auto-vivified empty IAM backend.
+fn validate_create_role(account: u64, role: &str) -> Result<(), AwsResponse> {
+    let Some(caps) = role_arn_match(role) else {
+        return Err(AwsResponse::error(
+            400,
+            "ValidationException",
+            &format!(
+                "1 validation error detected: Value '{}' at 'role' failed to satisfy \
+                 constraint: Member must satisfy regular expression pattern: {ROLE_ARN_PATTERN}",
+                role
+            ),
+        ));
+    };
+    if caps[2] != account.to_string() {
+        return Err(AwsResponse::error(
+            400,
+            "AccessDeniedException",
+            "Cross-account pass role is not allowed.",
+        ));
+    }
+    if !iam::bridge::role_arn_exists(account, role) {
+        return Err(AwsResponse::error(
+            400,
+            "InvalidParameterValueException",
+            "The role defined for the function cannot be assumed by Lambda.",
+        ));
+    }
+    Ok(())
+}
+
 pub struct LambdaHandler {
     pub(crate) state: RwLock<HashMap<(u64, String), LambdaState>>,
 }
@@ -369,7 +423,10 @@ impl LambdaHandler {
     // Configuration rendering (mirrors moto's get_configuration keys).
     // ---------------------------------------------------------------
 
-    fn fn_config(f: &LambdaFunction) -> Value {
+    /// moto get_configuration (awslambda/models.py:815-818): LastUpdateStatus
+    /// only renders "after the first creation" — the CREATE response
+    /// (responses.py:143, on_create=True) omits it.
+    fn fn_config(f: &LambdaFunction, on_create: bool) -> Value {
         let mut cfg = json!({
             "CodeSha256": *f.code_sha256.read(),
             "CodeSize": *f.code_size.read(),
@@ -393,8 +450,10 @@ impl LambdaHandler {
             "Architectures": ["x86_64"],
             "EphemeralStorage": {"Size": 512},
             "SnapStart": {"ApplyOn": "None", "OptimizationStatus": "Off"},
-            "LastUpdateStatus": "Successful",
         });
+        if !on_create {
+            cfg["LastUpdateStatus"] = json!("Successful");
+        }
         // moto echoes VpcConfig as given and stamps VpcId when groups supply.
         if let Some(vpc) = f.vpc_config.read().as_ref() {
             let mut vpc = vpc.clone();
@@ -511,6 +570,17 @@ impl LambdaHandler {
             }
             *func.layers.write() = layer_data;
         }
+        // moto runs put_function's role gates AFTER the package/layer
+        // validation (the LambdaFunction constructor owns the layers, then
+        // put_function validates the role; models.py:388 layers → 2254
+        // role). The dup conflict check ran earlier through responses.py,
+        // so an existing function answers 409 before this gate (the
+        // measured dup-beats-role differential).
+        if let Some(role) = req.param_str("Role") {
+            if let Err(resp) = validate_create_role(req.account, &role) {
+                return resp;
+            }
+        }
         if let Some(tags) = req.params.get("Tags").and_then(Value::as_object) {
             let mut map = func.tags.write();
             for (k, v) in tags {
@@ -532,7 +602,9 @@ impl LambdaHandler {
                 versions: Vec::new(),
             },
         );
-        AwsResponse::json(201, Self::fn_config(&func))
+        // Moto-pinned on_create render (responses.py:143): the create
+        // Configuration omits LastUpdateStatus.
+        AwsResponse::json(201, Self::fn_config(&func, true))
     }
 
     fn get_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -543,7 +615,7 @@ impl LambdaHandler {
         };
         let s3key = format!("{}-{}", func.function_name, uuid::Uuid::new_v4().simple());
         let mut body = json!({
-            "Configuration": Self::fn_config(&func),
+            "Configuration": Self::fn_config(&func, false),
             "Code": {
                 "Location": format!(
                     "https://awslambda-{}-tasks.s3.{}.amazonaws.com/{}",
@@ -572,7 +644,7 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        AwsResponse::json(200, Self::fn_config(&func))
+        AwsResponse::json(200, Self::fn_config(&func, false))
     }
 
     fn delete_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -698,7 +770,7 @@ impl LambdaHandler {
         let configs: Vec<Value> = funcs
             .values()
             .filter_map(|e| e.latest.as_ref())
-            .map(|f| Self::fn_config(f))
+            .map(|f| Self::fn_config(f, false))
             .collect();
         AwsResponse::json(200, json!({ "Functions": configs }))
     }
@@ -728,7 +800,7 @@ impl LambdaHandler {
         }
         *func.last_modified.write() = iso_now();
         *func.code_or_config_updated.write() = true;
-        AwsResponse::json(200, Self::fn_config(&func))
+        AwsResponse::json(200, Self::fn_config(&func, false))
     }
 
     fn update_function_configuration(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -782,7 +854,7 @@ impl LambdaHandler {
         }
         *func.last_modified.write() = iso_now();
         *func.code_or_config_updated.write() = true;
-        AwsResponse::json(200, Self::fn_config(&func))
+        AwsResponse::json(200, Self::fn_config(&func, false))
     }
 
     // ---------------------------------------------------------------
@@ -1144,7 +1216,7 @@ impl LambdaHandler {
         if !entry.versions.is_empty() && !*latest.code_or_config_updated.read() {
             let last = entry.versions.last().cloned().unwrap();
             drop(funcs);
-            return AwsResponse::json(201, Self::fn_config(&last));
+            return AwsResponse::json(201, Self::fn_config(&last, false));
         }
         *latest.code_or_config_updated.write() = false;
         let new_version = (entry.versions.len() + 1) as i64;
@@ -1156,9 +1228,10 @@ impl LambdaHandler {
         }
         entry.versions.push(Arc::clone(&published));
         drop(funcs);
-        AwsResponse::json(201, Self::fn_config(&published))
+        // moto publish_version renders the off-create configuration shape
+        // (responses.py:210-218) — LastUpdateStatus included.
+        AwsResponse::json(201, Self::fn_config(&published, false))
     }
-
     fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         // NO forbid-qualifier here: moto's ListVersionsByFunction never
         // touches the forbid resolver — responses.py:114-123 paths the raw
@@ -1182,10 +1255,10 @@ impl LambdaHandler {
                 return function_not_found(&name, &req.region, req.account);
             }
         };
-        let mut latest_cfg = Self::fn_config(&latest);
+        let mut latest_cfg = Self::fn_config(&latest, false);
         latest_cfg["FunctionArn"] = json!(format!("{}:$LATEST", latest.function_arn));
         let mut all = vec![latest_cfg];
-        all.extend(entry.versions.iter().map(|f| Self::fn_config(f)));
+        all.extend(entry.versions.iter().map(|f| Self::fn_config(f, false)));
         AwsResponse::json(200, json!({ "Versions": all }))
     }
 
@@ -3583,10 +3656,17 @@ mod tests {
     use bytes::Bytes;
 
     fn make_req(method: &str, params: Value, path: &str) -> AwsRequest {
+        make_req_acct(123456789012, method, params, path)
+    }
+
+    /// make_req with a pinned account — the role-gate pins register their
+    /// IAM state under a unique per-test account so the process-global
+    /// bridge's clobbering does not chase them across tests.
+    fn make_req_acct(account: u64, method: &str, params: Value, path: &str) -> AwsRequest {
         AwsRequest {
             service: "lambda".to_string(),
             operation: String::new(),
-            account: 123456789012,
+            account,
             region: "us-east-1".to_string(),
             params,
             body: Bytes::new(),
@@ -3649,6 +3729,163 @@ mod tests {
         ));
         assert_eq!(resp.status, 400, "body: {}", resp.body);
         assert!(resp.body.contains("NoSuchBucket"), "body: {}", resp.body);
+    }
+
+    /// Register a role in the process-global IAM bridge for `account` so
+    /// the create-path role gate can find it (moto resolves the Role ARN
+    /// against its own IAM backend). Each pin passes its own account so
+    /// the shared registry cannot bleed tests into each other.
+    fn mint_role(account: u64, role_name: &str) -> String {
+        let role = iam::models::Role::new(account, role_name.to_string(), "{}".to_string());
+        let arn = role.arn.clone();
+        let state = iam::models::IamState::default();
+        state
+            .roles
+            .write()
+            .insert(role_name.to_string(), Arc::new(role));
+        iam::bridge::register_state(account, &state);
+        arn
+    }
+
+    // ==== create-path role gate pins (moto LambdaBackend.put_function,
+    // awslambda/models.py:2254-2262; 2026-11-10 differential runs) ====
+
+    /// Valid-shape ARN the IAM bridge does not know → moto's
+    /// InvalidParameterValueException wording (errors/exceptions.py).
+    #[test]
+    fn create_function_rejects_unknown_role_arn() {
+        let acct = 778100000001u64;
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req_acct(
+            acct,
+            "POST",
+            json!({"FunctionName": "gate-fn", "Runtime": "python3.12",
+                   "Role": "arn:aws:iam::778100000001:role/no-such-role", "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("\"__type\":\"InvalidParameterValueException\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("The role defined for the function cannot be assumed by Lambda."),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// The positive control: a role the IAM bridge registered → creation
+    /// proceeds and the role echoes back (the 2026-11-10 live census row).
+    #[test]
+    fn create_function_accepts_role_in_the_iam_bridge() {
+        let acct = 778100000002u64;
+        let arn = mint_role(acct, "gate-ok-role");
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req_acct(
+            acct,
+            "POST",
+            json!({"FunctionName": "gate-ok-fn", "Runtime": "python3.12",
+                   "Role": arn, "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+        assert!(resp.body.contains(&arn), "body: {}", resp.body);
+    }
+
+    /// moto's InvalidRoleFormat split: a rejected role answers the
+    /// ValidationException shape with the pattern spelled out
+    /// (exceptions.py:35-39), not the generic "cannot be assumed" text.
+    #[test]
+    fn create_function_rejects_role_off_the_arn_pattern() {
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "gate-bare-fn", "Runtime": "python3.12",
+                   "Role": "bogus-role", "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("\"__type\":\"ValidationException\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("1 validation error detected: Value 'bogus-role' at 'role'"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("Member must satisfy regular expression pattern"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// The ARN's account slot decides before IAM is consulted: a
+    /// well-formed ARN for the wrong account is AccessDeniedException
+    /// "Cross-account pass role is not allowed." even when such a role
+    /// exists nowhere (2026-11-10 differential, cross-account-missing).
+    #[test]
+    fn create_function_rejects_cross_account_role() {
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "gate-xa-fn", "Runtime": "python3.12",
+                   "Role": "arn:aws:iam::999999999999:role/x", "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("\"__type\":\"AccessDeniedException\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("Cross-account pass role is not allowed."),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// Existing function + unknown role → moto answers the conflict BEFORE
+    /// the role gate (responses.py get_function precedes put_function;
+    /// the measured dup-beats-role differential rows both report 409).
+    #[test]
+    fn create_function_dup_conflict_precedes_the_role_gate() {
+        let acct = 778100000003u64;
+        let arn = mint_role(acct, "gate-dup-role");
+        let handler = LambdaHandler::new();
+        let first = handler.handle(make_req_acct(
+            acct,
+            "POST",
+            json!({"FunctionName": "gate-dup-fn", "Runtime": "python3.12",
+                   "Role": arn, "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(first.status, 201, "body: {}", first.body);
+        let second = handler.handle(make_req_acct(
+            acct,
+            "POST",
+            json!({"FunctionName": "gate-dup-fn", "Runtime": "python3.12",
+                   "Role": "arn:aws:iam::778100000003:role/absent-role", "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(second.status, 409, "body: {}", second.body);
+        assert!(
+            second
+                .body
+                .contains("\"__type\":\"ResourceConflictException\""),
+            "body: {}",
+            second.body
+        );
     }
 
     /// Build a minimal (python-zipfile) deployment package for handler tests.
@@ -4462,7 +4699,9 @@ mod tests {
     fn esm_snapshot_carries_the_execution_role() {
         // moto builds the kinesis envelope's invokeIdentityArn from the
         // function's execution role (func.role); the snapshot is the only
-        // channel the engine thread has, so it must ride along.
+        // channel the engine thread has, so it must ride along. The role
+        // gate needs the execution role in the process-global IAM bridge.
+        mint_role(123456789012, "executor");
         let handler = LambdaHandler::new();
         handler.handle(make_req(
             "POST",

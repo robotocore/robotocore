@@ -530,6 +530,13 @@ impl IamState {
         self.roles.read().get(name).cloned()
     }
 
+    /// moto get_role_by_arn (iam/models.py:2193-2201): the role whose
+    /// stored ARN equals `arn` exactly — a full-ARN match, so pathed roles
+    /// answer only when every path segment carries over.
+    pub fn get_role_by_arn(&self, arn: &str) -> Option<Arc<Role>> {
+        self.roles.read().values().find(|r| r.arn == arn).cloned()
+    }
+
     pub fn get_group(&self, name: &str) -> Option<Arc<Group>> {
         self.groups.read().get(name).cloned()
     }

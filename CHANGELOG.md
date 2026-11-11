@@ -62,6 +62,46 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda: the create path resolves the Role against the IAM registry.**
+  moto's `LambdaBackend.put_function` gates the role three ways, in
+  order (awslambda/models.py:2254-2262): the `InvalidRoleFormat` regex
+  (`arn:(aws[a-zA-Z-]*)?:iam::(\d{12}):role/?[a-zA-Z_0-9+=,.@\-_/]+`,
+  awslambda/exceptions.py:37, matched like `re.match` — start-anchored,
+  no end anchor, so trailing junk still passes the shape and lands on
+  the next gate), then the ARN's account slot vs the function's account
+  (`AccessDeniedException`, "Cross-account pass role is not allowed."),
+  then `iam get_role_by_arn` (an exact full-ARN compare;
+  iam/models.py:2193-2201; a miss answers 400
+  `InvalidParameterValueException` "The role defined for the function
+  cannot be assumed by Lambda."). The twin stored `Role` verbatim and
+  never looked it up, so every static-Role create succeeded where the
+  oracle 400s (2026-11-10 rows: unknown-role, bare-role,
+  cross-account-missing). The gate reads IAM through a new
+  regionless-state bridge (`iam::bridge`, registered from
+  `IamHandler::get_state`, mirroring `s3::bridge`/`lambda::bridge`) — an
+  IAM-untouched account answers the missing-role error like moto's
+  auto-vivified empty IAM backend. An existing function + unknown role
+  still reports 409: moto resolves the function before put_function
+  (responses.py:140-146), and the twin keeps the conflict check first.
+  The whole create-shape render now splits on_create (moto
+  models.py:815-818 renders LastUpdateStatus only "after the first
+  creation"; the created Configuration carried the extra field,
+  publish_version keeps it, responses.py:210-218).
+  Pins: in-crate create_function_rejects_unknown_role_arn /
+  create_function_accepts_role_in_the_iam_bridge /
+  create_function_rejects_role_off_the_arn_pattern /
+  create_function_rejects_cross_account_role /
+  create_function_dup_conflict_precedes_the_role_gate; differential
+  corpus lambda_roles (9 rows, 0 unexpected, incl. the policy family
+  which already matched moto's "Function not found: <arn>" 404s). One
+  census row stays deliberately divergent: a CreateRole minted with the
+  raw 12-digit key `999999999999` lands in moto's default account (its
+  raw-key model has no foreign accounts), so moto's cross-account gate
+  never fires for that row, while the twin's documented
+  12-digit-key=account convention records a real cross-account ARN and
+  answers AccessDeniedException — both engines converge once accounts
+  are pinned via their headers (x-moto-account-id / X-Robotocore-Account).
+
 - **STS: cross-account AssumeRole acts in the account the RoleArn
   names.** moto derives the assumed session's account from an anchored
   iam search over the RoleArn (`^arn:<partition>:iam::<digits>.+`,
