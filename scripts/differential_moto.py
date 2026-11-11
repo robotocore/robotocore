@@ -15,10 +15,10 @@ Usage:
 
 import argparse
 import datetime
+import io
 import json
 import os
 import pathlib as _pathlib
-import io
 import re
 import subprocess
 import sys
@@ -1101,8 +1101,10 @@ def corpus_lambda_roles(engine):
                 )
             ),
         ),
-        ("policy_missing", err_wrap(lambda: lam.get_policy(
-            FunctionName=engine.res_name("diff-gate-none")))),
+        (
+            "policy_missing",
+            err_wrap(lambda: lam.get_policy(FunctionName=engine.res_name("diff-gate-none"))),
+        ),
         (
             "delperm_missing",
             err_wrap(
