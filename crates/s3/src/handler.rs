@@ -3168,6 +3168,28 @@ impl S3Handler {
             }
         };
 
+        // moto evaluates exactly ONE CopyObject precondition —
+        // x-amz-copy-source-if-none-match (responses.py:2391-2397): a
+        // matching source etag raises 412 PreconditionFailed before any
+        // copy lands. The if-match and copy-source-if-(un)modified-since
+        // headers are absent from moto's copy path entirely (live
+        // census: garbage dates and a bad If-Match both copy). The
+        // trim-based normalize accepts one-sided/extra quotation forms
+        // moto's exact two-form membership 200-copies ("etag, etag",
+        // ""etag"") — accepted narrower-strictness delta (the GET
+        // If-Match path carries the same trim convention).
+        if req
+            .headers
+            .get("x-amz-copy-source-if-none-match")
+            .is_some_and(|v| v.trim_matches('"') == source.etag)
+        {
+            return AwsResponse::error(
+                412,
+                "PreconditionFailed",
+                "At least one of the pre-conditions you specified did not hold",
+            );
+        }
+
         let directive = req
             .headers
             .get("x-amz-metadata-directive")
@@ -10378,6 +10400,60 @@ mod tests {
                 "{name} full-range must echo the value header, got {:?}",
                 checksum_echo(&resp)
             );
+        }
+    }
+
+    /// moto evaluates exactly ONE CopyObject precondition:
+    /// x-amz-copy-source-if-none-match (responses.py:2391-2397) — a
+    /// matching source etag (quoted or bare) 412s; the copy-source
+    /// if-match and if-(un)modified-since headers are absent from the
+    /// copy path entirely (live census: garbage dates and a bad If-Match
+    /// both copy).
+    #[test]
+    fn test_copy_source_if_none_match_matches() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("sc2"), None, b""));
+        handler.handle(make_req("PutObject", Some("sc2"), Some("src"), b"cpn-doc"));
+
+        let get = handler.handle(make_req("GetObject", Some("sc2"), Some("src"), b""));
+        let etag = get
+            .headers
+            .iter()
+            .find(|(k, _)| k == "ETag")
+            .map(|(_, v)| v.clone())
+            .expect("object must carry an ETag header");
+
+        for form in [etag.clone(), etag.trim_matches('"').to_string()] {
+            let mut req = make_req("PutObject", Some("sc2"), Some("dst"), b"");
+            req.headers
+                .insert("x-amz-copy-source".to_string(), "sc2/src".to_string());
+            req.headers
+                .insert("x-amz-copy-source-if-none-match".to_string(), form);
+            let resp = handler.handle(req);
+            assert_eq!(resp.status, 412);
+            assert!(
+                String::from_utf8_lossy(&resp.body).contains("PreconditionFailed"),
+                "matching none-match must 412 PreconditionFailed"
+            );
+        }
+
+        // Bad if-none-match copies; absent from moto's copy path
+        // entirely: if-match and (un)modified-since don't gate.
+        for (header, value) in [
+            ("x-amz-copy-source-if-none-match", "\"deadbeef\""),
+            ("x-amz-copy-source-if-match", "\"deadbeef\""),
+            ("x-amz-copy-source-if-unmodified-since", "not-a-date"),
+            (
+                "x-amz-copy-source-if-unmodified-since",
+                "Wed, 21 Oct 2015 07:28:00 GMT",
+            ),
+        ] {
+            let mut req = make_req("PutObject", Some("sc2"), Some("dst"), b"");
+            req.headers
+                .insert("x-amz-copy-source".to_string(), "sc2/src".to_string());
+            req.headers.insert(header.to_string(), value.to_string());
+            let resp = handler.handle(req);
+            assert_eq!(resp.status, 200, "{header} must not gate the copy");
         }
     }
 
