@@ -41,6 +41,12 @@ until_up() { # url retries
 
 RUST_OLD=$(cat /tmp/${LOG_PREFIX}_rust.pid 2>/dev/null || true)
 if [ -n "$RUST_OLD" ] && ! kill -0 "$RUST_OLD" 2>/dev/null; then RUST_OLD=""; fi
+# A pidfile pid can be recycled by an innocent process between runs:
+# keep it only if its cmdline still reads robotocore-rust.
+if [ -n "$RUST_OLD" ] \
+    && ! tr '\0' ' ' 2>/dev/null < "/proc/$RUST_OLD/cmdline" | grep -aq robotocore-rust; then
+    RUST_OLD=""
+fi
 [ -z "$RUST_OLD" ] && RUST_OLD=$(incumbent_pid "$RUST_PORT" "robotocore-rust" || true)
 if [ -n "$RUST_OLD" ]; then
     kill "$RUST_OLD" 2>/dev/null || true
