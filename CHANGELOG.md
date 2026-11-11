@@ -64,14 +64,14 @@ under *Changelog discipline*.
 
 - **Lambda: the create path resolves the Role against the IAM registry.**
   moto's `LambdaBackend.put_function` gates the role three ways, in
-  order (awslambda/models.py:2254-2262): the `InvalidRoleFormat` regex
+  order (awslambda/models.py:1753-1772): the `InvalidRoleFormat` regex
   (`arn:(aws[a-zA-Z-]*)?:iam::(\d{12}):role/?[a-zA-Z_0-9+=,.@\-_/]+`,
-  awslambda/exceptions.py:37, matched like `re.match` — start-anchored,
+  awslambda/exceptions.py:32, matched like `re.match` — start-anchored,
   no end anchor, so trailing junk still passes the shape and lands on
   the next gate), then the ARN's account slot vs the function's account
   (`AccessDeniedException`, "Cross-account pass role is not allowed."),
   then `iam get_role_by_arn` (an exact full-ARN compare;
-  iam/models.py:2193-2201; a miss answers 400
+  iam/models.py:2193-2197; a miss answers 400
   `InvalidParameterValueException` "The role defined for the function
   cannot be assumed by Lambda."). The twin stored `Role` verbatim and
   never looked it up, so every static-Role create succeeded where the
@@ -82,11 +82,11 @@ under *Changelog discipline*.
   IAM-untouched account answers the missing-role error like moto's
   auto-vivified empty IAM backend. An existing function + unknown role
   still reports 409: moto resolves the function before put_function
-  (responses.py:140-146), and the twin keeps the conflict check first.
+  (responses.py:137-145), and the twin keeps the conflict check first.
   The whole create-shape render now splits on_create (moto
-  models.py:815-818 renders LastUpdateStatus only "after the first
+  models.py:815-816 renders LastUpdateStatus only "after the first
   creation"; the created Configuration carried the extra field,
-  publish_version keeps it, responses.py:210-218).
+  publish_version keeps it, responses.py:210-216).
   Pins: in-crate create_function_rejects_unknown_role_arn /
   create_function_accepts_role_in_the_iam_bridge /
   create_function_rejects_role_off_the_arn_pattern /

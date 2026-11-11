@@ -18,7 +18,7 @@ use crate::models::{
 use crate::protocol::{function_not_found, path_segments, resolve_fn, AwsRequest, AwsResponse};
 use crate::runtime;
 
-/// moto `InvalidRoleFormat.pattern` (awslambda/exceptions.py:37), matched
+/// moto `InvalidRoleFormat.pattern` (awslambda/exceptions.py:32), matched
 /// with `re.match` semantics: anchored at the start only — trailing text
 /// past the character class still matches (moto only validates the
 /// prefix; put_function's next gate, the exact-ARN IAM lookup, catches a
@@ -35,7 +35,7 @@ fn role_arn_match(role: &str) -> Option<regex::Captures<'_>> {
     .captures(role)
 }
 
-/// moto `LambdaBackend.put_function` (awslambda/models.py:2254-2262) role
+/// moto `LambdaBackend.put_function` (awslambda/models.py:1753-1772) role
 /// gates on the create path, in order: `InvalidRoleFormat` (regex shape),
 /// `CrossAccountNotAllowed` (the ARN's account ≠ the function's account),
 /// then the IAM `get_role_by_arn` lookup (a miss raises
@@ -423,7 +423,7 @@ impl LambdaHandler {
     // Configuration rendering (mirrors moto's get_configuration keys).
     // ---------------------------------------------------------------
 
-    /// moto get_configuration (awslambda/models.py:815-818): LastUpdateStatus
+    /// moto get_configuration (awslambda/models.py:815-816): LastUpdateStatus
     /// only renders "after the first creation" — the CREATE response
     /// (responses.py:143, on_create=True) omits it.
     fn fn_config(f: &LambdaFunction, on_create: bool) -> Value {
@@ -572,7 +572,7 @@ impl LambdaHandler {
         }
         // moto runs put_function's role gates AFTER the package/layer
         // validation (the LambdaFunction constructor owns the layers, then
-        // put_function validates the role; models.py:388 layers → 2254
+        // put_function validates the role; models.py:667 layers → 1753
         // role). The dup conflict check ran earlier through responses.py,
         // so an existing function answers 409 before this gate (the
         // measured dup-beats-role differential).
@@ -1229,7 +1229,7 @@ impl LambdaHandler {
         entry.versions.push(Arc::clone(&published));
         drop(funcs);
         // moto publish_version renders the off-create configuration shape
-        // (responses.py:210-218) — LastUpdateStatus included.
+        // (responses.py:210-216) — LastUpdateStatus included.
         AwsResponse::json(201, Self::fn_config(&published, false))
     }
     fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -3748,7 +3748,7 @@ mod tests {
     }
 
     // ==== create-path role gate pins (moto LambdaBackend.put_function,
-    // awslambda/models.py:2254-2262; 2026-11-10 differential runs) ====
+    // awslambda/models.py:1753-1772; 2026-11-10 differential runs) ====
 
     /// Valid-shape ARN the IAM bridge does not know → moto's
     /// InvalidParameterValueException wording (errors/exceptions.py).
