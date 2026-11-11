@@ -418,6 +418,56 @@ class TestExplicitDeny:
 class TestResourceSpecificPolicy:
     """Test resource-specific ARN patterns in policies."""
 
+    def test_queue_specific_policy(self, iam):
+        """Policy for a specific queue ARN allows that queue, denies others.
+
+        Real POST-body traffic: QueueUrl rides the parsed params (the
+        #518-review source-split differential — the gate read uri.query()
+        and evaluated the path-fallback wildcard, letting nothing scope).
+        """
+        user_name = f"queue-specific-{uuid.uuid4().hex[:8]}"
+        admin_sqs = _make_sqs_client("testing", "testing")
+        allowed = admin_sqs.create_queue(QueueName=f"iam-allowed-{uuid.uuid4().hex[:8]}")[
+            "QueueUrl"
+        ]
+        denied = admin_sqs.create_queue(QueueName=f"iam-denied-{uuid.uuid4().hex[:8]}")["QueueUrl"]
+        # QueueUrl wire form: <ep>/{account}/{name}; the enforcement ARN
+        # names the queue (moto's _get_queue_name last-segment swap).
+        arn_allowed = f"arn:aws:sqs:us-east-1:123456789012:{allowed.rsplit('/', 1)[-1]}"
+        try:
+            key = _create_user_with_policy(
+                iam,
+                user_name,
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Effect": "Allow", "Action": "sqs:*", "Resource": arn_allowed},
+                    ],
+                },
+            )
+            _set_enforce_iam(True)
+
+            sqs = _make_sqs_client(key["AccessKeyId"], key["SecretAccessKey"])
+
+            # Allowed queue: get attributes succeeds (POST body QueueUrl).
+            resp = sqs.get_queue_attributes(QueueUrl=allowed, AttributeNames=["All"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Denied queue: 403 in the service's protocol shape (sqs is a
+            # JSON-protocol service: AccessDeniedException; s3's XML
+            # ErrorResponse answers AccessDenied).
+            with pytest.raises(ClientError) as exc_info:
+                sqs.get_queue_attributes(QueueUrl=denied, AttributeNames=["All"])
+            assert exc_info.value.response["Error"]["Code"] == "AccessDeniedException"
+        finally:
+            _set_enforce_iam(False)
+            try:
+                admin_sqs.delete_queue(QueueUrl=allowed)
+                admin_sqs.delete_queue(QueueUrl=denied)
+            except Exception:
+                pass  # best-effort cleanup
+            _cleanup_user(iam, user_name)
+
     def test_bucket_specific_policy(self, iam):
         """Policy for a specific bucket ARN allows that bucket, denies others."""
         user_name = f"bucket-specific-{uuid.uuid4().hex[:8]}"
