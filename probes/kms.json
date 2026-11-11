@@ -1,10 +1,10 @@
 {
   "service": "kms",
-  "generated_at": "2026-11-06T03:17:55.570063+00:00",
+  "generated_at": "2026-11-11T09:36:45.741535+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/kms.rs": "absent",
     "rotocore/src/services/kms/": "absent",
-    "crates/kms/src/": "47cd5eaf936d27f4627ec1c886d028e7086a64765c689e936cbfd1ec2e4f212b"
+    "crates/kms/src/": "350eedfc45fa6d1a578fc17e633937080e4d7c2bb3689c6eb98a4f4ea8abac82"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -193,7 +193,7 @@
     {
       "operation": "ListResourceTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "ListRetirableGrants",
@@ -243,12 +243,12 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateAlias",
