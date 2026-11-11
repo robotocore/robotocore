@@ -19,3 +19,8 @@ s3 = { path = "../s3" }
 # the events crate's hook registry.
 sqs = { path = "../sqs" }
 events = { path = "../events" }
+# Create-path role gate: moto's put_function resolves the Role ARN against
+# its own IAM backend (iam/models.py get_role_by_arn); the twin reads the
+# IAM state through iam::bridge.
+iam = { path = "../iam" }
+regex = "1.10"

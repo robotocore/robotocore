@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import datetime
+import io
 import json
 import os
 import pathlib as _pathlib
@@ -24,6 +25,7 @@ import sys
 import time
 import urllib.request
 import uuid
+import zipfile
 import zlib
 from collections.abc import Callable
 from typing import Any
@@ -129,6 +131,16 @@ def err_wrap(fn):
 
 
 CORPORA: dict[str, Callable[[Engine], list[tuple[str, Any]]]] = {}
+
+
+def lambda_zip_bytes() -> bytes:
+    """Deterministic deployment package (fixed timestamps so CodeSha256
+    and CodeSize match across engines and runs)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        info = zipfile.ZipInfo("index.py", date_time=(2026, 1, 1, 0, 0, 0))
+        z.writestr(info, "def handler(e, c): return 1")
+    return buf.getvalue()
 
 
 def corpus(name):
@@ -971,6 +983,133 @@ def corpus_iam_sts(engine):
             err_wrap(
                 lambda: sts.assume_role(
                     RoleArn="arn:aws:iam::123456789012:role/does-not-exist", RoleSessionName="s"
+                )
+            ),
+        ),
+    ]
+    return out
+
+
+@corpus("lambda_roles")
+def corpus_lambda_roles(engine):
+    """Lambda create-path role gate (moto LambdaBackend.put_function,
+    awslambda/models.py:2254-2262) plus the policy family on functions.
+    moto answers ValidationException for an off-pattern Role,
+    AccessDeniedException for a cross-account ARN, and
+    InvalidParameterValueException "The role defined for the function
+    cannot be assumed by Lambda." when the IAM backend holds no such
+    role; an existing function's conflict check runs before the gate.
+    The gate landed 2026-11-10 on the live-pinned census (repo
+    artifacts/lambda-bridge-probe.py); these steps keep that bar in the
+    standing 0-unexpected oracle."""
+    out = []
+    iam = engine.client("iam")
+    lam = engine.client("lambda")
+    fn = engine.res_name("diff-gate-fn")
+    zip_code = lambda_zip_bytes()
+    assume_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
+    # Per-engine mint: the role lands in each engine's own IAM registry,
+    # and only the deterministic ARN rides along as an observable.
+    arn = iam.create_role(
+        RoleName=engine.res_name("diff-gate-role"),
+        AssumeRolePolicyDocument=assume_policy,
+    )["Role"]["Arn"]
+    out.append(("create_role_arn", arn))
+    out += [
+        (
+            "create_unknown_role",
+            err_wrap(
+                lambda: lam.create_function(
+                    FunctionName=fn,
+                    Runtime="python3.12",
+                    Role=f"arn:aws:iam::123456789012:role/{engine.res_name('diff-absent')}",
+                    Handler="index.handler",
+                    Code={"ZipFile": zip_code},
+                )
+            ),
+        ),
+        (
+            "create_bare_role",
+            err_wrap(
+                lambda: lam.create_function(
+                    FunctionName=engine.res_name("diff-gate-bare"),
+                    Runtime="python3.12",
+                    Role="bogus-role",
+                    Handler="index.handler",
+                    Code={"ZipFile": zip_code},
+                )
+            ),
+        ),
+        (
+            "create_cross_account",
+            err_wrap(
+                lambda: lam.create_function(
+                    FunctionName=engine.res_name("diff-gate-xa"),
+                    Runtime="python3.12",
+                    Role="arn:aws:iam::999999999999:role/x",
+                    Handler="index.handler",
+                    Code={"ZipFile": zip_code},
+                )
+            ),
+        ),
+        (
+            "create_real_role",
+            err_wrap(
+                lambda: lam.create_function(
+                    FunctionName=fn,
+                    Runtime="python3.12",
+                    Role=arn,
+                    Handler="index.handler",
+                    Code={"ZipFile": zip_code},
+                )
+            ),
+        ),
+        # responses.create_function resolves the function BEFORE the
+        # backend's create (models.py ordering), so a dup with a bad role
+        # reports FunctionAlreadyExists — not the role gate.
+        (
+            "create_dup_unknown_role",
+            err_wrap(
+                lambda: lam.create_function(
+                    FunctionName=fn,
+                    Runtime="python3.12",
+                    Role=f"arn:aws:iam::123456789012:role/{engine.res_name('diff-absent')}",
+                    Handler="index.handler",
+                    Code={"ZipFile": zip_code},
+                )
+            ),
+        ),
+        (
+            "addperm_missing",
+            err_wrap(
+                lambda: lam.add_permission(
+                    FunctionName=engine.res_name("diff-gate-none"),
+                    StatementId="s1",
+                    Action="lambda:InvokeFunction",
+                    Principal="123456789012",
+                )
+            ),
+        ),
+        (
+            "policy_missing",
+            err_wrap(lambda: lam.get_policy(FunctionName=engine.res_name("diff-gate-none"))),
+        ),
+        (
+            "delperm_missing",
+            err_wrap(
+                lambda: lam.remove_permission(
+                    FunctionName=engine.res_name("diff-gate-none"), StatementId="s1"
                 )
             ),
         ),

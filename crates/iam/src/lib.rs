@@ -2,6 +2,7 @@
 //!
 //! Query protocol (XML) — the largest IAM operation surface.
 
+pub mod bridge;
 pub mod handler;
 pub mod models;
 pub mod policy;
