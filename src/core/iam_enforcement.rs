@@ -291,22 +291,13 @@ fn build_resource_arn(
         }
         "sqs" => {
             if let Some(queue_url) = url_param("QueueUrl").or_else(|| query_val("QueueUrl")) {
-                // mirror extract_queue_name_from_url (#517) LITERALLY — its
-                // scheme branch requires a non-empty last segment and falls
-                // through to the whole-string default otherwise. The ARNs
-                // here are instrumentation (the engine answers
-                // NonExistentQueue for names that can't exist); the
-                // difference from moto's own _get_queue_name (empty ""
-                // segment from a raw split) is engine-vs-lookup-OUTCOME,
-                // recorded on the audit rows.
-                if queue_url.starts_with("http://") || queue_url.starts_with("https://") {
-                    if let Some(last) = queue_url.rsplit('/').next() {
-                        if !last.is_empty() {
-                            return format!("arn:aws:sqs:{region}:{account}:{last}");
-                        }
-                    }
-                }
-                return format!("arn:aws:sqs:{region}:{account}:{queue_url}");
+                // the ENGINE's own resolution (shared free fn, #520-review
+                // structural fix) — the ARN can't drift from what the op
+                // acts on. The extract Ok's verbatim by contract; the
+                // unwrap_or_else only satisfies the signature.
+                let queue_name =
+                    sqs::extract_queue_name(&queue_url).unwrap_or_else(|_| queue_url.clone());
+                return format!("arn:aws:sqs:{region}:{account}:{queue_name}");
             }
             let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
             if parts.len() >= 2 {
@@ -579,15 +570,13 @@ mod tests {
             ),
             "arn:aws:sqs:us-east-1:123456789012:my-queue"
         );
-        // Mirrored LITERALLY from extract_queue_name_from_url (#517):
-        // bare names verbatim; slash-shaped bare urls name the WHOLE
-        // string (the engine's NonExistentQueue shape keeps policy ARNs
-        // honest); a trailing-slash http url falls through to the
-        // whole-string default — the engine's name there is the full url
-        // (its moto empty-segment split happens in _get_queue_name, whose
-        // outcome the engine mirrors through the missing-queue answer).
-        // The params legs read the ENGINE's decode_domain (parse_frag
-        // decode_form_value) — the #518-review source-split lane.
+        // Resolved via sqs::extract_queue_name — the engine's own fn
+        // (former literal mirror, #517/#520-review): bare names verbatim;
+        // slash-shaped bare urls name the WHOLE string (the engine's
+        // NonExistentQueue shape keeps policy ARNs honest); a
+        // trailing-slash http url falls through to the whole-string
+        // default — the engine's name there is the full url. The params
+        // legs read the ENGINE's decode — the #518 source-split lane.
         let mut params = HashMap::new();
         params.insert(
             "QueueUrl".to_string(),
