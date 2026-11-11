@@ -114,21 +114,80 @@ fn seed_query_action_param(params: serde_json::Value, query_string: &str) -> ser
     params
 }
 
+/// Reshape moto's legacy `Attribute.N.Name` / `Attribute.N.Value` query
+/// form into the `Attributes` map (verified live: moto's shared dict parse
+/// answers its redrive ladder for these; the twin left them flat and
+/// silently no-op'd every SetQueueAttributes sent in the legacy form).
+/// SDK clients send the JSON body (unaffected); SendMessage's
+/// MessageAttribute.N.* keys are untouched.
+///
+/// Pairing mirrors moto's QueryParser._parse_map exactly (verified live):
+/// consecutive indices from 1, the walk stops at the first missing Name;
+/// a Name without its Value flows into moto's int(UNDEFINED) 500 crash —
+/// mirrored via MotoCrash rather than a truncated map. Form bodies only:
+/// a JSON-protocol body is parsed object input and never folds.
+fn flatten_sqs_attribute_form(
+    params: serde_json::Value,
+    headers: &std::collections::HashMap<String, String>,
+) -> Result<serde_json::Value, sqs::protocol::AwsResponse> {
+    let is_form = headers
+        .get("content-type")
+        .is_some_and(|t| t.starts_with("application/x-www-form-urlencoded"));
+    if !is_form {
+        return Ok(params);
+    }
+    let obj = match params.as_object() {
+        Some(o) => o,
+        None => return Ok(params),
+    };
+    let mut map = serde_json::Map::new();
+    let mut idx = 1;
+    while let Some(name) = obj
+        .get(&format!("Attribute.{idx}.Name"))
+        .and_then(|v| v.as_str())
+    {
+        let Some(value) = obj
+            .get(&format!("Attribute.{idx}.Value"))
+            .and_then(|v| v.as_str())
+        else {
+            // moto runs the name into its downstream consumers without
+            // the value and crashes on int(UNDEFINED) — mirrored 500.
+            return Err(sqs::error::SqsError::MotoCrash.to_xml_response());
+        };
+        map.insert(
+            name.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+        idx += 1;
+    }
+    if map.is_empty() {
+        return Ok(params);
+    }
+    let mut params = params;
+    if let Some(o) = params.as_object_mut() {
+        o.insert("Attributes".to_string(), serde_json::Value::Object(map));
+    }
+    Ok(params)
+}
+
 impl SqsServiceHandler {
-    fn to_sqs_request(req: &ParsedRequest) -> sqs::protocol::AwsRequest {
+    fn to_sqs_request(
+        req: &ParsedRequest,
+    ) -> Result<sqs::protocol::AwsRequest, sqs::protocol::AwsResponse> {
         let params = seed_query_action_param(
             serde_json::to_value(&req.params)
                 .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
             &req.query_string,
         );
-        sqs::protocol::AwsRequest {
+        let params = flatten_sqs_attribute_form(params, &req.headers)?;
+        Ok(sqs::protocol::AwsRequest {
             service: req.service.clone(),
             operation: req.operation.clone(),
             account: req.account,
             region: req.region.clone(),
             params,
             body: req.body.clone(),
-        }
+        })
     }
 
     fn to_parsed_response(resp: sqs::protocol::AwsResponse) -> ParsedResponse {
@@ -151,7 +210,10 @@ impl ServiceHandler for SqsServiceHandler {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        let sqs_req = Self::to_sqs_request(req);
+        let sqs_req = match Self::to_sqs_request(req) {
+            Ok(r) => r,
+            Err(resp) => return Ok(Self::to_parsed_response(resp)),
+        };
         let resp = self.inner.handle(sqs_req);
         Ok(Self::to_parsed_response(resp))
     }
@@ -3670,6 +3732,117 @@ mod tests {
         let registry = ServiceRegistry::new();
         assert!(registry.get("sts").is_some());
         assert!(registry.get("sqs").is_some());
+    }
+
+    /// moto's legacy Attribute.N.Name/Value form (older SDK generations,
+    /// hand-rolled moto-bound clients) must fold into the Attributes map —
+    /// the flat keys previously left SetQueueAttributes silently no-oping
+    /// with a 200 (relay census: redrive classes 200'd on the twin where
+    /// moto answered its 400 ladder).
+    #[test]
+    fn test_sqs_legacy_attribute_form_flattens() {
+        fn wire(body: &[u8], form: bool) -> ParsedRequest {
+            let mut headers = HashMap::new();
+            if form {
+                headers.insert(
+                    "content-type".to_string(),
+                    "application/x-www-form-urlencoded".to_string(),
+                );
+            }
+            ParsedRequest {
+                service: "sqs".to_string(),
+                operation: "SetQueueAttributes".to_string(),
+                params: parse_query_protocol(body).unwrap_or_default(),
+                body: bytes::Bytes::new(),
+                region: "us-east-1".to_string(),
+                account: 123456789012,
+                method: "POST".to_string(),
+                path: "/".to_string(),
+                query_string: String::new(),
+                headers,
+            }
+        }
+
+        // Contiguous legacy form folds through the real call site.
+        let body = b"Action=SetQueueAttributes&Version=2012-11-05\
+            &QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F000000000000%2Fq\
+            &Attribute.1.Name=DelaySeconds&Attribute.1.Value=60\
+            &Attribute.2.Name=VisibilityTimeout&Attribute.2.Value=30";
+        let params = SqsServiceHandler::to_sqs_request(&wire(body, true))
+            .unwrap()
+            .params;
+        let attrs = params
+            .get("Attributes")
+            .expect("Attributes must appear")
+            .as_object()
+            .unwrap();
+        assert_eq!(
+            attrs.get("DelaySeconds").and_then(|v| v.as_str()),
+            Some("60")
+        );
+        assert_eq!(
+            attrs.get("VisibilityTimeout").and_then(|v| v.as_str()),
+            Some("30")
+        );
+
+        // JSON body never folds (even one carrying stray flat keys) —
+        // moto's json path sees no flat form keys either.
+        let mut headers = HashMap::new();
+        headers.insert(
+            "content-type".to_string(),
+            "application/x-amz-json-1.0".to_string(),
+        );
+        // JSON body never folds even when it carries stray flat legacy
+        // keys — the content-type gate is load-bearing (removing it
+        // re-opens the round-1 silent-store drift).
+        let mut json_params = HashMap::new();
+        json_params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("q".into()),
+        );
+        json_params.insert(
+            "Attribute.1.Name".to_string(),
+            serde_json::Value::String("DelaySeconds".to_string()),
+        );
+        json_params.insert(
+            "Attribute.1.Value".to_string(),
+            serde_json::Value::String("77".to_string()),
+        );
+        let req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "SetQueueAttributes".to_string(),
+            params: json_params,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers,
+        };
+        let params = SqsServiceHandler::to_sqs_request(&req).unwrap().params;
+        assert!(params.get("Attributes").is_none());
+
+        // moto's pairing is per-index: a skip-index gap drops the later
+        // index (Attribute.3.* beyond a missing Attribute.2 stays unparsed).
+        let gap = b"Action=SetQueueAttributes&Version=2012-11-05\
+            &Attribute.1.Name=DelaySeconds&Attribute.1.Value=60\
+            &Attribute.3.Name=VisibilityTimeout&Attribute.3.Value=45";
+        let params = SqsServiceHandler::to_sqs_request(&wire(gap, true))
+            .unwrap()
+            .params;
+        let obj = params
+            .get("Attributes")
+            .and_then(|a| a.as_object())
+            .unwrap();
+        assert!(obj.contains_key("DelaySeconds"));
+        assert!(!obj.contains_key("VisibilityTimeout"));
+
+        // Name without its Value: moto crashes on int(UNDEFINED) —
+        // mirrored via the recorded MotoCrash 500 page.
+        let missing = b"Action=SetQueueAttributes&Version=2012-11-05\
+            &Attribute.1.Name=DelaySeconds";
+        assert!(SqsServiceHandler::to_sqs_request(&wire(missing, true)).is_err());
     }
 
     #[test]
