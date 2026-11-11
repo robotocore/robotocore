@@ -1874,18 +1874,22 @@ impl DefaultSqsHandler {
         // URL format: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
         // Or: http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}.fifo
 
-        if let Some(last_slash) = url.rfind('/') {
-            let queue_part = &url[last_slash + 1..];
-            if !queue_part.is_empty() {
-                return Ok(queue_part.to_string());
+        // moto's _get_queue_name (responses.py:46-58): only an http(s)
+        // scheme resolves through the path — ANY other form (including a
+        // bare queue name) is taken verbatim ("The parameter could be the
+        // name itself, which AWS also accepts").
+        if url.starts_with("http://") || url.starts_with("https://") {
+            if let Some(last_slash) = url.rfind('/') {
+                let queue_part = &url[last_slash + 1..];
+                if !queue_part.is_empty() {
+                    return Ok(queue_part.to_string());
+                }
             }
         }
 
         // moto never fails during QueueUrl parsing: it always resolves the
         // queue_name (however malformed) and answers a missing queue.
-        Err(SqsError::NonExistentQueue(
-            "The specified queue does not exist.".to_string(),
-        ))
+        Ok(url.to_string())
     }
 
     fn handle_set_queue_attributes(

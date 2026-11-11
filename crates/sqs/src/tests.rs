@@ -4899,3 +4899,46 @@ fn json_body_with_action_substring_stays_json() {
         resp.body
     );
 }
+
+/// moto's _get_queue_name takes any non-http(s) QueueUrl VERBATIM as the
+/// queue name ("The parameter could be the name itself, which AWS also
+/// accepts" — responses.py:46-58): ops rode bare names on the oracle and
+/// the twin's old extractor answered NonExistentQueue instead.
+#[test]
+fn test_bare_name_queue_url_ops() {
+    let handler = DefaultSqsHandler::new();
+    let resp = handler.handle(make_request("CreateQueue", json!({"QueueName": "bare-q"})));
+    assert_eq!(resp.status, 200);
+
+    // DeleteQueue by bare name succeeds (create → delete on the same name).
+    let resp = handler.handle(make_request("DeleteQueue", json!({"QueueUrl": "bare-q"})));
+    assert_eq!(
+        resp.status, 200,
+        "bare-name delete must work, got {}",
+        resp.body
+    );
+
+    // And set-attributes on a bare name of a MISSING queue rides the
+    // registry lookup the same as the URL form: NonExistentQueue.
+    let resp = handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({"QueueUrl": "never-created", "Attributes": {"DelaySeconds": "5"}}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.NonExistentQueue"));
+
+    // Slash-bearing non-http QueueUrls go verbatim too: moto answers
+    // missing for 'AccountX/never-created' (the whole string is the
+    // name — the old twin took the last segment and could accidentally
+    // match an existing queue).
+    let resp = handler.handle(make_request(
+        "DeleteQueue",
+        json!({"QueueUrl": "AccountX/never-created"}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.NonExistentQueue"));
+}
