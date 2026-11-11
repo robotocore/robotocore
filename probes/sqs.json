@@ -1,10 +1,10 @@
 {
   "service": "sqs",
-  "generated_at": "2026-11-11T02:43:06.340967+00:00",
+  "generated_at": "2026-11-11T03:23:53.837784+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/sqs.rs": "absent",
     "rotocore/src/services/sqs/": "absent",
-    "crates/sqs/src/": "5711f2fdae0f8b8b314afb89467891a10ab536d87bd96d5fd14872503d5ee911"
+    "crates/sqs/src/": "7401415e61a41ebbf30cac30ba502ff9be2a043f0490a91f6fd0312f660e3f15"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
