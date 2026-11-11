@@ -5,6 +5,7 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
 use hmac::{Hmac, Mac};
+use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
@@ -306,12 +307,12 @@ impl KmsHandler {
     fn describe_key(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        match state.get_key(&key_id) {
-            Some(key) => {
-                AwsResponse::json(200, json!({ "KeyMetadata": self.key_metadata(&key, req) }))
-            }
-            None => Self::not_found(),
-        }
+        let key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, true) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        AwsResponse::json(200, json!({ "KeyMetadata": self.key_metadata(&key, req) }))
     }
 
     fn list_keys(&self, req: &AwsRequest) -> AwsResponse {
@@ -424,34 +425,36 @@ impl KmsHandler {
     fn set_key_rotation(&self, req: &AwsRequest, enabled: bool) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        match state.get_key(&key_id) {
-            Some(key) => {
-                if !(key.key_spec == "SYMMETRIC_DEFAULT" && key.key_usage == "ENCRYPT_DECRYPT") {
-                    return AwsResponse::error(
-                        400,
-                        "UnsupportedOperationException",
-                        "Key rotation is only supported for symmetric keys",
-                    );
-                }
-                *key.rotation_enabled.write() = enabled;
-                AwsResponse::json(200, json!({}))
-            }
-            None => Self::not_found(),
+        let key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, true) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        if !(key.key_spec == "SYMMETRIC_DEFAULT" && key.key_usage == "ENCRYPT_DECRYPT") {
+            return AwsResponse::error(
+                400,
+                "UnsupportedOperationException",
+                "Key rotation is only supported for symmetric keys",
+            );
         }
+        *key.rotation_enabled.write() = enabled;
+        AwsResponse::json(200, json!({}))
     }
 
     fn get_key_rotation_status(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        match state.get_key(&key_id) {
-            Some(key) => AwsResponse::json(
-                200,
-                json!({
-                    "KeyRotationEnabled": *key.rotation_enabled.read(),
-                }),
-            ),
-            None => Self::not_found(),
-        }
+        let key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, true) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        AwsResponse::json(
+            200,
+            json!({
+                "KeyRotationEnabled": *key.rotation_enabled.read(),
+            }),
+        )
     }
 
     fn rotate_key_on_demand(&self, req: &AwsRequest) -> AwsResponse {
@@ -595,16 +598,40 @@ impl KmsHandler {
         ))
     }
 
-    /// moto `_validate_cmk_id` — a raw key id or key ARN must resolve to a
-    /// key. (The twin's key ids are dashless uuid, so moto's literal
-    /// uuid-shape regex cannot port; any non-alias ref here is key-shaped.)
+    /// moto `_validate_cmk_id` (responses.py:59-73): a ref resolves when it
+    /// is a key ARN carrying `:key/` OR a key-id-shaped token (moto's
+    /// dashed-uuid or mrk- tokens; the twin mints dashless ids, so the
+    /// shape regex accepts both conventions). All OTHER refs — including
+    /// any `arn:` that lacks `:key/` and garbage forms — take moto's
+    /// `Invalid keyId <ref>` BEFORE the store lookup (the #523-review
+    /// row: live-differential 7 divergences, now 0).
     fn resolve_key_ref(
         state: &KmsState,
         region: &str,
         account: u64,
         key_ref: &str,
+        allow_alias: bool,
     ) -> Result<Arc<Key>, AwsResponse> {
-        if Self::is_alias_ref(key_ref) {
+        let alias_ref = Self::is_alias_ref(key_ref);
+        if alias_ref && !allow_alias {
+            // moto's tag-op arm (responses.py:162): an alias rides
+            // _validate_cmk_id and takes `Invalid keyId <ref>` — aliases
+            // never reach the does-not-exist shape.
+            return Err(AwsResponse::error(
+                400,
+                "NotFoundException",
+                &format!("Invalid keyId {}", key_ref),
+            ));
+        }
+        static KEY_ID_SHAPED: Lazy<regex::Regex> = Lazy::new(|| {
+            regex::Regex::new(r"(?i)^(mrk-)?[a-f0-9]{8}(-?[a-f0-9]{4}){3}-?[a-f0-9]{12}$").unwrap()
+        });
+        let is_arn = key_ref.starts_with("arn:") && key_ref.contains(":key/");
+        let is_shaped = KEY_ID_SHAPED.is_match(key_ref);
+        if !is_arn && !is_shaped && !alias_ref {
+            // moto's shape arm (responses.py:59-68): an `arn:` that lacks
+            // `:key/` and garbage forms answer `Invalid keyId <ref>`.
+            // Alias refs ride the name/ARN alias form (see above).
             return Err(AwsResponse::error(
                 400,
                 "NotFoundException",
@@ -635,11 +662,16 @@ impl KmsHandler {
         if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
             return resp;
         }
-        let key =
-            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id) {
-                Ok(k) => k,
-                Err(resp) => return resp,
-            };
+        let key = match Self::resolve_key_ref(
+            &state,
+            req.region.as_str(),
+            req.account,
+            &target_key_id,
+            false,
+        ) {
+            Ok(k) => k,
+            Err(resp) => return resp,
+        };
         if state.alias_exists(&alias_name) {
             return AwsResponse::error(
                 400,
@@ -708,11 +740,16 @@ impl KmsHandler {
         if let Some(resp) = Self::target_alias_error(&state, &target_key_id) {
             return resp;
         }
-        let key =
-            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &target_key_id) {
-                Ok(k) => k,
-                Err(resp) => return resp,
-            };
+        let key = match Self::resolve_key_ref(
+            &state,
+            req.region.as_str(),
+            req.account,
+            &target_key_id,
+            false,
+        ) {
+            Ok(k) => k,
+            Err(resp) => return resp,
+        };
         if !state.alias_exists(&alias_name) {
             return AwsResponse::error(
                 400,
@@ -755,7 +792,7 @@ impl KmsHandler {
         // — live-pinned): the key is tagged under its RESOLVED id so
         // by-ARN callers see the tags via the raw id as moto does.
         let resolved_key =
-            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, false) {
                 Ok(k) => k,
                 Err(resp) => return resp,
             };
@@ -787,7 +824,7 @@ impl KmsHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let resolved_key =
-            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, false) {
                 Ok(k) => k,
                 Err(resp) => return resp,
             };
@@ -805,7 +842,7 @@ impl KmsHandler {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let resolved_key =
-            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id, false) {
                 Ok(k) => k,
                 Err(resp) => return resp,
             };
@@ -3023,16 +3060,17 @@ mod tests {
             resp.body
         );
 
-        // Missing target key (valid alias name) → moto `_validate_cmk_id`.
+        // Missing target key: fino moto `_validate_cmk_id`'s shape arm
+        // answers `Invalid keyId <ref>` first (live pin: garbage refs,
+        // alias refs and name-shaped misses all take the shape test
+        // before the does-not-exist arm).
         let resp = handler.handle(make_req(
             "CreateAlias",
             json!({"AliasName": "alias/good", "TargetKeyId": "missing-key"}),
         ));
         assert_eq!(resp.status, 400);
         assert!(
-            resp.body.contains(
-                "Key 'arn:aws:kms:us-east-1:123456789012:key/missing-key' does not exist"
-            ),
+            resp.body.contains("Invalid keyId missing-key"),
             "{}",
             resp.body
         );
