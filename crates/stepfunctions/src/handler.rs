@@ -33,6 +33,199 @@ fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
     String::new()
 }
 
+/// moto stepfunctions/models.py:905-914 `SFBackend._validate_name`. The
+/// real-AWS charset is enumerated at :505-541 (space, brackets <>{}[],
+/// wildcards ?*, specials " #%\^|~`$&,;:/) plus the control characters
+/// U+0000-001F / U+007F-009F named in moto's own comment — `char::is_control`
+/// is exactly those Cc ranges. A hit answers 400 InvalidName "Invalid Name:
+/// '<name>'"; a name over 80 chars passes into NameTooLongException, a
+/// ValidationException subclass rendering the modeled `1 validation error`
+/// text with the 80-bound (exceptions.py:50,66-73).
+fn validate_name(name: &str) -> Result<(), AwsResponse> {
+    const INVALID_CHARS: &[char; 23] = &[
+        ' ', '{', '}', '[', ']', '<', '>', '?', '*', '"', '#', '%', '\\', '^', '|', '~', '`', '$',
+        '&', ',', ';', ':', '/',
+    ];
+    if name
+        .chars()
+        .any(|c| INVALID_CHARS.contains(&c) || c.is_control())
+    {
+        return Err(AwsResponse::error(
+            400,
+            "InvalidName",
+            &format!("Invalid Name: '{name}'"),
+        ));
+    }
+    if name.chars().count() > 80 {
+        return Err(AwsResponse::error(
+            400,
+            "ValidationException",
+            &format!(
+                "1 validation error detected: Value '{name}' at 'name' failed to satisfy \
+                 constraint: Member must have length less than or equal to 80"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// moto's paginated list ops decode `nextToken` through botocore's
+/// TokenDecoder (utilities/paginator.py:110-131): the token is the
+/// base64 of a JSON dict; undecodable input answers 400 InvalidToken
+/// "Invalid Token: Invalid token" (stepfunctions/exceptions.py:38-41).
+/// Applies only to the four PAGINATION_MODEL ops, never the versions /
+/// map-runs lists. A token that DECODES continues into moto's checksum
+/// arm (utilities/paginator.py:118-125, :135-143): the decoded dict must
+/// carry a `parameterChecksum` equal to the hashing of the request's own
+/// kwargs — a value this twin never mints (no paging) and a replay of
+/// another process's token cannot carry (python `hash()` is per-process),
+/// so decoded tokens answer 400 InvalidToken "Invalid Token: Input
+/// inconsistent with page token: {<python repr>}" — the measured row
+/// renders `{'limit': 1}`.
+fn check_page_token(req: &AwsRequest) -> Option<AwsResponse> {
+    let token = req.params.get("nextToken").and_then(|v| v.as_str())?;
+    let undecodable = || AwsResponse::error(400, "InvalidToken", "Invalid Token: Invalid token");
+    use base64::Engine as _;
+    let raw = match base64::engine::general_purpose::STANDARD.decode(token) {
+        Ok(raw) => raw,
+        Err(_) => return Some(undecodable()),
+    };
+    let text = match std::str::from_utf8(&raw) {
+        Ok(t) => t,
+        Err(_) => return Some(undecodable()),
+    };
+    let Ok(decoded) = serde_json::from_str::<Value>(text) else {
+        return Some(undecodable());
+    };
+    Some(AwsResponse::error(
+        400,
+        "InvalidToken",
+        &format!(
+            "Invalid Token: Input inconsistent with page token: {}",
+            python_repr(&decoded)
+        ),
+    ))
+}
+
+/// The slice of python `repr()` the decoded-token message needs: dicts in
+/// key order with `'{k: v, …}'` pairs, single-quoted strings, bare
+/// numbers/booleans, None, lists — the shapes a JSON token can decode to.
+fn python_repr(v: &Value) -> String {
+    match v {
+        Value::Null => "None".to_string(),
+        Value::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => python_str_repr(s),
+        Value::Array(items) => {
+            let inner: Vec<String> = items.iter().map(python_repr).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        Value::Object(map) => {
+            let inner: Vec<String> = map
+                .iter()
+                .map(|(k, val)| format!("{}: {}", python_str_repr(k), python_repr(val)))
+                .collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+    }
+}
+
+/// python single-quoted string repr: `'…'` with backslash-escaping for
+/// `'`, `\`, `\n`, `\r`, `\t`.
+fn python_str_repr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        match c {
+            '\'' => out.push_str("\\'"),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// moto stepfunctions/models.py:724: the describe miss wording shared by
+/// DescribeStateMachine, StartExecution, ListExecutions, ListAliases (a
+/// missing state machine is 400 StateMachineDoesNotExist, never an empty
+/// page — the fork resolves fans through describe_state_machine, :819-836).
+fn state_machine_does_not_exist(arn: &str) -> AwsResponse {
+    AwsResponse::error(
+        400,
+        "StateMachineDoesNotExist",
+        &format!("State Machine Does Not Exist: '{arn}'"),
+    )
+}
+
+/// moto stepfunctions/models.py:608-612 + utilities/utils.py:21: an
+/// execution ARN must match the partition-anchored
+/// *:states:<region>:<account>:execution:<rest> shape or
+/// `_validate_execution_arn` raises 400 InvalidArn — with the SAME
+/// "Execution Does Not Exist: '<arn>'" text the missing-execution branches
+/// use (the :930-935 code arm maps the regex onto InvalidArn; a census
+/// probe shaped like a machine ARN measured that code flip, so the twin's
+/// DescribeExecution fan runs this gate before its own lookup).
+fn execution_arn_is_well_formed(arn: &str) -> bool {
+    const PARTITIONS: [&str; 6] = [
+        "aws",
+        "aws-cn",
+        "aws-eusc",
+        "aws-iso",
+        "aws-iso-b",
+        "aws-us-gov",
+    ];
+    let Some(rest) = arn.strip_prefix("arn:") else {
+        return false;
+    };
+    for partition in PARTITIONS {
+        let Some(after) = rest
+            .strip_prefix(partition)
+            .and_then(|a| a.strip_prefix(':'))
+        else {
+            continue;
+        };
+        let Some(s) = after.strip_prefix("states:") else {
+            continue;
+        };
+        let mut segs = s.splitn(3, ':');
+        let Some(region) = segs.next() else { continue };
+        if region.is_empty()
+            || !region
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            continue;
+        }
+        let Some(account) = segs.next() else { continue };
+        if account.len() != 12 || !account.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Some(tail) = segs.next() else { continue };
+        if let Some(exec_rest) = tail.strip_prefix("execution:") {
+            return !exec_rest.is_empty();
+        }
+    }
+    false
+}
+
+/// describe_execution's ladder (moto models.py:849-852): shape first,
+/// then the execution lookup, both carrying "Execution Does Not Exist:
+/// '<arn>'".
+fn describe_execution_arn_gate(execution_arn: &str) -> Option<AwsResponse> {
+    if !execution_arn_is_well_formed(execution_arn) {
+        return Some(AwsResponse::error(
+            400,
+            "InvalidArn",
+            &format!("Execution Does Not Exist: '{execution_arn}'"),
+        ));
+    }
+    None
+}
+
 impl StepfunctionsHandler {
     pub fn new() -> Self {
         Self {
@@ -61,6 +254,11 @@ impl StepfunctionsHandler {
         let name = param_str(req, &["name", "stateMachineName"]);
         if name.is_empty() {
             return AwsResponse::error(400, "ValidationException", "name is required");
+        }
+        // moto create_state_machine validates the name first
+        // (stepfunctions/models.py:642 → _validate_name).
+        if let Err(resp) = validate_name(&name) {
+            return resp;
         }
         let definition = param_str(req, &["definition"]);
         if definition.is_empty() {
@@ -108,7 +306,7 @@ impl StepfunctionsHandler {
             return AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {arn} not found"),
+                &format!("State Machine Does Not Exist: '{arn}'"),
             );
         }
         // Cascade: published versions and aliases reference the machine.
@@ -135,12 +333,15 @@ impl StepfunctionsHandler {
             None => AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {arn} does not exist"),
+                &format!("State Machine Does Not Exist: '{arn}'"),
             ),
         }
     }
 
     fn list_sms(&self, req: &AwsRequest) -> AwsResponse {
+        if let Some(resp) = check_page_token(req) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         let rows: Vec<Value> = state
             .state_machines
@@ -156,10 +357,7 @@ impl StepfunctionsHandler {
                 })
             })
             .collect();
-        AwsResponse::json(
-            200,
-            json!({ "stateMachines": rows, "nextToken": Value::Null }),
-        )
+        AwsResponse::json(200, json!({ "stateMachines": rows }))
     }
 
     fn update_sm(&self, req: &AwsRequest) -> AwsResponse {
@@ -169,7 +367,7 @@ impl StepfunctionsHandler {
             return AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {arn} does not exist"),
+                &format!("State Machine Does Not Exist: '{arn}'"),
             );
         }
         {
@@ -193,21 +391,36 @@ impl StepfunctionsHandler {
 
     fn start_execution(&self, req: &AwsRequest) -> AwsResponse {
         let sm_arn = param_str(req, &["stateMachineArn"]);
+        let name = param_str(req, &["name"]);
+        // moto start_execution validates the name when present BEFORE the
+        // machine lookup (stepfunctions/models.py:817-819).
+        if !name.is_empty() {
+            if let Err(resp) = validate_name(&name) {
+                return resp;
+            }
+        }
         let state = self.get_state(req.account, &req.region);
         let Some(machine) = state.get_machine(&sm_arn) else {
             return AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {sm_arn} not found"),
+                &format!("State Machine Does Not Exist: '{sm_arn}'"),
             );
         };
-        let name = param_str(req, &["name"]);
         let exec_name = if name.is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
             name
         };
-        let exec_arn = format!("{sm_arn}:execution:{}", exec_name);
+        // moto's execution ARN carries the machine NAME, not the machine
+        // ARN: "arn:<part>:states:<region>:<acct>:execution:<sm>:<exec>"
+        // (models.py:352-360) — the era derivation `sm_arn
+        // .replace(":stateMachine:", ":execution:"):name` matches it and
+        // passes `_validate_execution_arn`'s regex (:608-612).
+        let exec_arn = format!(
+            "{}:{exec_name}",
+            sm_arn.replace(":stateMachine:", ":execution:")
+        );
         let input = param_str(req, &["input"]);
         let input = if input.is_empty() {
             "{}".to_string()
@@ -246,8 +459,13 @@ impl StepfunctionsHandler {
         input: String,
     ) -> Arc<Execution> {
         let name = uuid::Uuid::new_v4().to_string();
-        let exec_arn = format!("{}:execution:{}", machine.arn, name);
-        let arn = exec_arn.replace("stateMachine:", "express:");
+        // The express variant keeps that shape on :express: (the fork has
+        // no express ARN template; the era's replace rides on).
+        let exec_arn = format!(
+            "{}:{name}",
+            machine.arn.replace(":stateMachine:", ":express:")
+        );
+        let arn = exec_arn.clone();
         let exec = Arc::new(Execution {
             arn,
             name,
@@ -321,7 +539,7 @@ impl StepfunctionsHandler {
             return AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {sm_arn} does not exist"),
+                &format!("State Machine Does Not Exist: '{sm_arn}'"),
             );
         };
         let exec = self.run_sync_execution(&state, &machine, input);
@@ -330,13 +548,16 @@ impl StepfunctionsHandler {
 
     fn describe_exec(&self, req: &AwsRequest) -> AwsResponse {
         let arn = param_str(req, &["executionArn"]);
+        if let Some(resp) = describe_execution_arn_gate(&arn) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         match state.get_execution(&arn) {
             Some(exec) => AwsResponse::json(200, exec.describe_value()),
             None => AwsResponse::error(
                 400,
                 "ExecutionDoesNotExist",
-                &format!("Execution {arn} does not exist"),
+                &format!("Execution Does Not Exist: '{arn}'"),
             ),
         }
     }
@@ -345,6 +566,17 @@ impl StepfunctionsHandler {
         let sm_arn = param_str(req, &["stateMachineArn"]);
         let status_filter = param_str(req, &["statusFilter"]);
         let state = self.get_state(req.account, &req.region);
+        // moto resolves the machine BEFORE the pagination wrapper decodes
+        // the token (responses.py:291 vs utilities/paginator.py eager
+        // parse), so a missing machine with a garbage token answers
+        // StateMachineDoesNotExist — the measured row; ListStateMachine-
+        // Aliases has no pre-resolve and keeps token-first (measured).
+        if state.get_machine(&sm_arn).is_none() {
+            return state_machine_does_not_exist(&sm_arn);
+        }
+        if let Some(resp) = check_page_token(req) {
+            return resp;
+        }
         let mut rows: Vec<Value> = state
             .executions
             .read()
@@ -354,11 +586,14 @@ impl StepfunctionsHandler {
             .map(|exec| exec.list_value())
             .collect();
         rows.reverse();
-        AwsResponse::json(200, json!({ "executions": rows, "nextToken": Value::Null }))
+        AwsResponse::json(200, json!({ "executions": rows }))
     }
 
     fn stop_execution(&self, req: &AwsRequest) -> AwsResponse {
         let exec_arn = param_str(req, &["executionArn"]);
+        if let Some(resp) = describe_execution_arn_gate(&exec_arn) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         match state.get_execution(&exec_arn) {
             Some(exec) => {
@@ -378,7 +613,7 @@ impl StepfunctionsHandler {
             None => AwsResponse::error(
                 400,
                 "ExecutionDoesNotExist",
-                &format!("Execution {exec_arn} does not exist"),
+                &format!("Execution Does Not Exist: '{exec_arn}'"),
             ),
         }
     }
@@ -387,10 +622,14 @@ impl StepfunctionsHandler {
         let arn = param_str(req, &["executionArn"]);
         let state = self.get_state(req.account, &req.region);
         let Some(exec) = state.get_execution(&arn) else {
+            // moto: any missing execution on this op is ResourceNotFound
+            // "Resource not found: '<arn>'" — no shape gate here
+            // (models.py:869-874; measured 2026-11-11 with a well-formed
+            // missing ARN).
             return AwsResponse::error(
                 400,
-                "ExecutionDoesNotExist",
-                &format!("Execution {arn} does not exist"),
+                "ResourceNotFound",
+                &format!("Resource not found: '{arn}'"),
             );
         };
         match state.get_machine(&exec.sm_arn) {
@@ -402,13 +641,17 @@ impl StepfunctionsHandler {
             None => AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {} does not exist", exec.sm_arn),
+                &format!("State Machine Does Not Exist: '{}'", exec.sm_arn),
             ),
         }
     }
 
     fn get_execution_history(&self, req: &AwsRequest) -> AwsResponse {
+        // moto validates the exec-ARN shape first here too (models.py:861).
         let arn = param_str(req, &["executionArn"]);
+        if let Some(resp) = describe_execution_arn_gate(&arn) {
+            return resp;
+        }
         let reverse = req
             .params
             .get("reverseOrder")
@@ -419,7 +662,7 @@ impl StepfunctionsHandler {
             return AwsResponse::error(
                 400,
                 "ExecutionDoesNotExist",
-                &format!("Execution {arn} does not exist"),
+                &format!("Execution Does Not Exist: '{arn}'"),
             );
         };
         let mut events = exec.events.read().clone();
@@ -451,7 +694,7 @@ impl StepfunctionsHandler {
             return AwsResponse::error(
                 400,
                 "StateMachineDoesNotExist",
-                &format!("State machine {arn} does not exist"),
+                &format!("State Machine Does Not Exist: '{arn}'"),
             );
         }
         let mut versions = state.versions.write();
@@ -550,57 +793,115 @@ impl StepfunctionsHandler {
     }
 
     fn update_alias(&self, req: &AwsRequest) -> AwsResponse {
+        // Missing BOTH update fields is the input gate before any lookup
+        // (moto responses.py:204-210).
+        let description = req.params.get("description");
+        let routing = req.params.get("routingConfiguration");
+        if description.is_none() && routing.is_none() {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "You must provide at least one of routingConfiguration or description",
+            );
+        }
         let arn = param_str(req, &["stateMachineAliasArn"]);
         let state = self.get_state(req.account, &req.region);
-        let existing = state.aliases.read().get(&arn).cloned();
-        match existing {
-            Some(alias) => {
-                if let Some(routing) = req
-                    .params
-                    .get("routingConfiguration")
-                    .and_then(|v| v.as_array())
-                {
-                    *alias.routing_configuration.write() = routing.clone();
-                }
-                let now = asl::now_f();
-                *alias.update_date.write() = now;
-                AwsResponse::json(
-                    200,
-                    json!({ "stateMachineAliasArn": alias.arn, "updateDate": now }),
-                )
-            }
-            None => AwsResponse::error(
-                400,
-                "ResourceNotFound",
-                &format!("Resource not found: '{arn}'"),
-            ),
+        let alias = match Self::alias_ladder(&state, &arn) {
+            Ok(alias) => alias,
+            Err(resp) => return resp,
+        };
+        if let Some(routing) = req
+            .params
+            .get("routingConfiguration")
+            .and_then(|v| v.as_array())
+        {
+            *alias.routing_configuration.write() = routing.clone();
         }
+        let now = asl::now_f();
+        *alias.update_date.write() = now;
+        AwsResponse::json(
+            200,
+            json!({ "stateMachineAliasArn": alias.arn, "updateDate": now }),
+        )
     }
 
     fn delete_alias(&self, req: &AwsRequest) -> AwsResponse {
         let arn = param_str(req, &["stateMachineAliasArn"]);
         let state = self.get_state(req.account, &req.region);
-        state.aliases.write().remove(&arn);
-        AwsResponse::json(200, json!({}))
+        // moto's delete runs the describe ladder then removes the row
+        // (models.py:753-762) — a missing owner or alias is a 400, never
+        // a silent 200 (measured 2026-11-11).
+        match Self::alias_ladder(&state, &arn) {
+            Ok(alias) => {
+                state.aliases.write().remove(alias.arn.as_str());
+                AwsResponse::json(200, json!({}))
+            }
+            Err(resp) => resp,
+        }
+    }
+
+    /// moto's alias ladder (models.py:727-762, responses.py:203-215):
+    /// the alias arn rplits into its owner machine arn and the alias
+    /// NAME; an owner MISS raises StateMachineDoesNotExist carrying the
+    /// TRUNCATED owner text ("…:stateMachine:<n>:alias" — the fork's
+    /// reprsplit dropped the alias segment, measured 2026-11-11), the
+    /// owner's alias row miss is ResourceNotFound "State Machine Alias
+    /// Does Not Exist: '<full>''" wrapping (exceptions.py:74-76), and
+    /// Update refuses BOTH-absent routing/description first
+    /// (ValidationException, responses.py:204-210).
+    fn alias_ladder(
+        state: &StepfunctionsState,
+        arn: &str,
+    ) -> Result<std::sync::Arc<crate::models::Alias>, AwsResponse> {
+        let Some((owner_arn, _alias_name)) = arn.rsplit_once(':') else {
+            return Err(AwsResponse::error(
+                400,
+                "ResourceNotFound",
+                &format!("Resource not found: '{arn}'"),
+            ));
+        };
+        // moto validates the owner as a machine arn then looks it up
+        // (models.py:736-741): a well-formed owner that does not exist is
+        // StateMachineDoesNotExist with the owner text.
+        if state.get_machine(owner_arn).is_none() {
+            return Err(state_machine_does_not_exist(owner_arn));
+        }
+        match state.aliases.read().get(arn).cloned() {
+            Some(alias) => Ok(alias),
+            // moto's ResourceNotFound wraps the inner wording one more
+            // layer ("Resource not found: 'State Machine Alias Does Not
+            // Exist: '<full>''") — models.py:745-746 via the
+            // ResourceNotFound wrapper at exceptions.py:74-76; measured
+            // 2026-11-12.
+            None => Err(AwsResponse::error(
+                400,
+                "ResourceNotFound",
+                &format!("Resource not found: 'State Machine Alias Does Not Exist: '{arn}''"),
+            )),
+        }
     }
 
     fn describe_alias(&self, req: &AwsRequest) -> AwsResponse {
         let arn = param_str(req, &["stateMachineAliasArn"]);
         let state = self.get_state(req.account, &req.region);
-        let existing = state.aliases.read().get(&arn).cloned();
-        match existing {
-            Some(alias) => AwsResponse::json(200, alias.describe_value()),
-            None => AwsResponse::error(
-                400,
-                "ResourceNotFound",
-                &format!("Resource not found: '{arn}'"),
-            ),
+        match Self::alias_ladder(&state, &arn) {
+            Ok(alias) => AwsResponse::json(200, alias.describe_value()),
+            Err(resp) => resp,
         }
     }
 
     fn list_aliases(&self, req: &AwsRequest) -> AwsResponse {
         let sm_arn = param_str(req, &["stateMachineArn"]);
+        if let Some(resp) = check_page_token(req) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
+        // Measured 2026-11-11: an unknown machine ARN answers
+        // StateMachineDoesNotExist here like ListExecutions (the fork
+        // resolves aliases through the owning machine), never 200-empty.
+        if state.get_machine(&sm_arn).is_none() {
+            return state_machine_does_not_exist(&sm_arn);
+        }
         let rows: Vec<Value> = state
             .aliases
             .read()
@@ -608,10 +909,7 @@ impl StepfunctionsHandler {
             .filter(|alias| alias.arn.starts_with(&format!("{sm_arn}:")))
             .map(|alias| json!({ "stateMachineAliasArn": alias.arn, "creationDate": alias.creation_date }))
             .collect();
-        AwsResponse::json(
-            200,
-            json!({ "stateMachineAliases": rows, "nextToken": Value::Null }),
-        )
+        AwsResponse::json(200, json!({ "stateMachineAliases": rows }))
     }
 
     // ---------------- Activities ----------------
@@ -674,6 +972,9 @@ impl StepfunctionsHandler {
     }
 
     fn list_activities(&self, req: &AwsRequest) -> AwsResponse {
+        if let Some(resp) = check_page_token(req) {
+            return resp;
+        }
         let state = self.get_state(req.account, &req.region);
         let rows: Vec<Value> = state
             .activities
@@ -687,7 +988,7 @@ impl StepfunctionsHandler {
                 })
             })
             .collect();
-        AwsResponse::json(200, json!({ "activities": rows, "nextToken": Value::Null }))
+        AwsResponse::json(200, json!({ "activities": rows }))
     }
 
     fn get_activity_task(&self, req: &AwsRequest) -> AwsResponse {
@@ -927,6 +1228,265 @@ mod tests {
 
     fn body(resp: &AwsResponse) -> Value {
         serde_json::from_str(&resp.body).unwrap()
+    }
+
+    /// Create one clean machine and return its ARN (unique per test: the
+    /// handler's state registry is process-global).
+    fn mint_sm(handler: &StepfunctionsHandler, name: &str) -> String {
+        let resp = handler.handle(make_req(
+            "CreateStateMachine",
+            json!({"stateMachineName": name,
+                   "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                   "definition": "{}"}),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        body(&resp)["stateMachineArn"].as_str().unwrap().to_string()
+    }
+
+    // ==== create-path name gate + missing-entity wordings + token gate
+    // (2026-11-11 differential; moto stepfunctions/models.py:642, 724,
+    // 817-818, 836, 905-914; exceptions.py:50,66-73; paginator decode via
+    // utilities/paginator.py:110-131 + botocore TokenDecoder) ====
+
+    /// A space in the name is the measured `Invalid Name: '<name>'` row:
+    /// 400 InvalidName, not a silent create.
+    #[test]
+    fn create_rejects_name_with_space() {
+        let handler = StepfunctionsHandler::new();
+        let resp = handler.handle(make_req(
+            "CreateStateMachine",
+            json!({"stateMachineName": "sfn-gate bad name",
+                   "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                   "definition": "{}"}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("\"__type\":\"InvalidName\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("Invalid Name: 'sfn-gate bad name'"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// An 81-char name rides NameTooLongException: ValidationException with
+    /// the modeled 80-cap message (moto exceptions.py:66-73).
+    #[test]
+    fn create_rejects_long_name() {
+        let handler = StepfunctionsHandler::new();
+        let name: String = std::iter::repeat_n('a', 81).collect();
+        let resp = handler.handle(make_req(
+            "CreateStateMachine",
+            json!({"stateMachineName": name,
+                   "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                   "definition": "{}"}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("\"__type\":\"ValidationException\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("Member must have length less than or equal to 80"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// StartExecution honors the same name gate when a name rides along
+    /// (moto models.py:817-818) — the machine may exist or not; the name
+    /// check runs first.
+    #[test]
+    fn start_execution_rejects_bad_name() {
+        let handler = StepfunctionsHandler::new();
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({"stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:nope",
+                   "name": "bad name"}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Invalid Name: 'bad name'"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// ListExecutions resolves the machine first (moto :836 through the
+    /// describe miss at :724): a missing machine is a 400 with the measured
+    /// wording, never a 200-empty page.
+    #[test]
+    fn list_executions_missing_sm_400() {
+        let handler = StepfunctionsHandler::new();
+        let arn = "arn:aws:states:us-east-1:123456789012:stateMachine:gate-miss";
+        let resp = handler.handle(make_req("ListExecutions", json!({"stateMachineArn": arn})));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains(
+                "State Machine Does Not Exist: 'arn:aws:states:us-east-1:123456789012:stateMachine:gate-miss'"
+            ),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// ListStateMachineAliases behaves like ListExecutions on a missing
+    /// machine (2026-11-11 measured row, both engines).
+    #[test]
+    fn list_aliases_missing_sm_400() {
+        let handler = StepfunctionsHandler::new();
+        let arn = "arn:aws:states:us-east-1:123456789012:stateMachine:gate-alias-miss";
+        let resp = handler.handle(make_req(
+            "ListStateMachineAliases",
+            json!({"stateMachineArn": arn}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("State Machine Does Not Exist"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// The describe miss renders moto's exact wording after the port
+    /// (previously "State machine <arn> does not exist" — the census row).
+    #[test]
+    fn missing_machine_wording_matches_moto() {
+        let handler = StepfunctionsHandler::new();
+        let arn = "arn:aws:states:us-east-1:123456789012:stateMachine:wording";
+        let describe = handler.handle(make_req(
+            "DescribeStateMachine",
+            json!({"stateMachineArn": arn}),
+        ));
+        assert_eq!(describe.status, 400, "body: {}", describe.body);
+        assert!(
+            describe.body.contains(
+                "State Machine Does Not Exist: 'arn:aws:states:us-east-1:123456789012:stateMachine:wording'"
+            ),
+            "body: {}",
+            describe.body
+        );
+    }
+
+    /// DescribeExecution's miss wording (moto models.py:852, "Execution
+    /// Does Not Exist: '<arn>'").
+    #[test]
+    fn missing_execution_wording_matches_moto() {
+        let handler = StepfunctionsHandler::new();
+        mint_sm(&handler, "exec-wording-sm");
+        let resp = handler.handle(make_req(
+            "DescribeExecution",
+            json!({"executionArn": "arn:aws:states:us-east-1:123456789012:execution:exec-wording-sm:absent"}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("__type\":\"ExecutionDoesNotExist"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("Execution Does Not Exist"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// A garbage pagination token is 400 InvalidToken "Invalid Token:
+    /// Invalid token" on every PAGINATION_MODEL op (moto paginate decode,
+    /// utilities/paginator.py:110-131); a healthy list without a nextToken
+    /// param omits the member (moto's serializer drops None members,
+    /// core/serialize.py:407-411 — the measured {"executions":[]} shape).
+    #[test]
+    fn list_ops_gate_tokens_and_omit_null_next_token() {
+        let handler = StepfunctionsHandler::new();
+        let arn = mint_sm(&handler, "token-gate-sm");
+        for op in [
+            "ListStateMachines",
+            "ListExecutions",
+            "ListStateMachineAliases",
+            "ListActivities",
+        ] {
+            let resp = handler.handle(make_req(
+                op,
+                json!({ "stateMachineArn": arn, "nextToken": "AAA-garbage" }),
+            ));
+            assert_eq!(resp.status, 400, "{op}: {}", resp.body);
+            assert!(
+                resp.body.contains("\"Invalid Token: Invalid token\""),
+                "{op}: {}",
+                resp.body
+            );
+            assert!(
+                resp.body.contains("__type\":\"InvalidToken\""),
+                "{op}: {}",
+                resp.body
+            );
+        }
+        for op in ["ListStateMachines", "ListExecutions"] {
+            let resp = handler.handle(make_req(op, json!({ "stateMachineArn": arn })));
+            assert_eq!(resp.status, 200, "{op}: {}", resp.body);
+            assert!(!resp.body.contains("nextToken"), "{op}: {}", resp.body);
+        }
+    }
+
+    /// A machine-shaped execution ARN answers code InvalidArn (not
+    /// ExecutionDoesNotExist) with the same "Execution Does Not Exist"
+    /// text — the measured shape flip from moto's _validate_execution_arn
+    /// regex arm (models.py:608-612, 930-935).
+    #[test]
+    fn describe_execution_bad_arn_shape_is_invalid_arn() {
+        let handler = StepfunctionsHandler::new();
+        let machine_shaped =
+            "arn:aws:states:us-east-1:123456789012:stateMachine:sfn-blah:execution:gone";
+        let resp = handler.handle(make_req(
+            "DescribeExecution",
+            json!({"executionArn": machine_shaped}),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("__type\":\"InvalidArn\""),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("Execution Does Not Exist"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// A token whose base64 decodes to valid JSON continues into moto's
+    /// checksum arm: without the request's own parameterChecksum it
+    /// answers InvalidToken "Invalid Token: Input inconsistent with page
+    /// token: {'limit': 1}" — the measured repr (adversarially-verified
+    /// 2026-11-12; the review's SF-1 row).
+    #[test]
+    fn token_gate_inconsistent_checksum_message() {
+        let handler = StepfunctionsHandler::new();
+        let arn = mint_sm(&handler, "token-decode-sm");
+        use base64::Engine as _;
+        let token = base64::engine::general_purpose::STANDARD.encode(r#"{"limit":1}"#);
+        let resp = handler.handle(make_req(
+            "ListExecutions",
+            json!({ "stateMachineArn": arn, "nextToken": token }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("Input inconsistent with page token: {'limit': 1}"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("__type\":\"InvalidToken"),
+            "body: {}",
+            resp.body
+        );
     }
 
     #[test]

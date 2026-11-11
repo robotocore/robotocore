@@ -62,6 +62,44 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Step Functions: the machine-name gate, missing-entity wordings, the
+  execution-ARN shape, and pagination tokens all mirror the fork.**
+  The 2026-11-11 census found the twin accepting anything on
+  create_state_machine; moto enforces `_validate_name`
+  (stepfunctions/models.py:905-914 — the real-AWS charset at :505-541
+  plus control characters, then the >80-member rule through
+  NameTooLongException, exceptions.py:66-73 rendering the modeled
+  "1 validation error … Member must have length less than or equal to
+  80"). Misses now carry the fork's wordings: "State Machine Does Not
+  Exist: '<arn>'" (models.py:724 — DescribeStateMachine/StartExecution/
+  ListExecutions/ListStateMachineAliases answer the same shape; a
+  missing machine on the fan ops is a 400, not a silent 200-empty page,
+  models.py:819-836) and "Execution Does Not Exist: '<arn>'"
+  (models.py:852, 969-976). `nextToken` on healthy lists OMITS the
+  member (moto's serializer drops None members, core/
+  serialize.py:407-411 — the measured {"executions":[]} shape), and a
+  non-decodable `nextToken` on the four PAGINATION_MODEL ops answers 400
+  InvalidToken "Invalid Token: Invalid token" (utilities/paginator.py
+  :110-131). An execution ARN whose shape fails the fork's
+  `accepted_exec_arn_format` (models.py:608-612) answers 400 InvalidArn
+  with the Execution-Does-Not-Exist text (:930-935 — the machine-shaped
+  execution ARN measured live). Execution ARNs mint with the fork's
+  `arn:<part>:states:<region>:<acct>:execution:<machine-name>:<run>`
+  template (models.py:352-360) instead of riding the machine ARN
+  prefix; the express variant keeps that shape on `:express:`
+  (the fork has no express template — unmeasured, era behavior).
+  Deliberate divergences (not ported): moto's
+  `list_state_machine_versions` on a missing machine 500s unguarded
+  (the twin answers a sane 200-empty) and moto's default no-execute
+  execution engine leaves `RUNNING` (the twin executes the ASL like
+  real AWS — the pre-existing design rationale).
+  Pins: in-crate create_rejects_name_with_space / create_rejects_long_
+  name / start_execution_rejects_bad_name / list_executions_missing_
+  sm_400 / list_aliases_missing_sm_400 / missing_machine_wording_
+  matches_moto / missing_execution_wording_matches_moto / describe_
+  execution_bad_arn_shape_is_invalid_arn / list_ops_gate_tokens_and_
+  omit_null_next_token / token_gate_accepts_decoded_tokens.
+
 - **Lambda: the create path resolves the Role against the IAM registry.**
   moto's `LambdaBackend.put_function` gates the role three ways, in
   order (awslambda/models.py:1753-1772): the `InvalidRoleFormat` regex

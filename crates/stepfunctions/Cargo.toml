@@ -20,3 +20,5 @@ sns = { path = "../sns" }
 dynamodb = { path = "../dynamodb" }
 # SQS sendMessage answers Md5OfMessageBody like era `_invoke_sqs_send`.
 md5 = "0.8"
+# Paginated list ops decode nextToken through moto's base64 token codec.
+base64 = "0.22"

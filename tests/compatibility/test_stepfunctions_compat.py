@@ -1467,19 +1467,64 @@ class TestStepFunctionsAliases:
     """Tests for StateMachineAlias operations."""
 
     def test_list_state_machine_aliases(self, sfn):
-        """ListStateMachineAliases returns aliases list for a state machine."""
+        """ListStateMachineAliases resolves the machine first.
+
+        moto filters aliases through describe_state_machine
+        (stepfunctions/models.py:819-836 → :724), so a missing machine lands
+        as a 400 StateMachineDoesNotExist with the exact wording; a real
+        machine lists its (possibly empty) aliases. Measured 2026-11-11 on
+        both engines.
+        """
+        from botocore.exceptions import ClientError
+
         fake_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:nonexistent"
-        resp = sfn.list_state_machine_aliases(stateMachineArn=fake_arn)
+        with pytest.raises(ClientError) as exc_info:
+            sfn.list_state_machine_aliases(stateMachineArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "StateMachineDoesNotExist"
+        assert "State Machine Does Not Exist:" in exc_info.value.response["Error"]["Message"]
+        name = f"alias-list-{uuid.uuid4().hex[:8]}"
+        created = sfn.create_state_machine(
+            name=name, roleArn="arn:aws:iam::123456789012:role/sfn-role", definition="{}"
+        )
+        resp = sfn.list_state_machine_aliases(stateMachineArn=created["stateMachineArn"])
         assert "stateMachineAliases" in resp
 
     def test_describe_state_machine_alias_nonexistent(self, sfn):
-        """DescribeStateMachineAlias with nonexistent ARN raises ResourceNotFound."""
+        """Describe/Delete/Update alias misses follow moto's alias ladder.
+
+        An owner machine that does not exist raises
+        StateMachineDoesNotExist with the truncated owner text (moto
+        rsplit drops the alias segment, models.py:737-741); a real owner
+        with a missing alias row raises ResourceNotFound "State Machine
+        Alias Does Not Exist: '<full arn>'" (models.py:745). Measured
+        2026-11-12 on both engines.
+        """
         from botocore.exceptions import ClientError
 
-        fake_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:fake:alias"
+        ghost_alias = "arn:aws:states:us-east-1:123456789012:stateMachine:fake:alias"
         with pytest.raises(ClientError) as exc_info:
-            sfn.describe_state_machine_alias(stateMachineAliasArn=fake_arn)
+            sfn.describe_state_machine_alias(stateMachineAliasArn=ghost_alias)
+        assert exc_info.value.response["Error"]["Code"] == "StateMachineDoesNotExist"
+        truncated_owner = "arn:aws:states:us-east-1:123456789012:stateMachine:fake"
+        assert exc_info.value.response["Error"]["Message"] == (
+            f"State Machine Does Not Exist: '{truncated_owner}'"
+        )
+
+        name = f"alias-ladder-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name, roleArn="arn:aws:iam::123456789012:role/sfn-role", definition="{}"
+        )
+        absent = f"{sm['stateMachineArn']}:absent"
+        wrapped = f"Resource not found: 'State Machine Alias Does Not Exist: '{absent}''"
+        with pytest.raises(ClientError) as exc_info:
+            sfn.describe_state_machine_alias(stateMachineAliasArn=absent)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFound"
+        assert exc_info.value.response["Error"]["Message"] == wrapped
+
+        with pytest.raises(ClientError) as exc_info:
+            sfn.delete_state_machine_alias(stateMachineAliasArn=absent)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFound"
+        assert exc_info.value.response["Error"]["Message"] == wrapped
 
 
 class TestStepFunctionsMissingGapOps:
