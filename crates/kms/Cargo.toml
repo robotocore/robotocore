@@ -18,7 +18,7 @@ base64 = "0.22"
 # key pairs, import wrapping and ECDH
 sha2 = "0.10"
 aes-gcm = "0.11"
-hmac = "0.12"
+hmac = "0.13"
 rand = "0.8"
 rsa = { version = "0.9", features = ["sha2", "getrandom"] }
 p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8", "pem"] }
