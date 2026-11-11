@@ -98,7 +98,23 @@ under *Changelog discipline*.
   sm_400 / list_aliases_missing_sm_400 / missing_machine_wording_
   matches_moto / missing_execution_wording_matches_moto / describe_
   execution_bad_arn_shape_is_invalid_arn / list_ops_gate_tokens_and_
-  omit_null_next_token / token_gate_accepts_decoded_tokens.
+  omit_null_next_token / token_gate_inconsistent_checksum_message.
+  The adversarial review's live rows added the rest of the ladder
+  (all measured): decoded pagination tokens run moto's checksum arm — a
+  token the twin never mints carries no `parameterChecksum`, so it
+  answers InvalidToken "Invalid Token: Input inconsistent with page
+  token: {'limit': 1}" with the python repr (utilities/paginator.py
+  :118-125, :135-143); stop_execution and get_execution_history run the
+  execution-ARN shape gate first (models.py:826, 861 — the review's
+  machine-shaped rows measured InvalidArn); DescribeStateMachineFor
+  Execution answers ResourceNotFound "Resource not found: '<arn>'" for a
+  missing execution with no shape gate (models.py:869-874); the alias
+  family (describe/update/delete) runs moto's ladder (models.py:
+  727-762) — the owner-miss wording carries the truncated owner ("…
+  :stateMachine:<n>:alias'"), the alias-row miss is wrapped once more
+  ("Resource not found: 'State Machine Alias Does Not Exist: '<arn>''",
+  exceptions.py:74-76), update refuses both-absent fields first
+  (responses.py:204-210), and delete is no longer a silent 200.
 
 - **Lambda: the create path resolves the Role against the IAM registry.**
   moto's `LambdaBackend.put_function` gates the role three ways, in
