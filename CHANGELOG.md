@@ -62,6 +62,59 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **SNS: the validation table.** The 2026-11-11 census gaps all follow
+  moto's wire now (lines pinned in the crate pins): Publish
+  MessageAttributes validate at entry — a DataType off the
+  String/Binary/Number prefix set answers the supported-set sentence and
+  a non-castable Number answers the nested ParameterValueInvalid text
+  (sns/responses.py:84-110); MessageStructure=json parses per
+  SUBSCRIPTION (models.py:259-260, :419-434) so a zero-subscription
+  topic accepts any body and subscribed misses answer "Message is not
+  valid JSON." / "Message does not contain {protocol} or default
+  keys." (the twin previously rejected at publish entry and fell back
+  to the raw body on missing keys); Subscribe rejects ghost application
+  endpoints with the arn{endpoint}-spaced wording (models.py:672-677);
+  SetSubscriptionAttributes runs the six-name whitelist before the
+  subscription lookup (models.py:900-906 — the single-word
+  "AttributeName" row) and missing subs answer "Subscription with arn …
+  not found"; CreatePlatformEndpoint's token dedupe spans the account
+  store — a carried token answers the EXISTING arn even under another
+  application, different CustomUserData answers the already-exists
+  InvalidParameter (models.py:829-846, cross-app row measured).
+  Deliberate divergences recorded: SetSubscriptionAttributes with a
+  non-JSON FilterPolicy — the fork 500s on the unguarded json.loads
+  (models.py:918), the twin answers a sane 400 "Filter policy is not
+  valid JSON" (and an EMPTY value clears as a no-op per the fork's `if
+  value:` arm, models.py:916-918); the PublishBatch lane carries no
+  per-entry attribute validation (the twin never parsed batch
+  attributes — an arm of its own); a publish with a missing
+  MessageAttributes DataType key crashes the fork (KeyError at
+  responses.py:80, an HTML 500) while the twin answers sanely;
+  FilterPolicy operator validation (unknown match types → fork 400)
+  stays deferred; publish-time SQS bridge failures stay swallowed by
+  the twin where the fork raises them through (pre-existing; a
+  plumbing tranche).
+  Pin additions from the SNS adversarial review: MessageStructure
+  non-json rejects at ENTRY ("MessageStructure must be 'json' if
+  provided", models.py:758-760 — previously accepted); an EXPLICIT
+  StringValue:"" answers the type-first-CHARACTER wording
+  (responses.py:107-113 — `data_type[0]` renders 'S') while a MISSING
+  StringValue key rides transform None past the empty check and an
+  empty DataType carries its own arm (responses.py:79-82); the
+  structured selector uses python truthiness (models.py:422-424 — an
+  empty "" falls through to default and a JSON number rides the SQS
+  body as its literal, driven through a real queue); Subscribe dedupes
+  an identical (topic, endpoint, protocol) call to the EXISTING arn
+  (models.py:662-665). Pins: publish_rejects_bad_attribute_type_prefix /
+  publish_rejects_non_castable_number_attribute /
+  publish_structure_parses_per_subscription /
+  subscribe_rejects_ghost_application_endpoint /
+  set_subscription_attributes_gates / platform_endpoint_token_dedupe /
+  set_subscription_attributes_empty_filter_policy_is_a_noop /
+  publish_rejects_non_json_message_structure / publish_attribute_empty_arms /
+  publish_structure_falsy_keys_fall_through / subscribe_dedupes_identical_
+  subscription; census artifacts/sns-tranche-census.py converged per row.
+
 - **Step Functions: the machine-name gate, missing-entity wordings, the
   execution-ARN shape, and pagination tokens all mirror the fork.**
   The 2026-11-11 census found the twin accepting anything on
