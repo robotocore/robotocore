@@ -184,15 +184,6 @@ impl EventsHandler {
         };
         let state = self.get_state(req.account, &req.region);
 
-        // Custom buses must exist; the default bus always does.
-        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Event bus {bus} not found"),
-            );
-        }
-
         let arn = if bus == "default" {
             format!(
                 "arn:aws:events:{}:{}:rule/{}",
@@ -278,6 +269,17 @@ impl EventsHandler {
                     &format!("Event pattern is not valid. Reason: {reason}"),
                 );
             }
+        }
+        // Custom buses must exist; moto's ALL-validation-arms-first order
+        // puts the bus lookup (models.py:1277 `_get_event_bus`) AFTER the
+        // both-empty / default-bus-only / regex arms — a ghost bus +
+        // schedule answers the "supported only" message, not this 404.
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} not found"),
+            );
         }
         // The caller's State param must stick (era parity: moto's
         // `Rule.__init__` does `self.state = state or "ENABLED"`), so a
@@ -3184,7 +3186,7 @@ mod tests {
 
         let mut params = json!({"Name": "census-trick-sched", "ScheduleExpression": "rate(1 day)"});
         params["EventBusName"] = json!("census-ghost-bus");
-        let resp = handler.handle(make_req("PutRule", params));
+        let resp = EventsHandler::new().handle(make_req("PutRule", params));
         assert_eq!(resp.status, 400);
         assert_eq!(
             body(&resp)["message"],
