@@ -9,6 +9,12 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+/// moto's PutRule schedule-shape regexes, cloned verbatim from
+/// models.py:1204-1205 (prefix-shape checks only).
+static CRON_RE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^cron\(.*\)").unwrap());
+static RATE_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^rate\(\d*\s(minute|minutes|hour|hours|day|days)\)").unwrap());
+
 /// Process-global EventBridge state registry, shared by every handler
 /// instance so cross-service publishers (S3, ...) can reach the same rules.
 pub(crate) static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
@@ -178,15 +184,6 @@ impl EventsHandler {
         };
         let state = self.get_state(req.account, &req.region);
 
-        // Custom buses must exist; the default bus always does.
-        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Event bus {bus} not found"),
-            );
-        }
-
         let arn = if bus == "default" {
             format!(
                 "arn:aws:events:{}:{}:rule/{}",
@@ -222,6 +219,35 @@ impl EventsHandler {
                 "Specifying both EventPattern and ScheduleExpression is not allowed.",
             );
         }
+        if let Some(schedule) = schedule_expression.as_deref() {
+            // moto's put_rule arms in live order (models.py:1265-1275):
+            // scheduled rules ARE default-bus only — anything else (incl.
+            // a GHOST bus name, the bus-existence check at :1277 runs
+            // after) raises "ScheduleExpression is supported only on the
+            // default event bus." BEFORE the regex pair even runs (the
+            // regexes are prefix-shape checks: 'cron(0 0 0 * * *)' passes
+            // with its structural nonsense; 'every day' 400s).
+            let bus_name = req
+                .params
+                .get("EventBusName")
+                .and_then(|v| v.as_str())
+                .filter(|b| !b.is_empty())
+                .unwrap_or("default");
+            if !CRON_RE.is_match(schedule) && !RATE_RE.is_match(schedule) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "Parameter ScheduleExpression is not valid.",
+                );
+            }
+            if bus_name != "default" {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "ScheduleExpression is supported only on the default event bus.",
+                );
+            }
+        }
         if !event_pattern.is_empty() {
             // moto `EventPatternParser.parse` + era `_put_rule`: patterns
             // are parsed and shape-checked at PutRule time; the twin used
@@ -243,6 +269,17 @@ impl EventsHandler {
                     &format!("Event pattern is not valid. Reason: {reason}"),
                 );
             }
+        }
+        // Custom buses must exist; moto's ALL-validation-arms-first order
+        // puts the bus lookup (models.py:1277 `_get_event_bus`) AFTER the
+        // both-empty / default-bus-only / regex arms — a ghost bus +
+        // schedule answers the "supported only" message, not this 404.
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} not found"),
+            );
         }
         // The caller's State param must stick (era parity: moto's
         // `Rule.__init__` does `self.state = state or "ENABLED"`), so a
@@ -400,12 +437,12 @@ impl EventsHandler {
                 &format!("Rule {} does not exist on EventBus {}.", key.1, key.0),
             );
         };
-        // era `_put_targets`: a rule carries at most 5 targets. Updates of
-        // existing target ids always fit; net-new entries beyond the cap
-        // fail as `LimitExceededException` entries (HTTP 200). Only the
-        // entries that fit are stored.
-        const MAX_TARGETS: usize = 5;
-        let mut failed: Vec<Value> = Vec::new();
+        // moto's put_targets has NO five-target cap: every entry is
+        // appended/upserted live ("Not testing for valid ARNs.",
+        // models.py:125-131 — 7 targets attach verbatim, live-pinned). The
+        // twin previously capped at five and minted LimitExceededException
+        // entries moto never produces.
+        let failed: Vec<Value> = Vec::new();
         let mut allowed_targets: Vec<Value> = Vec::new();
         {
             let existing = rule.targets.read();
@@ -413,28 +450,19 @@ impl EventsHandler {
                 .iter()
                 .filter_map(|t| t.get("Id").and_then(Value::as_str))
                 .collect();
-            let mut allowed = MAX_TARGETS.saturating_sub(existing_ids.len());
-            for target in targets {
+            for target in &targets {
                 let id = target
                     .get("Id")
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string();
                 if existing_ids.contains(id.as_str()) {
-                    allowed_targets.push(target);
-                } else if allowed > 0 {
-                    allowed -= 1;
-                    allowed_targets.push(target);
-                } else {
-                    failed.push(json!({
-                        "TargetId": id,
-                        "ErrorCode": "LimitExceededException",
-                        "ErrorMessage":
-                            "The requested resource exceeds the maximum number allowed.",
-                    }));
+                    allowed_targets.push(target.clone());
                 }
             }
         }
+        // moto's upsert keeps insertion semantics via the same replace
+        // pass; new ids append. (models.py:125-131.)
         let mut existing = rule.targets.write();
         for target in allowed_targets {
             let new_id = target.get("Id").and_then(Value::as_str);
@@ -443,6 +471,15 @@ impl EventsHandler {
                 old_id.is_none() || old_id != new_id
             });
             existing.push(target);
+        }
+        for target in targets {
+            let new_id = target.get("Id").and_then(Value::as_str);
+            if !existing
+                .iter()
+                .any(|t| t.get("Id").and_then(Value::as_str) == new_id)
+            {
+                existing.push(target);
+            }
         }
         AwsResponse::json(
             200,
@@ -727,24 +764,66 @@ impl EventsHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
+        // moto's per-entry validation contract (models.py:1434-1490): each
+        // entry answers Source/DetailType/Detail-required InvalidArgument
+        // failures, and non-JSON Detail answers a MalformedDetail entry —
+        // the twins previously accepted anything and minted events from
+        // garbage (the #520-review census live-pinned the delta).
         let mut failed_count = 0u64;
         let mut results: Vec<Value> = Vec::new();
         for entry in &entries {
-            let detail = match entry.get("Detail") {
-                Some(Value::String(s)) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
-                Some(Value::Null) | None => Value::Null,
-                Some(other) => other.clone(),
-            };
-            let detail_type = entry
-                .get("DetailType")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
             let source = entry
                 .get("Source")
                 .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+                .unwrap_or_default();
+            let detail_type = entry
+                .get("DetailType")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let detail_raw = entry
+                .get("Detail")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if source.is_empty() {
+                failed_count += 1;
+                results.push(json!({
+                    "ErrorCode": "InvalidArgument",
+                    "ErrorMessage":
+                        "Parameter Source is not valid. Reason: Source is a required argument.",
+                }));
+                continue;
+            }
+            if detail_type.is_empty() {
+                failed_count += 1;
+                results.push(json!({
+                    "ErrorCode": "InvalidArgument",
+                    "ErrorMessage":
+                        "Parameter DetailType is not valid. Reason: DetailType is a required argument.",
+                }));
+                continue;
+            }
+            if detail_raw.is_empty() {
+                failed_count += 1;
+                results.push(json!({
+                    "ErrorCode": "InvalidArgument",
+                    "ErrorMessage":
+                        "Parameter Detail is not valid. Reason: Detail is a required argument.",
+                }));
+                continue;
+            }
+            let detail_value: Value = match serde_json::from_str(detail_raw) {
+                Ok(v) => v,
+                Err(_) => {
+                    // moto's MalformedDetail entry; the event is dropped.
+                    failed_count += 1;
+                    results.push(json!({
+                        "ErrorCode": "MalformedDetail",
+                        "ErrorMessage": "Detail is malformed.",
+                    }));
+                    continue;
+                }
+            };
+            let detail = detail_value;
             let event = json!({
                 "version": "0",
                 "id": uuid::Uuid::new_v4().to_string(),
@@ -2408,27 +2487,27 @@ mod tests {
     }
 
     #[test]
-    fn put_targets_enforces_the_five_target_cap() {
+    fn put_targets_attaches_every_entry_like_moto() {
+        // moto's put_targets appends/upserts live with NO cap
+        // (models.py:125-131 — 7 targets attach verbatim, live-pinned
+        // during the #520 census). The twin's old five-target cap minted
+        // LimitExceededException entries moto never produces.
         let handler = EventsHandler::new();
         handler.handle(make_req(
             "PutRule",
             json!({"Name": "fp6-cap-rule", "EventPattern": "{}"}),
         ));
-        let targets: Vec<Value> = (0..6).map(|i| fp6_target(&format!("t{i}"))).collect();
+        let targets: Vec<Value> = (0..7).map(|i| fp6_target(&format!("t{i}"))).collect();
         let resp = handler.handle(make_req(
             "PutTargets",
             json!({"Rule": "fp6-cap-rule", "Targets": targets}),
         ));
         let json = body(&resp);
-        assert_eq!(json["FailedEntryCount"], 1);
-        assert_eq!(json["FailedEntries"][0]["TargetId"], "t5");
-        assert_eq!(
-            json["FailedEntries"][0]["ErrorCode"],
-            "LimitExceededException"
-        );
-        assert_eq!(listed_target_ids(&handler, "fp6-cap-rule").len(), 5);
+        assert_eq!(json["FailedEntryCount"], 0);
+        assert_eq!(json["FailedEntries"].as_array().expect("list").len(), 0);
+        assert_eq!(listed_target_ids(&handler, "fp6-cap-rule").len(), 7);
 
-        // Updating an existing entry stays inside the cap.
+        // An existing id is upserted (replaced, not duplicated).
         let mut update = fp6_target("t1");
         update["Arn"] = json!("arn:aws:sqs:us-east-1:123456789012:fp6-updated");
         let resp = handler.handle(make_req(
@@ -2438,20 +2517,8 @@ mod tests {
         assert_eq!(body(&resp)["FailedEntryCount"], 0);
         assert_eq!(
             listed_target_ids(&handler, "fp6-cap-rule").len(),
-            5,
+            7,
             "update must replace, not add"
-        );
-
-        // A net-new entry on a full rule is refused.
-        let resp = handler.handle(make_req(
-            "PutTargets",
-            json!({"Rule": "fp6-cap-rule", "Targets": [fp6_target("t9")]}),
-        ));
-        let json = body(&resp);
-        assert_eq!(json["FailedEntryCount"], 1);
-        assert_eq!(
-            json["FailedEntries"][0]["ErrorCode"],
-            "LimitExceededException"
         );
     }
 
@@ -3097,5 +3164,94 @@ mod tests {
             1,
             "one capture; a custom-bus rule fire would double-capture via the forward: {stored:?}"
         );
+    }
+
+    // -- census pins (#520 EventBridge lane) --------------------------------
+
+    // moto's live arm order (models.py:1265-1275): regex first, then the
+    // default-bus-only arm (which precedes bus-existence, so a GHOST
+    // custom-bus name answers the same message).
+    #[test]
+    fn schedule_expression_validates_like_moto() {
+        let resp = handler_put_rule_schedule("every day");
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "ValidationException");
+        assert_eq!(
+            body(&resp)["message"],
+            "Parameter ScheduleExpression is not valid."
+        );
+
+        let resp = handler_put_rule_schedule("cron(0 0 0 * * *)");
+        assert_eq!(resp.status, 200);
+
+        let mut params = json!({"Name": "census-trick-sched", "ScheduleExpression": "rate(1 day)"});
+        params["EventBusName"] = json!("census-ghost-bus");
+        let resp = EventsHandler::new().handle(make_req("PutRule", params));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "ScheduleExpression is supported only on the default event bus."
+        );
+    }
+
+    // moto's put_events entry contract (models.py:1434-1490): Source /
+    // DetailType / Detail required; non-JSON Detail → MalformedDetail;
+    // the good entry lands.
+    #[test]
+    fn put_events_entry_contract_like_moto() {
+        let handler = EventsHandler::new();
+
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [
+                {"DetailType": "d", "Detail": "{\"k\":\"v\"}"},
+                {"Source": "census.src", "Detail": "{\"k\":\"v\"}"},
+                {"Source": "census.src", "DetailType": "d"},
+            ]}),
+        ));
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 3);
+        // moto interleaves failure entries in the same Entries list
+        // (models.py: entries.append({ErrorCode…}) — no FailedEntries key).
+        let entries_list = json["Entries"].as_array().expect("entries list");
+        assert_eq!(entries_list[0]["ErrorCode"], "InvalidArgument");
+        assert_eq!(
+            entries_list[0]["ErrorMessage"],
+            "Parameter Source is not valid. Reason: Source is a required argument."
+        );
+        assert_eq!(
+            entries_list[1]["ErrorMessage"],
+            "Parameter DetailType is not valid. Reason: DetailType is a required argument."
+        );
+        assert_eq!(
+            entries_list[2]["ErrorMessage"],
+            "Parameter Detail is not valid. Reason: Detail is a required argument."
+        );
+
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [{"Source": "census.src", "DetailType": "d",
+                                "Detail": "{not-json}"}]}),
+        ));
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 1);
+        assert_eq!(json["Entries"][0]["ErrorCode"], "MalformedDetail");
+        assert_eq!(json["Entries"][0]["ErrorMessage"], "Detail is malformed.");
+
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [{"Source": "census.src", "DetailType": "d",
+                                "Detail": "{\"k\":\"v\"}"}]}),
+        ));
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 0);
+        assert!(json["Entries"][0]["EventId"].is_string());
+    }
+
+    fn handler_put_rule_schedule(expression: &str) -> AwsResponse {
+        EventsHandler::new().handle(make_req(
+            "PutRule",
+            json!({"Name": "census-sched-rule", "ScheduleExpression": expression}),
+        ))
     }
 }

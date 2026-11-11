@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
+regex = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 # `preserve_order` keeps parsed JSON object keys in document order so
 # pattern-matcher dict leaves resolve their FIRST key like moto's

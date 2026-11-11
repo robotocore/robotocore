@@ -1188,7 +1188,7 @@ class TestEventBridgeExtended:
             resp = events.put_rule(
                 Name=rule_name,
                 EventBusName=bus_name,
-                ScheduleExpression="rate(5 minutes)",
+                EventPattern='{"source": ["census-custom-bus"]}',
             )
             assert "RuleArn" in resp
 
@@ -2107,7 +2107,7 @@ class TestEventBridgeRuleOnCustomBus:
             resp = events.put_rule(
                 Name=rule_name,
                 EventBusName=bus_name,
-                ScheduleExpression="rate(1 hour)",
+                EventPattern='{"source": ["census-bus"]}',
                 State="ENABLED",
             )
             assert "RuleArn" in resp
@@ -2147,7 +2147,7 @@ class TestEventBridgeRuleOnCustomBus:
             events.put_rule(
                 Name=rule_name,
                 EventBusName=bus_name,
-                ScheduleExpression="rate(1 hour)",
+                EventPattern='{"source": ["census-bus"]}',
             )
             resp = events.put_targets(
                 Rule=rule_name,

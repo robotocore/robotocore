@@ -631,6 +631,7 @@ dependencies = [
  "chrono",
  "once_cell",
  "parking_lot",
+ "regex",
  "serde",
  "serde_json",
  "sqs",
