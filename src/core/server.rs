@@ -1612,6 +1612,7 @@ pub async fn catch_all_handler(
         path: uri.path(),
         query: uri.query().unwrap_or(""),
         headers: &parsed_req.headers,
+        params: &parsed_req.params,
         account,
         region: &region,
     };

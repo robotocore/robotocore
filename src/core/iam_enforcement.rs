@@ -45,6 +45,11 @@ pub struct RequestContext<'a> {
     pub query: &'a str,
     /// Lowercased header names, matching the gateway's ParsedRequest map.
     pub headers: &'a HashMap<String, String>,
+    /// The gateway-parsed request params — the same source the engine's
+    /// handlers consume (QueueUrl lives here for POST bodies, not in the
+    /// query string; the enforcement gate must read the same wire input
+    /// it gates, #518-review source-split lane).
+    pub params: &'a HashMap<String, serde_json::Value>,
     pub account: u64,
     pub region: &'a str,
 }
@@ -252,6 +257,7 @@ fn build_resource_arn(
     account: u64,
     path: &str,
     query: &str,
+    params: &HashMap<String, serde_json::Value>,
 ) -> String {
     let query_val = |key: &str| -> Option<String> {
         query.split('&').find_map(|kv| {
@@ -259,6 +265,13 @@ fn build_resource_arn(
                 .filter(|(k, _)| *k == key)
                 .map(|(_, v)| urlencoding::decode(v).unwrap_or_default().into_owned())
         })
+    };
+    // url_param hands back the ENGINE's own decode of the parsed body
+    // params (parse_query_protocol's decode_form_value: `+`→space,
+    // `%2B`→`+`) so the gate reads the same wire input it gates — the
+    // #518-review source-split lane.
+    let url_param = |key: &str| -> Option<String> {
+        params.get(key).and_then(|v| v.as_str()).map(String::from)
     };
     match service {
         "s3" => {
@@ -277,7 +290,7 @@ fn build_resource_arn(
             }
         }
         "sqs" => {
-            if let Some(queue_url) = query_val("QueueUrl") {
+            if let Some(queue_url) = url_param("QueueUrl").or_else(|| query_val("QueueUrl")) {
                 // mirror extract_queue_name_from_url (#517) LITERALLY — its
                 // scheme branch requires a non-empty last segment and falls
                 // through to the whole-string default otherwise. The ARNs
@@ -392,7 +405,14 @@ pub fn intercept(iam: &iam::DefaultIamHandler, ctx: &RequestContext<'_>) -> Opti
     };
 
     let action = build_action(ctx.service, operation);
-    let resource = build_resource_arn(ctx.service, ctx.region, ctx.account, ctx.path, ctx.query);
+    let resource = build_resource_arn(
+        ctx.service,
+        ctx.region,
+        ctx.account,
+        ctx.path,
+        ctx.query,
+        ctx.params,
+    );
 
     // No principal / no policy docs → implicit deny (python parity).
     let docs = iam
@@ -526,16 +546,25 @@ mod tests {
     #[test]
     fn resource_arn_shapes_match_the_python_middleware() {
         assert_eq!(
-            build_resource_arn("s3", "us-east-1", 123456789012, "/my-bucket/key.txt", ""),
+            build_resource_arn(
+                "s3",
+                "us-east-1",
+                123456789012,
+                "/my-bucket/key.txt",
+                "",
+                &HashMap::new()
+            ),
             "arn:aws:s3:::my-bucket/key.txt"
         );
+        // Query-string fallback (URL-query carriers): still live.
         assert_eq!(
             build_resource_arn(
                 "sqs",
                 "us-east-1",
                 123456789012,
                 "/",
-                "QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F123456789012%2Fmy-queue"
+                "QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F123456789012%2Fmy-queue",
+                &HashMap::new()
             ),
             "arn:aws:sqs:us-east-1:123456789012:my-queue"
         );
@@ -546,36 +575,57 @@ mod tests {
         // whole-string default — the engine's name there is the full url
         // (its moto empty-segment split happens in _get_queue_name, whose
         // outcome the engine mirrors through the missing-queue answer).
+        // The params legs read the ENGINE's decode_domain (parse_frag
+        // decode_form_value) — the #518-review source-split lane.
+        let mut params = HashMap::new();
+        params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("bare-name".to_string()),
+        );
+        let mut slash_params = HashMap::new();
+        slash_params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("AccountX/my-queue".to_string()),
+        );
+        let mut trailing_params = HashMap::new();
+        trailing_params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("http://localhost:4566/123456789012/my-queue/".to_string()),
+        );
+        let mut normal_params = HashMap::new();
+        normal_params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("http://localhost:4566/123456789012/my-queue".to_string()),
+        );
         assert_eq!(
-            build_resource_arn("sqs", "us-east-1", 123456789012, "/", "QueueUrl=bare-name"),
+            build_resource_arn("sqs", "us-east-1", 123456789012, "/", "", &params),
             "arn:aws:sqs:us-east-1:123456789012:bare-name"
         );
         assert_eq!(
-            build_resource_arn(
-                "sqs",
-                "us-east-1",
-                123456789012,
-                "/",
-                "QueueUrl=AccountX%2Fmy-queue"
-            ),
+            build_resource_arn("sqs", "us-east-1", 123456789012, "/", "", &slash_params),
             "arn:aws:sqs:us-east-1:123456789012:AccountX/my-queue"
         );
         assert_eq!(
-            build_resource_arn(
-                "sqs",
-                "us-east-1",
-                123456789012,
-                "/",
-                "QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F123456789012%2Fmy-queue%2F"
-            ),
+            build_resource_arn("sqs", "us-east-1", 123456789012, "/", "", &trailing_params),
             "arn:aws:sqs:us-east-1:123456789012:http://localhost:4566/123456789012/my-queue/"
         );
         assert_eq!(
-            build_resource_arn("dynamodb", "us-east-1", 123456789012, "/", ""),
+            build_resource_arn("sqs", "us-east-1", 123456789012, "/", "", &normal_params),
+            "arn:aws:sqs:us-east-1:123456789012:my-queue"
+        );
+        assert_eq!(
+            build_resource_arn(
+                "dynamodb",
+                "us-east-1",
+                123456789012,
+                "/",
+                "",
+                &HashMap::new()
+            ),
             "arn:aws:dynamodb:us-east-1:123456789012:table/*"
         );
         assert_eq!(
-            build_resource_arn("s3", "us-east-1", 123456789012, "/", ""),
+            build_resource_arn("s3", "us-east-1", 123456789012, "/", "", &HashMap::new()),
             "arn:aws:s3:::*"
         );
     }
