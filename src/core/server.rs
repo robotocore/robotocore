@@ -4012,9 +4012,16 @@ mod tests {
             mraw.contains("<Code>AWS.SimpleQueueService.NonExistentQueue</Code>"),
             "raw = {mraw}"
         );
-        // The XML declaration + pretty-printing are the recorded
-        // error-envelope byte deltas (audit: pre-existing, unchanged by
-        // this fix; moto's wire body has neither).
+        // Recorded error-envelope deltas for this wire (live oracle, full
+        // body): moto swaps the Message to the wsdl-version overlay text
+        // ("...does not exist for this wsdl version.", the moto-extras
+        // compatibility overlay), adds a separate lowercase <message>
+        // element, and renders its live 52-char id in <RequestId>
+        // mirrored from the x-amzn-requestid echo. The twin keeps the
+        // canonical message, no <message> duplicate, and the frozen
+        // zero-uuid id (the requestid-idiom audit row). The XML
+        // declaration + pretty-printing are additional pre-existing
+        // deltas — moto's wire body has neither.
     }
 
     /// The SDK JSON body stays amz-json bare on the same adapter: the
