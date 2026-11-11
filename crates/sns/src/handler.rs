@@ -40,6 +40,34 @@ fn pstr(req: &AwsRequest, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// python truthiness for a decoded JSON value: None / False / 0 / ""
+/// are falsy; non-empty strings, true, nonzero numbers are truthy
+/// (python's empty LIST and empty DICT are falsy as well).
+fn python_truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(map) => !map.is_empty(),
+    }
+}
+
+/// The body moto pushes for the chosen structured value: strings
+/// verbatim, numbers as their literal, python str() for the other
+/// scalars (True/False/None); containers go out as json (the deep-shape
+/// repr parity is unmeasured — pantless form noted on the port).
+fn value_delivery_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+        Value::Null => "None".to_string(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
 fn parse_entry_attrs(req: &AwsRequest) -> HashMap<String, String> {
     let mut out = HashMap::new();
     if let Some(obj) = req.params.as_object() {
@@ -368,27 +396,95 @@ impl SnsHandler {
     // ---------- publish / delivery ----------
 
     /// Read publish-style message attributes. Return map of name → {DataType, StringValue}.
-    fn parse_message_attributes(req: &AwsRequest) -> Map<String, Value> {
+    /// moto responses.py:84-110 attribute parsing with its two rejected
+    /// shapes (2026-11-11 census rows, SNS tranche): a DataType whose
+    /// prefix is not String/Binary/Number answers InvalidParameter with
+    /// the supported-set sentence, and a Number value that neither int
+    /// nor float parses answers the nested ParameterValueInvalid cast
+    /// text.
+    /// moto responses.py:72-128 with each arm in order — an EMPTY
+    /// DataType answers `must contain non-empty message attribute value.`
+    /// (:79-82), a prefix off the String/Binary/Number set answers the
+    /// supported-set sentence (:86-97), an EXPLICIT StringValue:""
+    /// answers `…type '{data_type[0]}'` — the first CHARACTER of the
+    /// declared type (:107-113) — while a MISSING StringValue key rides
+    /// transform None past the empty check (:100-115) and renders Value
+    /// null into the transformed map (:120-128).
+    fn parse_message_attributes(req: &AwsRequest) -> Result<Map<String, Value>, AwsResponse> {
         let mut out = Map::new();
         let mut i = 1;
         while let Some(name) = pstr(req, &format!("MessageAttributes.entry.{}.Name", i)) {
-            let data_type = pstr(
+            let raw_data_type = pstr(
                 req,
                 &format!("MessageAttributes.entry.{}.Value.DataType", i),
-            )
-            .unwrap_or_else(|| "String".into());
+            );
+            let Some(data_type) = raw_data_type.filter(|v| !v.is_empty()) else {
+                return Err(AwsResponse::error(
+                    400,
+                    "InvalidParameter",
+                    &format!(
+                        "The message attribute '{}' must contain non-empty message attribute value.",
+                        name
+                    ),
+                ));
+            };
             let string_value = pstr(
                 req,
                 &format!("MessageAttributes.entry.{}.Value.StringValue", i),
-            )
-            .unwrap_or_default();
+            );
+            let prefix_ok = ["String", "Binary", "Number"]
+                .iter()
+                .any(|prefix| data_type == *prefix || data_type.starts_with(&format!("{prefix}.")));
+            if !prefix_ok {
+                return Err(AwsResponse::error(
+                    400,
+                    "InvalidParameter",
+                    &format!(
+                        "The message attribute '{}' has an invalid message attribute type, \
+                         the set of supported type prefixes is Binary, Number, and String.",
+                        name
+                    ),
+                ));
+            }
+            if let Some(value) = &string_value {
+                if data_type == "Number"
+                    && value.parse::<i64>().is_err()
+                    && value.parse::<f64>().is_err()
+                {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameter",
+                        &format!(
+                            "An error occurred (ParameterValueInvalid) when calling the Publish \
+                             operation: Could not cast message attribute '{}' value to number.",
+                            name
+                        ),
+                    ));
+                }
+                if value.is_empty() {
+                    let first = data_type.chars().next().unwrap_or(' ');
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameter",
+                        &format!(
+                            "The message attribute '{}' must contain non-empty \
+                             message attribute value for message attribute type '{}'.",
+                            name, first
+                        ),
+                    ));
+                }
+            }
+            let value_field = match string_value {
+                Some(v) => json!(v),
+                None => Value::Null,
+            };
             out.insert(
                 name,
-                json!({"DataType": data_type, "StringValue": string_value}),
+                json!({"DataType": data_type, "StringValue": value_field}),
             );
             i += 1;
         }
-        out
+        Ok(out)
     }
 
     /// Pure JSON-publish entries as pre-parsed lists (not used by the query protocol,
@@ -406,6 +502,18 @@ impl SnsHandler {
         message_dedup_id: Option<String>,
     ) -> Result<String, AwsResponse> {
         let _ = message_dedup_id;
+        // moto rejects any non-json MessageStructure at entry
+        // (models.py:758-760): "MessageStructure must be 'json' if
+        // provided".
+        if let Some(structure) = message_structure {
+            if structure != "json" {
+                return Err(AwsResponse::error(
+                    400,
+                    "InvalidParameter",
+                    "MessageStructure must be 'json' if provided",
+                ));
+            }
+        }
         if topic.fifo && message_group_id.is_none() {
             return Err(AwsResponse::error(
                 400,
@@ -413,24 +521,6 @@ impl SnsHandler {
                 "The MessageGroupId parameter is required for FIFO topics.",
             ));
         }
-
-        // MessageStructure=json: select per-protocol message.
-        let per_protocol: Option<Map<String, Value>> = match message_structure {
-            Some("json") => {
-                let parsed: Option<Map<String, Value>> = serde_json::from_str::<Value>(message)
-                    .ok()
-                    .and_then(|v| v.as_object().cloned());
-                match parsed {
-                    Some(obj) => Some(obj),
-                    None => return Err(AwsResponse::error(
-                        400,
-                        "InvalidParameter",
-                        "Invalid parameter: Message Structure - JSON message body failed to parse",
-                    )),
-                }
-            }
-            _ => None,
-        };
 
         let message_id = uuid::Uuid::new_v4().to_string();
         for sub in state.list_subscriptions_by_topic(&topic.arn) {
@@ -440,14 +530,40 @@ impl SnsHandler {
             if !matches_filter(&sub, message_attributes, message) {
                 continue;
             }
-            let delivery_message = match &per_protocol {
-                Some(obj) => obj
+            // moto parses the MessageStructure INSIDE each subscription's
+            // delivery (models.py:259-260 → _parse_message_structure
+            // :419-434): a 0-subscription topic accepts any body (the
+            // measured zero-subs row), a parse failure answers
+            // "Message is not valid JSON." and a body without this
+            // sub-protocol's key nor "default" answers with the missing-
+            // keys text naming the PROTOCOL.
+            let delivery_message = if message_structure == Some("json") {
+                let parsed: Option<Value> = serde_json::from_str::<Value>(message).ok();
+                let Some(Value::Object(obj)) = parsed else {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameter",
+                        "Message is not valid JSON.",
+                    ));
+                };
+                // moto selects with python truthiness: `obj.get(protocol)
+                // or obj["default"]` (models.py:422-424) — an empty ""
+                // falls through to default, and a JSON number rides the
+                // SQS body as its literal (the review's S2 rows).
+                let chosen = obj
                     .get(&sub.protocol)
-                    .or_else(|| obj.get("default"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(message)
-                    .to_string(),
-                None => message.to_string(),
+                    .filter(|v| python_truthy(v))
+                    .or_else(|| obj.get("default").filter(|v| python_truthy(v)));
+                let Some(chosen) = chosen else {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameter",
+                        &format!("Message does not contain {} or default keys.", sub.protocol),
+                    ));
+                };
+                value_delivery_string(chosen)
+            } else {
+                message.to_string()
             };
             self.deliver(
                 &sub,
@@ -468,13 +584,20 @@ impl SnsHandler {
             .or_else(|| pstr(req, "TargetArn"))
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // moto validates MessageAttributes in the RESPONSE layer before
+        // any backend work (responses.py:236 → _transform_message_
+        // attributes :72-128) — a bad attribute beats the missing-topic
+        // 404 on the wire (the review's S3 row).
+        let attrs = match Self::parse_message_attributes(req) {
+            Ok(attrs) => attrs,
+            Err(resp) => return resp,
+        };
         let topic = match state.get_topic(&arn) {
             Some(t) => t,
             None => return Self::not_found(&arn),
         };
 
         let message = pstr(req, "Message").unwrap_or_default();
-        let attrs = Self::parse_message_attributes(req);
         let message_id = match self.publish_common(
             &state,
             &topic,
@@ -668,6 +791,35 @@ impl SnsHandler {
 
         let protocol = pstr(req, "Protocol").unwrap_or_else(|| "email".into());
         let endpoint = pstr(req, "Endpoint").unwrap_or_default();
+        // moto resolves application endpoints BEFORE creating the
+        // subscription (models.py:672-677); a ghost endpoint ARN answers
+        // the exact "arn{endpoint}" wording (no space — AWS's own slip
+        // preserved in the fork).
+        if protocol == "application" && !state.platform_endpoints.read().contains_key(&endpoint) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameter",
+                &format!(
+                    "Invalid parameter: Endpoint Reason: Endpoint does not exist for endpoint arn{endpoint}"
+                ),
+            );
+        }
+
+        // moto dedupes identical (topic, endpoint, protocol) subscriptions
+        // and returns the EXISTING arn (models.py:662-665 _find_
+        // subscription); the twin used to mint a fresh arn per call.
+        if let Some(existing) = state
+            .subscriptions
+            .read()
+            .iter()
+            .find(|s| s.topic_arn == arn && s.protocol == protocol && s.endpoint == endpoint)
+            .map(|s| s.subscription_arn.clone())
+        {
+            return AwsResponse::query_success(
+                "Subscribe",
+                format!("<SubscriptionArn>{}</SubscriptionArn>", esc(&existing)),
+            );
+        }
 
         let subscription_arn = format!("{}:{}", topic.arn, uuid::Uuid::new_v4());
         let confirmed = protocol != "http" && protocol != "https";
@@ -815,8 +967,38 @@ impl SnsHandler {
         let attr_name = pstr(req, "AttributeName").unwrap_or_default();
         let attr_value = pstr(req, "AttributeValue").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // moto checks the AttributeName whitelist BEFORE the subscription
+        // lookup (models.py:900-906): anything beyond the six answer
+        // InvalidParameter "AttributeName" (the measured single-word row).
+        if ![
+            "RawMessageDelivery",
+            "DeliveryPolicy",
+            "FilterPolicy",
+            "FilterPolicyScope",
+            "RedrivePolicy",
+            "SubscriptionRoleArn",
+        ]
+        .contains(&attr_name.as_str())
+        {
+            return AwsResponse::error(400, "InvalidParameter", "AttributeName");
+        }
         match state.get_subscription(&sub_arn) {
             Some(sub) => {
+                if attr_name == "FilterPolicy" && !attr_value.is_empty() {
+                    // moto compiles the policy at set-time with an
+                    // unguarded json.loads (the fork 500s on non-JSON —
+                    // unmeasured crash row): the twin rejects instead,
+                    // but skips the gate on an EMPTY value, which moto's
+                    // `if value:` truthiness clears as a no-op
+                    // (models.py:916-918; the review's B1 row).
+                    if serde_json::from_str::<Value>(&attr_value).is_err() {
+                        return AwsResponse::error(
+                            400,
+                            "InvalidParameter",
+                            "Filter policy is not valid JSON",
+                        );
+                    }
+                }
                 if !attr_name.is_empty() {
                     sub.set_attr(&attr_name, attr_value);
                 }
@@ -825,7 +1007,7 @@ impl SnsHandler {
             None => AwsResponse::error(
                 404,
                 "NotFound",
-                &format!("Subscription {} not found", sub_arn),
+                &format!("Subscription with arn {sub_arn} not found"),
             ),
         }
     }
@@ -1135,6 +1317,39 @@ impl SnsHandler {
         let token = pstr(req, "Token").unwrap_or_default();
         let custom_user_data = pstr(req, "CustomUserData").unwrap_or_default();
         let attrs = parse_entry_attrs(req);
+        // moto's token-dedupe (models.py:829-846): the walk covers every
+        // platform endpoint in the account's store, not just this app's —
+        // a carried token dedupes across applications. Same CustomUserData
+        // and Enabled answers the EXISTING arn; same token with different
+        // attributes answers the already-exists InvalidParameter.
+        // Measured 2026-11-11 (and confirmed multi-app 2026-11-12).
+        for existing in state.platform_endpoints.read().values() {
+            if existing.token != token {
+                continue;
+            }
+            let same_user_data = existing.custom_user_data == custom_user_data;
+            let enabled = existing
+                .attributes
+                .read()
+                .get("Enabled")
+                .map(|v| v != "false")
+                .unwrap_or(true);
+            let same_attrs = attrs.get("Enabled").map(|v| v != "false").unwrap_or(true) == enabled;
+            if same_user_data && same_attrs {
+                return AwsResponse::query_success(
+                    "CreatePlatformEndpoint",
+                    format!("<EndpointArn>{}</EndpointArn>", esc(&existing.arn)),
+                );
+            }
+            return AwsResponse::error(
+                400,
+                "InvalidParameter",
+                &format!(
+                    "Invalid parameter: Token Reason: Endpoint {} already exists with the same Token, but different attributes.",
+                    existing.arn
+                ),
+            );
+        }
         let endpoint_id = uuid::Uuid::new_v4();
         let arn = app_arn.replace(":app/", ":endpoint/") + &format!("/{}", endpoint_id);
         let mut attributes = attrs;
@@ -1604,6 +1819,495 @@ mod tests {
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("test-topic"));
+    }
+
+    /// Helper: the SubscriptionArn minted by Subscribe (first `<SubscriptionArn>…</…>`).
+    fn subscription_arn_of(resp: &AwsResponse) -> String {
+        resp.body
+            .split("<SubscriptionArn>")
+            .nth(1)
+            .and_then(|s| s.split("</SubscriptionArn>").next())
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// Helper: the EndpointArn minted by CreatePlatformEndpoint.
+    fn endpoint_arn_of(resp: &AwsResponse) -> String {
+        resp.body
+            .split("<EndpointArn>")
+            .nth(1)
+            .and_then(|s| s.split("</EndpointArn>").next())
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    // ==== SNS validation-table pins (2026-11-11 census, tranche-2; moto
+    // sns/models.py:259-260, 419-434, 672-677, 829-846, 900-906,
+    // responses.py:84-110) ====
+
+    /// A DataType outside the String/Binary/Number prefix set answers the
+    /// supported-set sentence (moto responses.py:88-97).
+    #[test]
+    fn publish_rejects_bad_attribute_type_prefix() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-t"})));
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-t",
+                "Message": "m",
+                "MessageAttributes.entry.1.Name": "a",
+                "MessageAttributes.entry.1.Value.DataType": "Sparkle",
+                "MessageAttributes.entry.1.Value.StringValue": "v",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("has an invalid message attribute type"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("Binary, Number, and String"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// A Number attribute whose value is neither int nor float answers
+    /// the nested ParameterValueInvalid cast text (moto responses.py
+    /// :100-110).
+    #[test]
+    fn publish_rejects_non_castable_number_attribute() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-n"})));
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-n",
+                "Message": "m",
+                "MessageAttributes.entry.1.Name": "n",
+                "MessageAttributes.entry.1.Value.DataType": "Number",
+                "MessageAttributes.entry.1.Value.StringValue": "0x10",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Could not cast message attribute"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// MessageStructure=json parses per subscription (moto models.py
+    /// :259-260, _parse_message_structure :419-434): a zero-subscription
+    /// topic accepts any body; the fork's not-JSON / missing-key wordings
+    /// fire once a subscription exists.
+    #[test]
+    fn publish_structure_parses_per_subscription() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-structure"})));
+        let zero = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-structure",
+                "Message": "plain-text-not-json",
+                "MessageStructure": "json",
+            }),
+        ));
+        assert_eq!(zero.status, 200, "body: {}", zero.body);
+
+        handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-structure",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:vt-queue",
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-structure",
+                "Message": "plain-text-not-json",
+                "MessageStructure": "json",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Message is not valid JSON."),
+            "body: {}",
+            resp.body
+        );
+
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-structure",
+                "Message": "{\"other\": \"no default or sqs key\"}",
+                "MessageStructure": "json",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("Message does not contain sqs or default keys."),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// Subscribe resolves application endpoints first (moto models.py
+    /// :672-677): a ghost endpoint answers the "arn{endpoint}" wording.
+    #[test]
+    fn subscribe_rejects_ghost_application_endpoint() {
+        let handler = SnsHandler::new();
+        let ghost = "arn:aws:sns:us-east-1:123456789012:endpoint/ADM/ghost/0001";
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-ghost"})));
+        let resp = handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-ghost",
+                "Protocol": "application",
+                "Endpoint": ghost,
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains(&format!("Endpoint does not exist for endpoint arn{ghost}")),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// SetSubscriptionAttributes: the name whitelist precedes the lookup
+    /// (moto models.py:900-906 — the single-word "AttributeName" row); a
+    /// missing subscription carries moto's "Subscription with arn …
+    /// not found"; a non-JSON FilterPolicy is rejected instead of the
+    /// fork's unguarded json.loads 500 (deliberate divergence recorded).
+    #[test]
+    fn set_subscription_attributes_gates() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-sa"})));
+        let sub_arn = subscription_arn_of(&handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-sa",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:sa-queue",
+            }),
+        )));
+        assert!(!sub_arn.is_empty());
+
+        let missing = "arn:aws:sns:us-east-1:123456789012:sns-vt-sa:MISSING";
+        let resp = handler.handle(make_req(
+            "SetSubscriptionAttributes",
+            json!({
+                "SubscriptionArn": missing,
+                "AttributeName": "NotOne",
+                "AttributeValue": "v",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(resp.body.contains("AttributeName"), "body: {}", resp.body);
+
+        let resp = handler.handle(make_req(
+            "SetSubscriptionAttributes",
+            json!({
+                "SubscriptionArn": missing,
+                "AttributeName": "RawMessageDelivery",
+                "AttributeValue": "true",
+            }),
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains(&format!("Subscription with arn {missing} not found")),
+            "body: {}",
+            resp.body
+        );
+
+        let resp = handler.handle(make_req(
+            "SetSubscriptionAttributes",
+            json!({
+                "SubscriptionArn": sub_arn,
+                "AttributeName": "FilterPolicy",
+                "AttributeValue": "{\"k\": [not-json]}",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Filter policy is not valid JSON"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// moto's `if value:` clears an EMPTY FilterPolicy as a no-op
+    /// (models.py:916-918) — the adversarial review's B1 row; rejecting
+    /// "" here was the PR's regression. A non-JSON non-empty value still
+    /// answers the deliberate 400.
+    #[test]
+    fn set_subscription_attributes_empty_filter_policy_is_a_noop() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-fp-empty"})));
+        let sub_arn = subscription_arn_of(&handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-fp-empty",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:fp-empty",
+            }),
+        )));
+        assert!(!sub_arn.is_empty());
+        let resp = handler.handle(make_req(
+            "SetSubscriptionAttributes",
+            json!({
+                "SubscriptionArn": sub_arn, "AttributeName": "FilterPolicy", "AttributeValue": "",
+            }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let resp = handler.handle(make_req(
+            "SetSubscriptionAttributes",
+            json!({
+                "SubscriptionArn": sub_arn, "AttributeName": "FilterPolicy",
+                "AttributeValue": "{\"k\": [not-json]}",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+    }
+
+    /// Any non-json MessageStructure is rejected at entry (moto models.py
+    /// :758-760, the review's S1 row).
+    #[test]
+    fn publish_rejects_non_json_message_structure() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-ms"})));
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-ms",
+                "Message": "m", "MessageStructure": "text",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("MessageStructure must be 'json' if provided"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// Explicit StringValue:"" answers the type-first-CHARACTER wording
+    /// (moto responses.py:107-113 — `data_type[0]` makes "String" render
+    /// as 'S'); a MISSING StringValue key rides transform None past the
+    /// empty check (:100-115 — Value null in the transformed map); an
+    /// empty DataType has its own arm (:79-82).
+    #[test]
+    fn publish_attribute_empty_arms() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-empty-a"})));
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-empty-a",
+                "Message": "m",
+                "MessageAttributes.entry.1.Name": "a",
+                "MessageAttributes.entry.1.Value.DataType": "String",
+                "MessageAttributes.entry.1.Value.StringValue": "",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body.contains(
+                "must contain non-empty message attribute value for message attribute type 'S'."
+            ),
+            "body: {}",
+            resp.body
+        );
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-empty-a",
+                "Message": "m",
+                "MessageAttributes.entry.1.Name": "a",
+                "MessageAttributes.entry.1.Value.StringValue": "v",
+            }),
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("must contain non-empty message attribute value."),
+            "body: {}",
+            resp.body
+        );
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-empty-a",
+                "Message": "m",
+                "MessageAttributes.entry.1.Name": "a",
+                "MessageAttributes.entry.1.Value.DataType": "String",
+                "MessageAttributes.entry.1.Value.BinaryValueMissing": "x",
+            }),
+        ));
+        // A missing StringValue key passes the attributes pipeline (moto
+        // transform None) — accepted at entry, with the SQS bridge
+        // answering the queue miss afterwards.
+        assert_ne!(resp.status, 400, "body: {}", resp.body);
+    }
+
+    /// The structured selector uses python truthiness (moto models.py
+    /// :422-424, the review's S2 rows): an empty "" falls through to
+    /// default; a JSON number rides as its literal. Driven through a
+    /// real SQS queue so the delivery lands.
+    #[test]
+    fn publish_structure_falsy_keys_fall_through() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-falsy"})));
+        let sub_arn = subscription_arn_of(&handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-falsy",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:falsy-q",
+            }),
+        )));
+        assert!(!sub_arn.is_empty());
+        // The delivery lands on a real SQS queue (moto raises the SQS
+        // NoSuchQueue error through Publish otherwise — the N5 row).
+        handler.sqs.handle(sqs::AwsRequest {
+            service: "sqs".into(),
+            operation: "CreateQueue".into(),
+            account: 123456789012,
+            region: "us-east-1".into(),
+            params: serde_json::json!({"QueueName": "falsy-q"}),
+            body: bytes::Bytes::new(),
+        });
+        let read = |queue: &str| {
+            handler.sqs.handle(sqs::AwsRequest {
+                service: "sqs".into(),
+                operation: "ReceiveMessage".into(),
+                account: 123456789012,
+                region: "us-east-1".into(),
+                params: serde_json::json!({
+                    "QueueUrl": format!("http://localhost:4566/123456789012/{queue}"),
+                }),
+                body: bytes::Bytes::new(),
+            })
+        };
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-falsy",
+                "Message": "{\"sqs\": \"\", \"default\": \"d\"}",
+                "MessageStructure": "json",
+            }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let first = read("falsy-q");
+        assert!(first.body.contains("d"), "body: {}", first.body);
+
+        let resp = handler.handle(make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-falsy",
+                "Message": "{\"sqs\": 123, \"default\": \"d\"}",
+                "MessageStructure": "json",
+            }),
+        ));
+        assert_eq!(resp.status, 200, "body: {}", resp.body);
+        let second = read("falsy-q");
+        assert!(second.body.contains("123"), "body: {}", second.body);
+    }
+
+    /// Subscribe dedupes an identical (topic, endpoint, protocol) call
+    /// and returns the EXISTING arn (moto models.py:662-665, the review's
+    /// N4 row).
+    #[test]
+    fn subscribe_dedupes_identical_subscription() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req("CreateTopic", json!({"Name": "sns-vt-dedupe"})));
+        let first = subscription_arn_of(&handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-dedupe",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:dupe-q",
+            }),
+        )));
+        let again = subscription_arn_of(&handler.handle(make_req(
+            "Subscribe",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:sns-vt-dedupe",
+                "Protocol": "sqs",
+                "Endpoint": "arn:aws:sqs:us-east-1:123456789012:dupe-q",
+            }),
+        )));
+        assert_eq!(
+            first, again,
+            "the identical subscribe answers the existing arn"
+        );
+    }
+
+    /// Platform-endpoint token dedupe (moto models.py:829-846): a same-
+    /// token + same-attributes create answers the EXISTING arn; the same
+    /// token with different CustomUserData answers the already-exists
+    /// InvalidParameter naming the endpoint.
+    #[test]
+    fn platform_endpoint_token_dedupe() {
+        let handler = SnsHandler::new();
+        handler.handle(make_req(
+            "CreatePlatformApplication",
+            json!({
+                "Name": "sns-vt-app",
+                "Platform": "ADM",
+                "Attributes": {"PlatformCredential": "c", "PlatformPrincipal": "p"},
+            }),
+        ));
+        let app = "arn:aws:sns:us-east-1:123456789012:app/ADM/sns-vt-app";
+        let first = handler.handle(make_req(
+            "CreatePlatformEndpoint",
+            json!({
+                "PlatformApplicationArn": app,
+                "Token": "tok-same",
+            }),
+        ));
+        assert_eq!(first.status, 200, "body: {}", first.body);
+        let arn_one = endpoint_arn_of(&first);
+        assert!(!arn_one.is_empty());
+
+        let again = handler.handle(make_req(
+            "CreatePlatformEndpoint",
+            json!({
+                "PlatformApplicationArn": app,
+                "Token": "tok-same",
+            }),
+        ));
+        assert_eq!(again.status, 200, "body: {}", again.body);
+        assert!(
+            again.body.contains(&arn_one),
+            "the carried token answers the existing arn: {}",
+            again.body
+        );
+
+        let diff = handler.handle(make_req(
+            "CreatePlatformEndpoint",
+            json!({
+                "PlatformApplicationArn": app,
+                "Token": "tok-same",
+                "CustomUserData": "different",
+            }),
+        ));
+        assert_eq!(diff.status, 400, "body: {}", diff.body);
+        assert!(
+            diff.body
+                .contains("already exists with the same Token, but different attributes."),
+            "body: {}",
+            diff.body
+        );
     }
 
     #[test]

@@ -1,10 +1,10 @@
 {
   "service": "sns",
-  "generated_at": "2026-11-08T22:36:39.935860+00:00",
+  "generated_at": "2026-11-11T23:32:43.730971+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/sns.rs": "absent",
     "rotocore/src/services/sns/": "absent",
-    "crates/sns/src/": "4f9a46e5c174bbc348209ed988dd79955120d62822454fc99eecc2d9134e0c8a"
+    "crates/sns/src/": "61cf1821f7d328c6189090650d55e56fd4839d5fb7d2cadb91de6dc333261e7f"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -153,7 +153,7 @@
     {
       "operation": "Publish",
       "status": "working",
-      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
+      "message": "implemented (InvalidParameter)"
     },
     {
       "operation": "PublishBatch",
@@ -188,7 +188,7 @@
     {
       "operation": "SetSubscriptionAttributes",
       "status": "working",
-      "message": "likely implemented (NotFound: Subscription arn:aws:sns:us-east-1:123456789012:thing/probe-)"
+      "message": "implemented (InvalidParameter)"
     },
     {
       "operation": "SetTopicAttributes",
