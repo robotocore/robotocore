@@ -750,9 +750,19 @@ impl KmsHandler {
     fn tag_resource(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // moto routes the KeyId through _validate_cmk_id (alias → its
+        // Invalid keyId 400; unknown → Key '<arn>' does not exist at 400
+        // — live-pinned): the key is tagged under its RESOLVED id so
+        // by-ARN callers see the tags via the raw id as moto does.
+        let resolved_key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        let resolved_id = resolved_key.key_id.clone();
         let tags = req.params.get("Tags").cloned().unwrap_or(Value::Null);
         let mut all_tags = state.tags.write();
-        let entry = all_tags.entry(key_id.clone()).or_default();
+        let entry = all_tags.entry(resolved_id).or_default();
         if let Some(arr) = tags.as_array() {
             for tag in arr {
                 let key = tag.get("TagKey").and_then(|v| v.as_str()).unwrap_or("");
@@ -776,8 +786,14 @@ impl KmsHandler {
             })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        let resolved_key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        let resolved_id = resolved_key.key_id.clone();
         let mut all_tags = state.tags.write();
-        if let Some(entry) = all_tags.get_mut(&key_id) {
+        if let Some(entry) = all_tags.get_mut(&resolved_id) {
             for key in &tag_keys {
                 entry.remove(key);
             }
@@ -788,7 +804,18 @@ impl KmsHandler {
     fn list_resource_tags(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let tags = state.tags.read().get(&key_id).cloned().unwrap_or_default();
+        let resolved_key =
+            match Self::resolve_key_ref(&state, req.region.as_str(), req.account, &key_id) {
+                Ok(k) => k,
+                Err(resp) => return resp,
+            };
+        let resolved_id = resolved_key.key_id.clone();
+        let tags = state
+            .tags
+            .read()
+            .get(&resolved_id)
+            .cloned()
+            .unwrap_or_default();
         let tags_list: Vec<Value> = tags
             .iter()
             .map(|(k, v)| json!({ "TagKey": k, "TagValue": v.as_str().unwrap_or("") }))
@@ -3503,5 +3530,85 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert!(resp.body.contains("['ECDSA_SHA_384']"), "{}", resp.body);
+    }
+
+    // -- moto-contract pins (#523 tag-op round) ------------------------------
+
+    // moto routes TagResource/UntagResource/ListResourceTags KeyIds through
+    // _validate_cmk_id: alias refs → Invalid keyId 400; unknown → Key '<arn>'
+    // does not exist 400; the key is tagged under the RESOLVED id, so tags
+    // set by ARN are visible by raw id (live-pinned on :4714).
+    #[test]
+    fn tag_ops_validate_and_resolve_like_moto() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req(
+            "CreateKey",
+            json!({"Description": "tagpins", "KeyUsage": "ENCRYPT_DECRYPT"}),
+        ));
+        let key_json: serde_json::Value = serde_json::from_str(&resp.body).unwrap_or_default();
+        let key_id = key_json["KeyMetadata"]["KeyId"]
+            .as_str()
+            .expect("KeyId")
+            .to_string();
+        let key_arn = key_json["KeyMetadata"]["Arn"]
+            .as_str()
+            .expect("Arn")
+            .to_string();
+
+        // alias → Invalid keyId on all three ops.
+        let resp = handler.handle(make_req(
+            "TagResource",
+            json!({"KeyId": "alias/tagpins", "Tags": [{"TagKey": "k", "TagValue": "v"}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("Invalid keyId"), "{}", resp.body);
+
+        let resp = handler.handle(make_req(
+            "UntagResource",
+            json!({"KeyId": "alias/tagpins", "TagKeys": ["k"]}),
+        ));
+        assert_eq!(resp.status, 400);
+
+        let resp = handler.handle(make_req(
+            "ListResourceTags",
+            json!({"KeyId": "alias/tagpins"}),
+        ));
+        assert_eq!(resp.status, 400);
+
+        // Tag by ARN: 200, and the tags are visible by raw id.
+        let resp = handler.handle(make_req(
+            "TagResource",
+            json!({"KeyId": key_arn, "Tags": [{"TagKey": "team", "TagValue": "census"}]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("ListResourceTags", json!({"KeyId": key_id})));
+        let tags = resp.body;
+        assert!(tags.contains("census"), "{}", tags);
+
+        // Tag by UNKNOWN uuid-shaped ref: Key '<display arn>' does not exist,
+        // 400, on all three ops.
+        let ghost = "12345678-1234-1234-1234-123456789012";
+        let ghost_arn = format!("arn:aws:kms:us-east-1:123456789012:key/{ghost}");
+        let resp = handler.handle(make_req(
+            "TagResource",
+            json!({"KeyId": ghost, "Tags": [{"TagKey": "k", "TagValue": "v"}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(
+            resp.body
+                .contains(&format!("Key '{ghost_arn}' does not exist")),
+            "{}",
+            resp.body
+        );
+
+        let resp = handler.handle(make_req(
+            "UntagResource",
+            json!({"KeyId": ghost, "TagKeys": ["k"]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("does not exist"));
+
+        let resp = handler.handle(make_req("ListResourceTags", json!({"KeyId": ghost})));
+        assert_eq!(resp.status, 400);
     }
 }
