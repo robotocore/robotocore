@@ -205,6 +205,44 @@ impl SqsServiceHandler {
     }
 }
 
+impl SqsServiceHandler {
+    /// moto's query wire answers payload-less success ops with the
+    /// op-shaped XML envelope and a text/xml content type (live pin:
+    /// `<SetQueueAttributesResponse xmlns=…><ResponseMetadata><RequestId>`
+    /// with a 52-char alnum id echoed in x-amzn-requestid — moto's
+    /// gen_amzn_requestid_long).
+    /// Error responses already render as XML envelopes on the form wire;
+    /// the pin covers SetQueueAttributes first (the wider success-op set
+    /// stays on the ledger runway).
+    fn renders_query_envelope(req: &ParsedRequest) -> bool {
+        let is_form = req
+            .headers
+            .get("content-type")
+            .is_some_and(|t| t.starts_with("application/x-www-form-urlencoded"));
+        is_form && req.operation == "SetQueueAttributes"
+    }
+
+    /// moto's gen_amzn_requestid_long: 52 chars over [A-Za-z0-9]
+    /// (utilities/aws_headers.py), seeded by uuid hex and mixed by a
+    /// RandomState jumble (_std hash is process-seeded).
+    fn moto_request_id() -> String {
+        const ALPHANUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        use std::hash::BuildHasher;
+        let state = std::collections::hash_map::RandomState::new();
+        let mut buffer = String::with_capacity(52);
+        while buffer.len() < 52 {
+            let word = state.hash_one(Uuid::new_v4());
+            for chunk in word.to_le_bytes() {
+                buffer.push(ALPHANUM[(chunk as usize) % ALPHANUM.len()] as char);
+                if buffer.len() == 52 {
+                    break;
+                }
+            }
+        }
+        buffer
+    }
+}
+
 impl ServiceHandler for SqsServiceHandler {
     fn handle_sync(
         &self,
@@ -215,7 +253,22 @@ impl ServiceHandler for SqsServiceHandler {
             Err(resp) => return Ok(Self::to_parsed_response(resp)),
         };
         let resp = self.inner.handle(sqs_req);
-        Ok(Self::to_parsed_response(resp))
+        let mut out = Self::to_parsed_response(resp);
+        if Self::renders_query_envelope(req) && out.status == StatusCode::OK {
+            let op_tag = format!("{}Response", req.operation);
+            let request_id = Self::moto_request_id();
+            out.headers = HashMap::new();
+            out.headers
+                .insert("Content-Type".to_string(), "text/xml".to_string());
+            out.headers
+                .insert("x-amzn-requestid".to_string(), request_id.clone());
+            out.body = serde_json::Value::Null;
+            out.raw = Some(format!(
+                r#"<{op_tag} xmlns="http://queue.amazonaws.com/doc/2012-11-05/"><ResponseMetadata><RequestId>{}</RequestId></ResponseMetadata></{op_tag}>"#,
+                request_id
+            ));
+        }
+        Ok(out)
     }
 }
 
@@ -3843,6 +3896,118 @@ mod tests {
         let missing = b"Action=SetQueueAttributes&Version=2012-11-05\
             &Attribute.1.Name=DelaySeconds";
         assert!(SqsServiceHandler::to_sqs_request(&wire(missing, true)).is_err());
+    }
+
+    /// moto's query wire answers SetQueueAttributes success with the
+    /// op-shaped XML envelope (text/xml); the twin previously answered
+    /// bare `{"}` with amz-json headers on the same legacy form wire —
+    /// verified live both engines before the wrap.
+    #[test]
+    fn test_sqs_legacy_form_set_queue_attributes_envelope() {
+        let handler = SqsServiceHandler {
+            inner: Arc::new(sqs::DefaultSqsHandler::new()),
+        };
+        let mut headers = HashMap::new();
+        headers.insert(
+            "content-type".to_string(),
+            "application/x-www-form-urlencoded".to_string(),
+        );
+
+        let create =
+            parse_query_protocol(b"Action=CreateQueue&Version=2012-11-05&QueueName=env-pin-q")
+                .unwrap_or_default();
+        let create_req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "CreateQueue".to_string(),
+            params: create,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: headers.clone(),
+        };
+        assert_eq!(handler.handle_sync(&create_req).unwrap().status, 200);
+
+        let set = parse_query_protocol(
+            b"Action=SetQueueAttributes&Version=2012-11-05\
+            &QueueUrl=http%3A%2F%2Flocalhost%3A4566%2F000000000000%2Fenv-pin-q\
+            &Attribute.1.Name=DelaySeconds&Attribute.1.Value=60",
+        )
+        .unwrap_or_default();
+        let set_req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "SetQueueAttributes".to_string(),
+            params: set,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: headers.clone(),
+        };
+        let out = handler.handle_sync(&set_req).unwrap();
+        assert_eq!(out.status, StatusCode::OK);
+        let raw = out.raw.as_deref().expect("envelope body must land in raw");
+        assert!(
+            raw.starts_with(
+                "<SetQueueAttributesResponse xmlns=\"http://queue.amazonaws.com/doc/2012-11-05/\">"
+            ),
+            "raw = {raw}"
+        );
+        assert!(raw.contains("<RequestId>"));
+        assert_eq!(
+            out.headers.get("Content-Type").map(|t| t.as_str()),
+            Some("text/xml")
+        );
+        let request_id = out
+            .headers
+            .get("x-amzn-requestid")
+            .expect("moto echoes the requestid header");
+        assert_eq!(request_id.len(), 52);
+        assert!(
+            request_id.bytes().all(|b| b.is_ascii_alphanumeric()),
+            "id must be [A-Za-z0-9], got {request_id}"
+        );
+        assert!(raw.contains(&format!("<RequestId>{request_id}")));
+
+        // The SDK JSON body stays amz-json bare on the same adapter: the
+        // JSON negative pin (the gate is form-content-type only).
+        let mut json_headers = HashMap::new();
+        json_headers.insert(
+            "content-type".to_string(),
+            "application/x-amz-json-1.0".to_string(),
+        );
+        let mut json_params = HashMap::new();
+        json_params.insert(
+            "QueueUrl".to_string(),
+            serde_json::Value::String("http://localhost:4566/000000000000/env-pin-q".to_string()),
+        );
+        json_params.insert(
+            "Attributes".to_string(),
+            serde_json::json!({"DelaySeconds": "45"}),
+        );
+        let json_req = ParsedRequest {
+            service: "sqs".to_string(),
+            operation: "SetQueueAttributes".to_string(),
+            params: json_params,
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: json_headers,
+        };
+        let jout = handler.handle_sync(&json_req).unwrap();
+        assert_eq!(jout.status, StatusCode::OK);
+        assert_eq!(jout.raw.as_deref(), Some("{}"));
+        assert_eq!(
+            jout.headers.get("Content-Type").map(|t| t.as_str()),
+            Some("application/x-amz-json-1.0")
+        );
     }
 
     #[test]
