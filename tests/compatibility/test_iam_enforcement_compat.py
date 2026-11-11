@@ -87,6 +87,17 @@ def _make_sqs_client(access_key_id: str, secret_access_key: str):
     )
 
 
+def _make_sns_client(access_key_id: str, secret_access_key: str):
+    """Create an SNS client with specific credentials."""
+    return boto3.client(
+        "sns",
+        endpoint_url=ENDPOINT_URL,
+        region_name="us-east-1",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+    )
+
+
 def _create_user_with_policy(iam, user_name: str, policy_document: dict) -> dict:
     """Create an IAM user with an inline policy, return access key info."""
     try:
@@ -514,6 +525,111 @@ class TestResourceSpecificPolicy:
                 admin_s3 = _make_s3_client("testing", "testing")
                 admin_s3.delete_bucket(Bucket=allowed_bucket)
                 admin_s3.delete_bucket(Bucket=denied_bucket)
+            except Exception:
+                pass  # best-effort cleanup
+            _cleanup_user(iam, user_name)
+
+    def test_topic_specific_policy(self, iam):
+        """Topic-scoped Allow: POST-body TopicArn gates (the #519-review
+        same-class instance — modern botocore sns is protocol-query with
+        TopicArn riding the FORM body; the gate read only uri.query())."""
+        user_name = f"topic-specific-{uuid.uuid4().hex[:8]}"
+        admin_sns = _make_sns_client("testing", "testing")
+        allowed = admin_sns.create_topic(Name=f"iam-allowed-{uuid.uuid4().hex[:8]}")["TopicArn"]
+        denied = admin_sns.create_topic(Name=f"iam-denied-{uuid.uuid4().hex[:8]}")["TopicArn"]
+        try:
+            key = _create_user_with_policy(
+                iam,
+                user_name,
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {"Effect": "Allow", "Action": "sns:*", "Resource": allowed},
+                    ],
+                },
+            )
+            _set_enforce_iam(True)
+
+            sns = _make_sns_client(key["AccessKeyId"], key["SecretAccessKey"])
+
+            # Allowed topic: publish succeeds (POST body TopicArn).
+            resp = sns.publish(TopicArn=allowed, Message="hi")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Denied topic: 403 in the service's JSON shape.
+            with pytest.raises(ClientError) as exc_info:
+                sns.publish(TopicArn=denied, Message="hi")
+            assert exc_info.value.response["Error"]["Code"] in (
+                "AccessDeniedException",
+                "AccessDenied",
+                "403",
+            )
+        finally:
+            _set_enforce_iam(False)
+            try:
+                admin_sns.delete_topic(TopicArn=allowed)
+                admin_sns.delete_topic(TopicArn=denied)
+            except Exception:
+                pass  # best-effort cleanup
+            _cleanup_user(iam, user_name)
+
+    def test_table_specific_policy(self, iam):
+        """Table-scoped Allow: JSON-body TableName gates (the same-class
+        instance — dynamodb ops carry TableName in the JSON body)."""
+        user_name = f"table-specific-{uuid.uuid4().hex[:8]}"
+        admin_ddb = _make_dynamodb_client("testing", "testing")
+        allowed = f"iam-allowed-{uuid.uuid4().hex[:8]}"
+        denied = f"iam-denied-{uuid.uuid4().hex[:8]}"
+        table_keys = {"k": {"S": "seed"}}
+        admin_ddb.create_table(
+            TableName=allowed,
+            KeySchema=[{"AttributeName": "k", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "k", "AttributeType": "S"}],
+            ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+        )
+        admin_ddb.create_table(
+            TableName=denied,
+            KeySchema=[{"AttributeName": "k", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "k", "AttributeType": "S"}],
+            ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+        )
+        admin_ddb.put_item(TableName=denied, Item=table_keys)
+        try:
+            key = _create_user_with_policy(
+                iam,
+                user_name,
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "dynamodb:*",
+                            "Resource": f"arn:aws:dynamodb:us-east-1:123456789012:table/{allowed}",
+                        },
+                    ],
+                },
+            )
+            _set_enforce_iam(True)
+
+            ddb = _make_dynamodb_client(key["AccessKeyId"], key["SecretAccessKey"])
+
+            # Allowed table: get_item succeeds (JSON body TableName).
+            resp = ddb.get_item(TableName=allowed, Key=table_keys)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Denied table: 403 in the service's JSON shape.
+            with pytest.raises(ClientError) as exc_info:
+                ddb.get_item(TableName=denied, Key=table_keys)
+            assert exc_info.value.response["Error"]["Code"] in (
+                "AccessDeniedException",
+                "AccessDenied",
+                "403",
+            )
+        finally:
+            _set_enforce_iam(False)
+            try:
+                admin_ddb.delete_table(TableName=allowed)
+                admin_ddb.delete_table(TableName=denied)
             except Exception:
                 pass  # best-effort cleanup
             _cleanup_user(iam, user_name)
