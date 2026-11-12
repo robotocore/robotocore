@@ -61,7 +61,18 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
-
+- **S3: the multipart-uploads render + the NoSuchUpload wording.**
+  list_multipart_uploads drops the NextKeyMarker/NextUploadIdMarker
+  pair it emitted on every shape — the fork's arm does not paginate
+  and renders only the empty KeyMarker/UploadIdMarker pair
+  (responses.py:728-735); the four NoSuchUpload raises that carried
+  the variant "The specified multipart upload does not exist (upload
+  might have been aborted or completed)" adopt the fork's single
+  constant "The specified upload does not exist. The upload ID may
+  be invalid, or the upload may have been aborted or completed."
+  (exceptions.py:350-356); the arm filters its in-flight rows by the
+  `prefix` param before the sort (responses.py:700-704) — the twin
+  answered unfiltered (round-1 review finding).
 
 - **Events: the same-name tag pick is deterministic.** moto's
   list_tags_for_resource scans the bus registries in creation order —
