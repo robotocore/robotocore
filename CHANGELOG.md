@@ -98,6 +98,7 @@ under *Changelog discipline*.
   delete_integration / delete_route_response on a missing id answer
   moto's silent empty 200 "{}" pops (models.py:1185-1187, 952-953,
   812-813, 497-498) instead of the twin's 404 family.
+
 - **SQS: the redrive move preserves the receive bookkeeping and the
   receive scan keeps delivering past it.** Two measured rows from the
   2026-11-11 census: (a) moto's DLQ move passes the message object to
