@@ -65,14 +65,20 @@ under *Changelog discipline*.
 
 
 
-- **Events: the ghost-bus gate + CreatedBy.** Every rule-scoped op
-  carrying a non-default EventBusName answers the fork's bus gate
-  BEFORE the rule resolution — "Event bus {bus} does not exist."
-  (events/models.py:1325 → _get_event_bus) on describe_rule /
-  put_targets / remove_targets; the twin carried its rule-miss wording
-  instead. describe_rule's render carries `CreatedBy` — the creating
-  account (moto rule fields, the 2026-11-11 census drift; the twin
-  omitted it).
+- **Events: the ghost-bus gate + the rule render fixes.** Every
+  rule-scoped op carrying a non-default EventBusName answers the
+  fork's bus gate BEFORE the rule resolution — "Event bus {bus} does
+  not exist." (events/models.py:1325 → _get_event_bus) — and every
+  bus comparison normalizes the ARN form first
+  (_normalize_event_bus_arn, models.py:1300-1303): filtering on the
+  raw ARN left list_rules empty for a real bus and leaked rules
+  across buses on list_rule_names_by_target. put_rule's arms run in
+  the fork's order (the schedule's supported-only check precedes the
+  regexes and the ghost-bus gate precedes the pattern arm,
+  models.py:1265-1292) on the normalized name; EventPattern with
+  ScheduleExpression together is accepted (the fork has no "both"
+  rejection, probed 200); the rule render carries `CreatedBy`,
+  `RoleArn` and an explicitly-empty description (models.py:359-375).
 
 - **Events: describe_rule's miss wording + the put_targets ARN shape
   gate.** describe_rule on a missing name answers "Rule {name} does
