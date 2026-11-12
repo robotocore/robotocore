@@ -1,10 +1,10 @@
 {
   "service": "kms",
-  "generated_at": "2026-11-11T10:54:35.182852+00:00",
+  "generated_at": "2026-11-12T20:52:27.904972+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/kms.rs": "absent",
     "rotocore/src/services/kms/": "absent",
-    "crates/kms/src/": "abf8246d43b2b66cbb5f5d31549c862b469bc14b02a1d024e22c1f8ae6376b6c"
+    "crates/kms/src/": "cd68b0b8b424fecaec971f22b401ea4ed3f93c566055c837540e6b86d8e35b7f"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
