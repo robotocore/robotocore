@@ -3224,14 +3224,26 @@ impl DynamoDbHandler {
                     // arms' ghost-table miss lands in the transaction's
                     // catch-all — the row carries type(e).__name__ +
                     // str(e) into TransactionCanceledException(errors)
-                    // — while the Put/Update arms' table check rides the
-                    // validation phase and raises directly (probed
-                    // T1-T5, 2026-11-12).
+                    // (models/__init__.py:708-710, the raise at
+                    // :712-716) — while the Put/Update arms' table
+                    // check rides the validation phase and raises
+                    // directly (probed T1-T5, 2026-11-12). str(e) of a
+                    // JsonRESTError is werkzeug's HTTPException string:
+                    // "400 Bad Request: <the JSON envelope the fork's
+                    // JsonRESTError.__init__ left in e.description>"
+                    // (moto/core/exceptions.py:50-51, 99-101) — the
+                    // plain-text form does not exist in the fork's row
+                    // render (round-1 review, wire-pinned twice).
                     if op_name == "Delete" || op_name == "ConditionCheck" {
                         failed = true;
                         cancellation.push(RowCancellation {
                             code: Some("ResourceNotFoundException".to_string()),
-                            message: Some("Requested resource not found".to_string()),
+                            message: Some(
+                                "400 Bad Request: {\"__type\": \"com.amazonaws.dynamodb.\
+                                 v20120810#ResourceNotFoundException\", \"message\": \"\
+                                 Requested resource not found\"}"
+                                    .to_string(),
+                            ),
                             item: None,
                         });
                         continue;
@@ -6596,7 +6608,7 @@ mod tests {
         assert_eq!(
             body["CancellationReasons"],
             json!([{"Code": "ResourceNotFoundException",
-                    "Message": "Requested resource not found"}])
+                    "Message": "400 Bad Request: {\"__type\": \"com.amazonaws.dynamodb.v20120810#ResourceNotFoundException\", \"message\": \"Requested resource not found\"}"}])
         );
         // A ConditionCheck on the ghost CANCELS the same way.
         let resp = handler.handle(make_req(
