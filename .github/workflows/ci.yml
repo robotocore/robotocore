@@ -188,8 +188,11 @@ jobs:
     # a CI lane — their suites ran only via `make rust-test` locally (w7
     # review: the wave-6 engine park test's "met in CI" was a local gate).
     # Same toolchain/cache setup as the twin action; debug tests only —
-    # release builds add minutes without signal.
-    runs-on: ubuntu-latest
+    # release builds add minutes without signal. ubuntu-latest migrated
+    # to Ubuntu 26 on 2026-10-19 (runner-images 14748); the workspace
+    # suites were built for the 24.04 set (docker-build carries the same
+    # pin).
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
