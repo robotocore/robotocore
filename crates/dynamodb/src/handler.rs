@@ -3996,9 +3996,16 @@ impl DynamoDbHandler {
                 }
             }
             match partiql_run(&state, statement, &parameters) {
-                // moto's success rows carry ONLY the TableName member —
-                // live-pinned on INSERT, UPDATE, DELETE and a SELECT with
-                // the pk pinned (no Items member, probed twice).
+                // moto's success rows ride the TableName member and add
+                // "Item": items[0] ON TOP whenever the statement returned
+                // rows (models/__init__.py:960-962 — the pk-pinned SELECT
+                // with a match answers both members; part rows and
+                // no-match SELECT legs ride TableName-only, the round-1
+                // review's wire pin).
+                Ok(Some(items)) if !items.is_empty() => responses.push(json!({
+                    "TableName": batch_table,
+                    "Item": items[0],
+                })),
                 Ok(_) => responses.push(json!({ "TableName": batch_table })),
                 // moto reports a failed statement on its own batch row instead
                 // of aborting the whole batch (dynamodb/models/__init__.py
@@ -7220,9 +7227,10 @@ mod tests {
         assert!(body["Responses"][1]["Error"]["Message"]
             .to_string()
             .contains("Item size has exceeded the maximum allowed size"));
-        // The successful statement's row carries the TableName member
-        // (moto's batch rows never carry Items — live-pinned).
+        // The successful statement's SELECT row rides TableName AND the
+        // matched Item on top (models/__init__.py:960-962).
         assert_eq!(body["Responses"][0]["TableName"], "pq");
+        assert_eq!(body["Responses"][0]["Item"]["v"]["S"], "small");
         // ... and the failed statement left nothing behind.
         let resp = handler.handle(make_req(
             "GetItem",
@@ -7644,10 +7652,12 @@ mod tests {
         ));
         assert_eq!(resp.status, 200);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        // moto's batch rows carry ONLY the TableName member on success
-        // (live-pinned: no Items member on SELECT/INSERT rows) — the
-        // parameterized UPDATE's write lands in the table itself.
+        // The part row rides TableName-only; the MATCHED SELECT row adds
+        // "Item": items[0] on top of TableName
+        // (models/__init__.py:960-962, round-1 wire pin).
+        assert_eq!(body["Responses"][0]["TableName"], json!("pb"));
         assert_eq!(body["Responses"][1]["TableName"], json!("pb"));
+        assert_eq!(body["Responses"][1]["Item"]["v"]["S"], json!("two"));
         // The parameterized UPDATE really wrote the row.
         let resp = handler.handle(make_req(
             "GetItem",
