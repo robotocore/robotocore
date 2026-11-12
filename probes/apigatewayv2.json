@@ -1,8 +1,8 @@
 {
   "service": "apigatewayv2",
-  "generated_at": "2026-11-12T02:21:57.862584+00:00",
+  "generated_at": "2026-11-12T02:56:22.584215+00:00",
   "impl_fingerprint": {
-    "rotocore/src/services/apigatewayv2.rs": "ad014ada4157b80cdd50cd47abe16e8268ec4dee7dbdb5d6a7a8d7903f902b9a",
+    "rotocore/src/services/apigatewayv2.rs": "335f34edbe91e73c85dee72f40e87bedc5af7519701ae16fcb36f99a6972dae7",
     "rotocore/src/services/apigatewayv2/": "absent",
     "crates/apigatewayv2/src/": "absent"
   },
@@ -183,7 +183,7 @@
     {
       "operation": "DeleteRouteResponse",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteRouteSettings",

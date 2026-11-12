@@ -41,6 +41,10 @@ fn created(status: u16, body: Value) -> Response {
     json_resp(status, body)
 }
 
+fn ok_empty_json() -> Response {
+    json_resp(200, json!({}))
+}
+
 fn no_content() -> Response {
     Response::new(204, "application/json", Vec::new())
 }
@@ -603,9 +607,9 @@ fn capitalized(key: &str) -> String {
 }
 
 fn delete_api(state: &mut State, api_id: &str) -> Response {
-    if let Err(resp) = require_api(state, api_id) {
-        return resp;
-    }
+    // moto delete_api (models.py:1185-1187): a silent pop — the api gate
+    // is Get/Update-only; the DELETE answers 200 {} for a missing id too
+    // (the response-wire review row).
     state.apis.remove(api_id);
     state.routes.remove(api_id);
     state.integrations.remove(api_id);
@@ -783,10 +787,10 @@ fn delete_route(state: &mut State, api_id: &str, route_id: &str) -> Response {
     if let Err(resp) = require_api(state, api_id) {
         return resp;
     }
-    match child_entry(&mut state.routes, api_id).remove(route_id) {
-        Some(_) => no_content(),
-        None => not_found(&format!("Invalid Route identifier specified {route_id}")),
-    }
+    // moto delete_route (models.py:952-953): a silent pop — the empty
+    // 200 "{}" delete response covers both missing and present ids.
+    child_entry(&mut state.routes, api_id).remove(route_id);
+    ok_empty_json()
 }
 
 // --- route responses -------------------------------------------------------
@@ -916,9 +920,10 @@ fn delete_route_response(
     route_id: &str,
     response_id: &str,
 ) -> Response {
-    if let Err(resp) = with_route_response(state, api_id, route_id, response_id, |_| {}) {
-        return resp;
-    }
+    // moto delete_route_response (models.py:497-498): a silent pop —
+    // with_route_response's misses must NOT 404 the delete (the fork
+    // answers the empty delete response for both a missing route and a
+    // missing response id).
     state
         .route_responses
         .entry(api_id.to_string())
@@ -926,7 +931,7 @@ fn delete_route_response(
         .entry(route_id.to_string())
         .or_default()
         .remove(response_id);
-    no_content()
+    ok_empty_json()
 }
 
 // --- integrations -----------------------------------------------------------
@@ -1052,12 +1057,10 @@ fn delete_integration(state: &mut State, api_id: &str, integration_id: &str) -> 
     if let Err(resp) = require_api(state, api_id) {
         return resp;
     }
-    match child_entry(&mut state.integrations, api_id).remove(integration_id) {
-        Some(_) => no_content(),
-        None => not_found(&format!(
-            "Invalid Integration identifier specified {integration_id}"
-        )),
-    }
+    // moto delete_integration (models.py:812-813): a silent pop —
+    // the empty 200 "{}" delete response covers a missing id too.
+    child_entry(&mut state.integrations, api_id).remove(integration_id);
+    ok_empty_json()
 }
 
 // --- integration responses --------------------------------------------------
