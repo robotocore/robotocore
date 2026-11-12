@@ -561,11 +561,10 @@ impl EventsHandler {
 
     fn remove_targets(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
-        let bus_state = self.get_state(req.account, &req.region);
-        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+        let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
             return resp;
         }
-        let state = bus_state;
         let ids: Vec<String> = req
             .params
             .get("Ids")
@@ -576,7 +575,6 @@ impl EventsHandler {
                     .collect()
             })
             .unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
         let Some(rule) = state.get_rule(&key.0, &key.1) else {
             return AwsResponse::error(
                 400,
@@ -595,11 +593,10 @@ impl EventsHandler {
 
     fn list_targets_by_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
-        let bus_state = self.get_state(req.account, &req.region);
-        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+        let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
             return resp;
         }
-        let state = bus_state;
         // moto `responses.list_targets_by_rule`: KeyError on a missing rule
         // renders as ResourceNotFoundException ("Rule <name> does not
         // exist.").
