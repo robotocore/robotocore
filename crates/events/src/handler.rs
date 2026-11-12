@@ -434,18 +434,17 @@ impl EventsHandler {
         // `re.match(r"arn:[\d\w:\-/]*", …)`): an invalid Arn answers
         // ValidationException "Parameter {arn} is not valid. Reason:
         // Provided Arn is not in correct format." ahead of the rule-miss
-        // ResourceNotFound. re.match anchors at the START — the `arn:`
-        // literal prefix is required; the rest pins digits, \w
-        // characters, and `:`-`-`-`/`.
+        // ResourceNotFound. The predicate mirrors the fork EXACTLY
+        // (the review's B-row): `re.match` anchors the `arn:` literal at
+        // the start and the `*` class NEVER needs to consume (an
+        // arbitrary tail beyond the class, unicode \w members, and an
+        // empty rest all match); an EMPTY Arn is a falsy jump out of
+        // `if invalid_arn:` — the validation only fires for a
+        // non-empty Arn that does not start with `arn:`.
         let invalid_arn = targets
             .iter()
             .map(|t| t.get("Arn").and_then(Value::as_str).unwrap_or_default())
-            .find(|arn| {
-                !arn.starts_with("arn:")
-                    || !arn[4..]
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || ":-/".contains(c))
-            });
+            .find(|arn| !arn.is_empty() && !arn.starts_with("arn:"));
         if let Some(bad) = invalid_arn {
             return AwsResponse::error(
                 400,
