@@ -65,6 +65,30 @@ under *Changelog discipline*.
 
 
 
+- **Events: the bus-CRUD wording + gate family.** create_event_bus
+  answers the duplicate (`ResourceAlreadyExistsException "Event bus
+  {name} already exists."`, models.py:1663-1666) before the no-slash
+  shape check (ValidationException "Event bus name must not contain
+  '/'.") and returns `EventBusArn` only; DeleteEventBus rejects
+  "default" with "Cannot delete event bus default." and deletes every
+  other name — ghost or ARN-shaped — silently (models.py:1705-1712);
+  describe_event_bus resolves the account:event-bus tail split and
+  answers "Event bus {tail} does not exist." (_get_event_bus,
+  models.py:1227-1237); put_events raises the WHOLE-REQUEST bus miss
+  (unquoted, no per-entry failure; entries before the offender were
+  already published, models.py:1498-1502); put_permission resolves
+  its bus before the parameter checks (models.py:1604-1611);
+  create_archive gates its source through _get_event_bus ahead of the
+  duplicate check (models.py:1739, duplicate wording keeps the
+  trailing period); list_tags_for_resource finds rule-tail names on
+  any bus and bus-name tails, and misses answer "Rule {name} does not
+  exist on EventBus default." (models.py:1714-1722).
+- **Events: the rule `EventPattern` render keeps explicitly-empty
+  values.** EventPattern="" is SDK-reachable (no min on the trait)
+  and EventPattern.load stores the raw string verbatim
+  (models.py:1129-1136 dump, probed 200 with a schedule) — the twin
+  dropped the key.
+
 - **Events: the ghost-bus gate + the rule render fixes.** Every
   rule-scoped op carrying a non-default EventBusName answers the
   fork's bus gate BEFORE the rule resolution — "Event bus {bus} does
