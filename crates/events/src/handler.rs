@@ -349,10 +349,11 @@ impl EventsHandler {
         let state = self.get_state(req.account, &req.region);
         match state.get_rule(&key.0, &key.1) {
             Some(rule) => AwsResponse::json(200, rule.to_value()),
+            // moto events/models.py:1328 — "Rule {name} does not exist."
             None => AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
-                &format!("Rule not found: {}", key.1),
+                &format!("Rule {} does not exist.", key.1),
             ),
         }
     }
@@ -428,6 +429,33 @@ impl EventsHandler {
             .cloned()
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // moto validates every target ARN shape BEFORE the rule lookup
+        // (models.py:1399-1411 — the "super simple ARN check",
+        // `re.match(r"arn:[\d\w:\-/]*", …)`): an invalid Arn answers
+        // ValidationException "Parameter {arn} is not valid. Reason:
+        // Provided Arn is not in correct format." ahead of the rule-miss
+        // ResourceNotFound. re.match anchors at the START — the `arn:`
+        // literal prefix is required; the rest pins digits, \w
+        // characters, and `:`-`-`-`/`.
+        let invalid_arn = targets
+            .iter()
+            .map(|t| t.get("Arn").and_then(Value::as_str).unwrap_or_default())
+            .find(|arn| {
+                !arn.starts_with("arn:")
+                    || !arn[4..]
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || ":-/".contains(c))
+            });
+        if let Some(bad) = invalid_arn {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "Parameter {} is not valid. Reason: Provided Arn is not in correct format.",
+                    bad
+                ),
+            );
+        }
         // moto `EventsBackend.put_targets` raises for a missing rule; the
         // twin used to report all-green failed-entry totals for one.
         let Some(rule) = state.get_rule(&key.0, &key.1) else {

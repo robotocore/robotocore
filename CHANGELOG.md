@@ -65,7 +65,19 @@ under *Changelog discipline*.
 
 
 
-- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
+- **Events: describe_rule's miss wording + the put_targets ARN shape
+  gate.** describe_rule on a missing name answers "Rule {name} does
+  not exist." (events/models.py:1328) instead of the twin's "Rule not
+  found: <name>"; put_targets validates every target ARN with the
+  "super simple ARN check"` re.match(r"arn:[\d\w:\-/]*")` BEFORE the
+  rule resolution (models.py:1399-1411) — an off-shape Arn answers
+  ValidationException "Parameter {arn} is not valid. Reason: Provided
+  Arn is not in correct format." ahead of the rule-miss row (the
+  re.match start anchor requires the `arn:` literal prefix — "arn:"
+  alone packs zero rest and passes). Wire-verified 2026-11-12: both
+  rows byte-equal at both engines across the 4-shape matrix.
+
+- **SQS: the redrive move preserves The
   2026-11-11 census's apigwv2 rows land: a missing API answers
   "Invalid API identifier specified <apiId>" (the wire's Integration
   and Route questions run through the api gate first, models.py
