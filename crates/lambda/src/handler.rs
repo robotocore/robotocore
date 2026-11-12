@@ -1283,29 +1283,30 @@ impl LambdaHandler {
         let version = req
             .param_str("FunctionVersion")
             .unwrap_or_else(|| "$LATEST".to_string());
-        let func = match resolve_fn(state, req, &name) {
+        // moto resolves name+qualifier in ONE split call
+        // (put_alias → get_function_by_name_or_arn_with_qualifier,
+        // models.py:1574 → 1724-1738): the unknown-function arn carries
+        // the ":<version>" suffix ("…:function:<fn>:1" /
+        // "…:<fn>:$LATEST" — the adversarial review's B-row, previously
+        // the twin answered the bare-name arn), and a resolved function
+        // with an unknown version keeps the split path's 404.
+        let func = match resolve_fn(state, req, &format!("{name}:{version}")) {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        // moto validates the target version before storing (put_alias
-        // resolves get_function_by_name_or_arn_with_qualifier → Unknown
-        // FunctionException "Function not found: ...").
-        if version != "$LATEST" && resolve_fn(state, req, &format!("{name}:{version}")).is_err() {
-            let fn_arn = format!(
-                "arn:aws:lambda:{}:{}:function:{}:{}",
-                req.region, req.account, name, version
-            );
-            return AwsResponse::error(
-                404,
-                "ResourceNotFoundException",
-                &format!("Function not found: {fn_arn}"),
-            );
-        }
         if state.resolve_alias(&name, &alias_name).is_some() {
+            // moto ConflictException "Alias already exists: arn:…:
+            // function:<fn>:<alias>" (models.py:1578-1580,
+            // exceptions.py:46-50); the twin carried its own
+            // ResourceConflictException wording — the review's row 4.
+            let alias_arn = format!(
+                "arn:aws:lambda:{}:{}:function:{}:{}",
+                req.region, req.account, name, alias_name
+            );
             return AwsResponse::error(
                 409,
-                "ResourceConflictException",
-                &format!("Alias already exists: {alias_name}"),
+                "ConflictException",
+                &format!("Alias already exists: {alias_arn}"),
             );
         }
         let now = iso_now();
@@ -1325,20 +1326,39 @@ impl LambdaHandler {
         AwsResponse::json(201, Self::alias_dict(&alias))
     }
 
+    /// moto's alias-miss recipe (models.py:1554-1565, exceptions.py
+    /// UnknownAliasException): the FUNCTION resolves first (a missing
+    /// function carries the Function-not-found arn wording, no version
+    /// suffix), then the alias miss is "Cannot find alias arn: <the full
+    /// alias arn>" — the measured rows 2026-11-12; the twin's earlier
+    /// local wordings rode the name alone.
+    fn unknown_alias_arn(region: &str, account: u64, name: &str, alias_name: &str) -> String {
+        format!("arn:aws:lambda:{region}:{account}:function:{name}:{alias_name}")
+    }
+
     fn get_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let (name, alias_name) = req.path_fn_alias();
+        if state.get_function(&LambdaState::norm_name(&name)).is_none() {
+            return function_not_found(&name, &req.region, req.account);
+        }
         match state.resolve_alias(&name, &alias_name) {
             Some(a) => AwsResponse::json(200, Self::alias_dict(&a)),
             None => AwsResponse::error(
                 404,
                 "ResourceNotFoundException",
-                &format!("Alias not found: {alias_name}"),
+                &format!(
+                    "Cannot find alias arn: {}",
+                    Self::unknown_alias_arn(&req.region, req.account, &name, &alias_name)
+                ),
             ),
         }
     }
 
     fn update_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let (name, alias_name) = req.path_fn_alias();
+        if state.get_function(&LambdaState::norm_name(&name)).is_none() {
+            return function_not_found(&name, &req.region, req.account);
+        }
         match state.resolve_alias(&name, &alias_name) {
             Some(a) => {
                 if let Some(v) = req.param_str("FunctionVersion") {
@@ -1370,19 +1390,21 @@ impl LambdaHandler {
             None => AwsResponse::error(
                 404,
                 "ResourceNotFoundException",
-                &format!("Alias not found: {alias_name}"),
+                &format!(
+                    "Cannot find alias arn: {}",
+                    Self::unknown_alias_arn(&req.region, req.account, &name, &alias_name)
+                ),
             ),
         }
     }
 
     fn delete_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let (name, alias_name) = req.path_fn_alias();
-        if state.resolve_alias(&name, &alias_name).is_none() {
-            return AwsResponse::error(
-                404,
-                "ResourceNotFoundException",
-                &format!("Alias not found: {alias_name}"),
-            );
+        // moto's delete_alias resolves the function first then pops the
+        // alias with `pop(name, None)` — a missing alias is a SILENT
+        // no-op (models.py:1554-1557; the measured 2026-11-12 row).
+        if state.get_function(&LambdaState::norm_name(&name)).is_none() {
+            return function_not_found(&name, &req.region, req.account);
         }
         state
             .aliases
@@ -2530,11 +2552,11 @@ impl LambdaHandler {
         };
         match found {
             Some(v) => AwsResponse::json(200, Self::layer_version_dict(&v)),
-            None => AwsResponse::error(
-                404,
-                "ResourceNotFoundException",
-                &format!("Layer version {layer_name}:{version} not found"),
-            ),
+            // moto's UnknownLayerException constant (models.py:1881,
+            // 1901-1907): the missing layer AND the wrong version answer
+            // the same fixed wording (measured 2026-11-12 — the twin
+            // carried structural messages).
+            None => AwsResponse::error(404, "ResourceNotFoundException", "Cannot find layer"),
         }
     }
 
@@ -2555,11 +2577,9 @@ impl LambdaHandler {
         let version = req.path_layer_version().unwrap_or_default();
         let mut layers = state.layers.write();
         let Some(layer) = layers.get_mut(&layer_name) else {
-            return AwsResponse::error(
-                404,
-                "ResourceNotFoundException",
-                &format!("Layer {layer_name} not found"),
-            );
+            // moto _find_layer_by_name_or_arn (models.py:1879-1884): the
+            // missing layer rides the UnknownLayerException constant.
+            return AwsResponse::error(404, "ResourceNotFoundException", "Cannot find layer");
         };
         layer.versions.retain(|v| i64::from(v.version) != version);
         AwsResponse::empty(204)
@@ -3885,6 +3905,123 @@ mod tests {
                 .contains("\"__type\":\"ResourceConflictException\""),
             "body: {}",
             second.body
+        );
+    }
+
+    // ==== alias + layer miss-wording pins (2026-11-12 differential; moto
+    // models.py:1554-1565, 1879-1907 + exceptions.py UnknownAlias/UnknownLayer) ====
+
+    fn create_fn_for(handler: &LambdaHandler, name: &str, account: u64) {
+        let arn = mint_role(account, name);
+        let resp = handler.handle(make_req_acct(
+            account,
+            "POST",
+            json!({"FunctionName": name, "Runtime": "python3.12", "Role": arn, "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+    }
+
+    /// get_alias resolves the FUNCTION first (moto _get_function_aliases)
+    /// — a missing function carries the Function-not-found arn wording,
+    /// not an alias-flavored one; then the miss is moto's constant
+    /// "Cannot find alias arn: <full alias arn>".
+    #[test]
+    fn get_alias_follows_the_function_then_moto_wording() {
+        let handler = LambdaHandler::new();
+        let acct = 778200000101u64;
+        let resp = handler.handle(make_req_acct(
+            acct,
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/missing-fn/aliases/a1",
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains(
+                "Function not found: arn:aws:lambda:us-east-1:778200000101:function:missing-fn",
+            ),
+            "body: {}",
+            resp.body
+        );
+
+        create_fn_for(&handler, "alias-fn-ok", acct);
+        let resp = handler.handle(make_req_acct(
+            acct,
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/alias-fn-ok/aliases/absent",
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Cannot find alias arn: arn:aws:lambda:us-east-1:778200000101:function:alias-fn-ok:absent"),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// moto delete_alias pops with `pop(name, None)` — a missing alias is
+    /// a silent no-op (the twin used to 404).
+    #[test]
+    fn delete_alias_missing_alias_is_a_silent_noop() {
+        let handler = LambdaHandler::new();
+        let acct = 778200000102u64;
+        create_fn_for(&handler, "dak-fn", acct);
+        let resp = handler.handle(make_req_acct(
+            acct,
+            "DELETE",
+            json!({}),
+            "/2015-03-31/functions/dak-fn/aliases/absent",
+        ));
+        assert_eq!(resp.status, 204, "body: {}", resp.body);
+    }
+
+    /// update_alias resolves the function first (the measured row).
+    #[test]
+    fn update_alias_missing_fn_is_function_not_found() {
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "PUT",
+            json!({"FunctionVersion": "1"}),
+            "/2015-03-31/functions/dalk-missing/aliases/a1",
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains(
+                "Function not found: arn:aws:lambda:us-east-1:123456789012:function:dalk-missing"
+            ),
+            "body: {}",
+            resp.body
+        );
+    }
+
+    /// The layer-miss family answers moto's UnknownLayerException
+    /// constant "Cannot find layer" (models.py:1879-1907), replacing the
+    /// twin's structural messages.
+    #[test]
+    fn layer_misses_carry_the_unknown_layer_constant() {
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "GET",
+            json!({}),
+            "/2018-10-31/layers/no-such-layer/versions/1",
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Cannot find layer"),
+            "body: {}",
+            resp.body
+        );
+        let resp = handler.handle(make_req(
+            "DELETE",
+            json!({}),
+            "/2018-10-31/layers/no-such-layer/versions/1",
+        ));
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Cannot find layer"),
+            "body: {}",
+            resp.body
         );
     }
 

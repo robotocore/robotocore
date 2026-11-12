@@ -990,6 +990,98 @@ def corpus_iam_sts(engine):
     return out
 
 
+@corpus("lambda_alias_layers")
+def corpus_lambda_alias_layers(engine):
+    """Lambda alias/layer miss wordings the 2026-11-12 census pinned
+    (crates/lambda pins; moto models.py:1554-1565, 1879-1907): alias ops
+    resolve the FUNCTION first (unknown = Function-not-found arn
+    wording); a missing alias answers UnknownAliasException "Cannot find
+    alias arn: <full alias arn>"; delete_alias misses pop silently; the
+    layer-miss family answers UnknownLayerException's constant "Cannot
+    find layer"."""
+    out = []
+    iam = engine.client("iam")
+    lam = engine.client("lambda")
+    fn = engine.res_name("diff-alias-fn")
+    arn = iam.create_role(
+        RoleName=engine.res_name("diff-alias-role"),
+        AssumeRolePolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        ),
+    )["Role"]["Arn"]
+    lam.create_function(
+        FunctionName=fn,
+        Runtime="python3.12",
+        Role=arn,
+        Handler="index.handler",
+        Code={"ZipFile": lambda_zip_bytes()},
+    )
+    missing = engine.res_name("diff-alias-missing")
+    out += [
+        ("get_alias_missing_fn", err_wrap(lambda: lam.get_alias(FunctionName=missing, Name="a1"))),
+        (
+            "delete_alias_missing_fn",
+            err_wrap(lambda: lam.delete_alias(FunctionName=missing, Name="a1")),
+        ),
+        (
+            "get_alias_missing_alias",
+            err_wrap(lambda: lam.get_alias(FunctionName=fn, Name="absent")),
+        ),
+        (
+            "delete_alias_missing_alias",
+            err_wrap(lambda: lam.delete_alias(FunctionName=fn, Name="absent")),
+        ),
+        (
+            "update_alias_missing_fn",
+            err_wrap(
+                lambda: lam.update_alias(FunctionName=missing, Name="a1", FunctionVersion="1")
+            ),
+        ),
+        (
+            "create_alias_missing_fn_v1",
+            err_wrap(
+                lambda: lam.create_alias(FunctionName=missing, Name="a1", FunctionVersion="1")
+            ),
+        ),
+        (
+            "create_alias_missing_fn_latest",
+            err_wrap(
+                lambda: lam.create_alias(FunctionName=missing, Name="a2", FunctionVersion="$LATEST")
+            ),
+        ),
+        (
+            "get_layer_version_miss",
+            err_wrap(
+                lambda: lam.get_layer_version(
+                    LayerName=engine.res_name("diff-layer-miss"), VersionNumber=1
+                )
+            ),
+        ),
+        (
+            "delete_layer_version_miss",
+            err_wrap(
+                lambda: lam.delete_layer_version(
+                    LayerName=engine.res_name("diff-layer-miss"), VersionNumber=1
+                )
+            ),
+        ),
+        (
+            "list_layer_versions_miss",
+            err_wrap(lambda: lam.list_layer_versions(LayerName=engine.res_name("diff-layer-miss"))),
+        ),
+    ]
+    return out
+
+
 @corpus("sqs_redrive")
 def corpus_sqs_redrive(engine):
     """SQS redrive semantics the 2026-11-11 blitz measured (the 2026-11-12
