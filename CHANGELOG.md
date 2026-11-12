@@ -93,8 +93,12 @@ under *Changelog discipline*.
   carried lowercase on every row (the 2026-11-11 envelope row, raw
   SigV4-replay verified 2026-11-12: ValidationError / required-type /
   ParameterNotFound / ParameterAlreadyExists all byte-equal at both
-  engines). `error()` now routes by a MODELED_CODES set. Two wording
-  rows from the same census: an EMPTY Type rides moto's falsy
+  engines). `error()` now routes by a MODELED_CODES set —
+  ParameterVersionLabelLimitExceeded joined after the adversarial
+  review measured its BOTH-member envelope (an 11-label
+  LabelParameterVersion drive; the review added a both-members
+  invariant pin for modeled rows). Two wording rows from the same
+  census: an EMPTY Type rides moto's falsy
   required-miss arm — "A parameter type is required when you create a
   parameter." (models.py:2250-2256's `if not parameter_type` precedes
   the enum check) — instead of the enum error the twin emitted
