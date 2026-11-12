@@ -3939,15 +3939,67 @@ impl DynamoDbHandler {
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
-            match partiql_run(&state, statement, &parameters) {
-                Ok(Some(items)) => {
-                    let mut obj = Map::new();
-                    if let Some(first) = items.into_iter().next() {
-                        obj.insert("Item".to_string(), first);
-                    }
-                    responses.push(Value::Object(obj));
+            // moto batch_execute_statement (models/__init__.py:927-946)
+            // validates every statement BEFORE execution and answers the
+            // misses as batch rows with the fork's literal Codes — never
+            // the wire-namespace envelopes: the ghost-table row carries
+            // Code "ResourceNotFound" / "Requested resource not found"
+            // and a SELECT that does not pin every key attribute in the
+            // WHERE carries Code "ValidationError" plus the row's
+            // "TableName" member. Live-pinned twice (2026-11-12); the
+            // twin previously rode its own error envelopes on these rows.
+            let substituted = substitute_params(statement, &parameters);
+            let head = substituted
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_uppercase();
+            let batch_table = table_name_of(&substituted, &head);
+            if ["SELECT", "INSERT", "UPDATE", "DELETE"].contains(&head.as_str())
+                && !batch_table.is_empty()
+            {
+                if state.get_table(&batch_table).is_none() {
+                    responses.push(json!({
+                        "Error": {"Code": "ResourceNotFound",
+                                  "Message": "Requested resource not found"}
+                    }));
+                    continue;
                 }
-                Ok(None) => responses.push(json!({})),
+                if head == "SELECT" {
+                    // The fork requires every table key attribute to appear
+                    // in the WHERE's filter names
+                    // (models/__init__.py:942-946).
+                    let table = state.get_table(&batch_table).unwrap();
+                    let where_pos = find_keyword_ci(&substituted, "WHERE");
+                    let conds = where_pos
+                        .and_then(|pos| {
+                            let w = &substituted[pos + "WHERE".len()..];
+                            parse_where(w.trim(), &parameters)
+                        })
+                        .unwrap_or_default();
+                    let filter_names: std::collections::HashSet<&str> =
+                        conds.iter().map(|c| c.attr[0].as_str()).collect();
+                    let missing = table
+                        .key_schema
+                        .iter()
+                        .map(|k| k.attribute_name.as_str())
+                        .find(|k| !filter_names.contains(k));
+                    if let Some(_missing) = missing {
+                        responses.push(json!({
+                            "Error": {"Code": "ValidationError",
+                                      "Message": "Select statements within BatchExecuteStatement \
+                                                  must specify the primary key in the where clause."},
+                            "TableName": batch_table,
+                        }));
+                        continue;
+                    }
+                }
+            }
+            match partiql_run(&state, statement, &parameters) {
+                // moto's success rows carry ONLY the TableName member —
+                // live-pinned on INSERT, UPDATE, DELETE and a SELECT with
+                // the pk pinned (no Items member, probed twice).
+                Ok(_) => responses.push(json!({ "TableName": batch_table })),
                 // moto reports a failed statement on its own batch row instead
                 // of aborting the whole batch (dynamodb/models/__init__.py
                 // batch_execute_statement: responses[idx] = {"Error": ...}).
@@ -7168,8 +7220,9 @@ mod tests {
         assert!(body["Responses"][1]["Error"]["Message"]
             .to_string()
             .contains("Item size has exceeded the maximum allowed size"));
-        // The successful statement still returned its item...
-        assert_eq!(body["Responses"][0]["Item"]["v"]["S"], "small");
+        // The successful statement's row carries the TableName member
+        // (moto's batch rows never carry Items — live-pinned).
+        assert_eq!(body["Responses"][0]["TableName"], "pq");
         // ... and the failed statement left nothing behind.
         let resp = handler.handle(make_req(
             "GetItem",
@@ -7591,7 +7644,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 200);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["Responses"][1]["Item"]["v"]["S"], json!("two"));
+        // moto's batch rows carry ONLY the TableName member on success
+        // (live-pinned: no Items member on SELECT/INSERT rows) — the
+        // parameterized UPDATE's write lands in the table itself.
+        assert_eq!(body["Responses"][1]["TableName"], json!("pb"));
         // The parameterized UPDATE really wrote the row.
         let resp = handler.handle(make_req(
             "GetItem",
