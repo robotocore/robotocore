@@ -176,12 +176,7 @@ impl EventsHandler {
         if name.is_empty() {
             return AwsResponse::error(400, "ValidationException", "Name is required");
         }
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
-            "default".to_string()
-        } else {
-            bus
-        };
+        let bus = Self::normalize_bus(req);
         let state = self.get_state(req.account, &req.region);
 
         let arn = if bus == "default" {
@@ -195,7 +190,14 @@ impl EventsHandler {
                 req.region, req.account, bus, name
             )
         };
-        let description = Self::param_str(req, &["Description"]);
+        // moto strips only an ABSENT description (models.py:370-375):
+        // Description="" is SDK-reachable (RuleDescription carries no
+        // min) and stays on every rule render.
+        let description: Option<String> = req
+            .params
+            .get("Description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let event_pattern = Self::param_str(req, &["EventPattern"]);
         let schedule_expression = req
             .params
@@ -211,42 +213,45 @@ impl EventsHandler {
                 "Parameter(s) EventPattern or ScheduleExpression must be specified.",
             );
         }
-        if !event_pattern.is_empty() && schedule_expression.is_some() {
-            // era `_put_rule`: both together are rejected.
-            return AwsResponse::error(
-                400,
-                "ValidationException",
-                "Specifying both EventPattern and ScheduleExpression is not allowed.",
-            );
-        }
         if let Some(schedule) = schedule_expression.as_deref() {
-            // moto's put_rule arms in live order (models.py:1265-1275):
-            // scheduled rules ARE default-bus only — anything else (incl.
-            // a GHOST bus name, the bus-existence check at :1277 runs
-            // after) raises "ScheduleExpression is supported only on the
-            // default event bus." BEFORE the regex pair even runs (the
-            // regexes are prefix-shape checks: 'cron(0 0 0 * * *)' passes
-            // with its structural nonsense; 'every day' 400s).
-            let bus_name = req
-                .params
-                .get("EventBusName")
-                .and_then(|v| v.as_str())
-                .filter(|b| !b.is_empty())
-                .unwrap_or("default");
-            if !CRON_RE.is_match(schedule) && !RATE_RE.is_match(schedule) {
-                return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    "Parameter ScheduleExpression is not valid.",
-                );
-            }
-            if bus_name != "default" {
+            // moto put_rule arm order (models.py:1265-1275): the
+            // default-bus-only check runs on the NORMALIZED name BEFORE
+            // the regex pair — a schedule on any non-default bus (ghost
+            // or not, ARN form or not) answers "ScheduleExpression is
+            // supported only on the default event bus." and a bad
+            // expression never gets to shadow it. EventPattern with
+            // ScheduleExpression TOGETHER is accepted by the fork (no
+            // "both" message anywhere in the events package; probed
+            // 200), so the twin's era rejection arm is gone.
+            if bus != "default" {
                 return AwsResponse::error(
                     400,
                     "ValidationException",
                     "ScheduleExpression is supported only on the default event bus.",
                 );
             }
+            if !CRON_RE.is_match(schedule) && !RATE_RE.is_match(schedule) {
+                // moto models.py:1271-1275 — the regexes are
+                // prefix-shape checks: 'cron(0 0 0 * * *)' passes with
+                // its structural nonsense; 'every day' 400s.
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "Parameter ScheduleExpression is not valid.",
+                );
+            }
+        }
+        // moto put_rule models.py:1277 `_get_event_bus` — the bus
+        // existence check runs BEFORE EventPattern loading (that happens
+        // inside Rule.__init__, models.py:85, AFTER the backend call); a
+        // ghost bus + invalid pattern answers the bus miss, not the
+        // pattern error.
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            );
         }
         if !event_pattern.is_empty() {
             // moto `EventPatternParser.parse` + era `_put_rule`: patterns
@@ -270,17 +275,6 @@ impl EventsHandler {
                 );
             }
         }
-        // Custom buses must exist; moto's ALL-validation-arms-first order
-        // puts the bus lookup (models.py:1277 `_get_event_bus`) AFTER the
-        // both-empty / default-bus-only / regex arms — a ghost bus +
-        // schedule answers the "supported only" message, not this 404.
-        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Event bus {bus} not found"),
-            );
-        }
         // The caller's State param must stick (era parity: moto's
         // `Rule.__init__` does `self.state = state or "ENABLED"`), so a
         // rule put with State="DISABLED" stays silent in the scheduler.
@@ -303,6 +297,7 @@ impl EventsHandler {
             name: name.clone(),
             bus_name: bus.clone(),
             arn,
+            created_by: req.account,
             description,
             event_pattern,
             state: RwLock::new(rule_state),
@@ -332,21 +327,48 @@ impl EventsHandler {
         AwsResponse::json(200, json!({ "RuleArn": rule.arn }))
     }
 
-    fn rule_key(req: &AwsRequest) -> (String, String) {
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
+    /// moto `_normalize_event_bus_arn` (events/models.py:1300-1303):
+    /// the full EventBus ARN form resolves to its tail segment;
+    /// empty (omitted) means the "default" bus.
+    fn normalize_bus(req: &AwsRequest) -> String {
+        let raw = Self::param_str(req, &["EventBusName"]);
+        if raw.is_empty() {
             "default".to_string()
         } else {
-            bus
-        };
+            raw.rsplit('/').next().unwrap_or(&raw).to_string()
+        }
+    }
+
+    fn rule_key(req: &AwsRequest) -> (String, String) {
+        let bus = Self::normalize_bus(req);
         // Rule CRUD ops carry the name in "Name"; target ops use "Rule".
         let name = Self::param_str(req, &["Name", "Rule"]);
         (bus, name)
     }
 
+    /// moto's bus gate (events/models.py:1325 → _get_event_bus): a
+    /// non-default EventBusName that isn't registered answers
+    /// "Event bus {bus} does not exist." — the miss rides BEFORE the
+    /// rule resolution on every rule-scoped op carrying an
+    /// EventBusName.
+    fn bus_gate(req: &AwsRequest, state: &EventsState) -> Result<(), AwsResponse> {
+        let bus = Self::normalize_bus(req);
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return Err(AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            ));
+        }
+        Ok(())
+    }
+
     fn describe_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         match state.get_rule(&key.0, &key.1) {
             Some(rule) => AwsResponse::json(200, rule.to_value()),
             // moto events/models.py:1328 — "Rule {name} does not exist."
@@ -383,6 +405,9 @@ impl EventsHandler {
     fn set_rule_state(&self, req: &AwsRequest, state: &str) -> AwsResponse {
         let key = Self::rule_key(req);
         let state_store = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state_store) {
+            return resp;
+        }
         match state_store.get_rule(&key.0, &key.1) {
             Some(rule) => {
                 *rule.state.write() = state.to_string();
@@ -402,12 +427,15 @@ impl EventsHandler {
     fn list_rules(&self, req: &AwsRequest) -> AwsResponse {
         let name_prefix = Self::param_str(req, &["NamePrefix"]);
         // era `_list_rules` defaults the bus to "default"; the twin scanned
-        // every bus' rules when EventBusName was omitted.
-        let bus = match req.params.get("EventBusName").and_then(|v| v.as_str()) {
-            Some(b) if !b.is_empty() => b.to_string(),
-            _ => "default".to_string(),
-        };
+        // every bus' rules when EventBusName was omitted. The filter must
+        // use the NORMALIZED name too — a real bus addressed by ARN form
+        // is one the twin can never match against the stored tail name
+        // (review round-2 F1).
+        let bus = Self::normalize_bus(req);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         let rules: Vec<Value> = state
             .rules
             .read()
@@ -422,13 +450,17 @@ impl EventsHandler {
 
     fn put_targets(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
+        let bus_state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+            return resp;
+        }
         let targets: Vec<Value> = req
             .params
             .get("Targets")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
+        let state = bus_state;
         // moto validates every target ARN shape BEFORE the rule lookup
         // (models.py:1399-1411 — the "super simple ARN check",
         // `re.match(r"arn:[\d\w:\-/]*", …)`): an invalid Arn answers
@@ -516,6 +548,10 @@ impl EventsHandler {
 
     fn remove_targets(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
+        let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         let ids: Vec<String> = req
             .params
             .get("Ids")
@@ -526,7 +562,6 @@ impl EventsHandler {
                     .collect()
             })
             .unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
         let Some(rule) = state.get_rule(&key.0, &key.1) else {
             return AwsResponse::error(
                 400,
@@ -546,6 +581,9 @@ impl EventsHandler {
     fn list_targets_by_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         // moto `responses.list_targets_by_rule`: KeyError on a missing rule
         // renders as ResourceNotFoundException ("Rule <name> does not
         // exist.").
@@ -563,15 +601,24 @@ impl EventsHandler {
     fn list_rule_names_by_target(&self, req: &AwsRequest) -> AwsResponse {
         let target_arn = Self::param_str(req, &["TargetArn"]);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
+        // moto scans ONLY the resolved bus' rules
+        // (events/models.py:1353-1361 — `event_bus.rules.items()`); the
+        // twin scanned every bus and leaked names across the boundary
+        // (review round-2 F2). Same normalized name as the gate.
+        let bus = Self::normalize_bus(req);
         let names: Vec<String> = state
             .rules
             .read()
             .values()
             .filter(|r| {
-                r.targets
-                    .read()
-                    .iter()
-                    .any(|t| t.get("Arn").and_then(|a| a.as_str()) == Some(target_arn.as_str()))
+                r.bus_name == bus
+                    && r.targets
+                        .read()
+                        .iter()
+                        .any(|t| t.get("Arn").and_then(|a| a.as_str()) == Some(target_arn.as_str()))
             })
             .map(|r| r.name.clone())
             .collect();
@@ -2325,7 +2372,10 @@ mod tests {
     }
 
     #[test]
-    fn put_rule_rejects_event_pattern_with_schedule_expression() {
+    fn put_rule_accepts_event_pattern_with_schedule_expression() {
+        // moto accepts BOTH together: the fork has no "both" message in
+        // its events package and PutRule 200s with pattern+schedule
+        // (review round-2 probes3), and describe() renders both keys.
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req(
             "PutRule",
@@ -2335,22 +2385,12 @@ mod tests {
                 "ScheduleExpression": "rate(1 hour)",
             }),
         ));
-        assert_eq!(resp.status, 400);
-        let json = body(&resp);
-        assert_eq!(json["__type"], "ValidationException");
-        assert_eq!(
-            json["message"],
-            "Specifying both EventPattern and ScheduleExpression is not allowed."
-        );
-        // Neither variant may have stored the rule.
-        assert_eq!(
-            body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-both"}))))
-                ["Rules"]
-                .as_array()
-                .expect("Rules list")
-                .len(),
-            0
-        );
+        assert_eq!(resp.status, 200);
+        let rule =
+            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp9-both-rule"}))));
+        assert_eq!(rule["__type"], Value::Null);
+        assert_eq!(rule["EventPattern"], "{}");
+        assert_eq!(rule["ScheduleExpression"], "rate(1 hour)");
     }
 
     #[test]

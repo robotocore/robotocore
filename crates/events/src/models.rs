@@ -15,7 +15,15 @@ pub struct Rule {
     pub name: String,
     pub bus_name: String,
     pub arn: String,
-    pub description: String,
+    /// The creating account — moto renders it as CreatedBy in every
+    /// rule's to_dict (events models.py rule fields, the 2026-11-12
+    /// census row).
+    #[serde(default)]
+    pub created_by: u64,
+    /// moto only strips an ABSENT description (models.py:370-375); an
+    /// explicitly-empty one stays.
+    #[serde(default)]
+    pub description: Option<String>,
     /// Event pattern as a JSON string ("" when the rule only has a schedule).
     pub event_pattern: String,
     #[serde(with = "crate::snapshot::rw")]
@@ -40,16 +48,23 @@ impl Rule {
             "Arn": self.arn,
             "State": self.state.read().clone(),
             "EventBusName": self.bus_name,
+            "CreatedBy": self.created_by.to_string(),
         });
         let obj = resp.as_object_mut().unwrap();
-        if !self.description.is_empty() {
-            obj.insert("Description".into(), json!(self.description));
+        // moto describe() (events/models.py:359-375) strips ONLY absent
+        // values: an explicitly-empty Description stays on the render.
+        if let Some(ref description) = self.description {
+            obj.insert("Description".into(), json!(description));
         }
         if !self.event_pattern.is_empty() {
             obj.insert("EventPattern".into(), json!(self.event_pattern));
         }
         if let Some(ref sched) = self.schedule_expression {
             obj.insert("ScheduleExpression".into(), json!(sched));
+        }
+        // moto describe() (events/models.py:368) renders RoleArn when set.
+        if let Some(ref role) = self.role_arn {
+            obj.insert("RoleArn".into(), json!(role));
         }
         if let Some(ref dlq) = self.dead_letter_config {
             if !dlq.is_null() {
