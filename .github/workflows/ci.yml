@@ -404,7 +404,10 @@ jobs:
   # ── Docker + final gates ───────────────────────────────────────────────────
 
   docker-build:
-    runs-on: ubuntu-latest
+    # ubuntu-latest migrated to Ubuntu 26 on 2026-10-19 (runner-images
+    # issue 14748); the java-and-dotnet lambda smoke needs the 24.04
+    # toolchain set until the smoke re-certifies there.
+    runs-on: ubuntu-24.04
     needs:
       - lint
       - test-quality
