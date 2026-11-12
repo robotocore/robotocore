@@ -1,10 +1,10 @@
 {
   "service": "ssm",
-  "generated_at": "2026-11-01T18:00:03.457205+00:00",
+  "generated_at": "2026-11-12T05:51:53.429675+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/ssm.rs": "absent",
     "rotocore/src/services/ssm/": "absent",
-    "crates/ssm/src/": "759abde3b0b9dac4b654f006f905a658f1c6a99aaed045daa958c7251c7eb2ba"
+    "crates/ssm/src/": "12a728ac622c25f0c4949e8ae08ed40384139896fa8200493744e2f2aa069009"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

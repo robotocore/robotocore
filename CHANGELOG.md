@@ -81,6 +81,25 @@ under *Changelog discipline*.
   ARNs the fork attaches — arn:x? / arn:café-x / empty rows).
   Wire-verified: the 4-shape matrix byte-equal at both engines.
 
+- **SSM: the error-envelope family follows the fork's message model.**
+  moto's JSON error serializer splits the envelope by shape: MODELED ssm
+  codes (ParameterNotFound / ParameterVersionNotFound /
+  ParameterAlreadyExists / ParameterMaxVersionLimitExceeded /
+  ParameterLimitExceeded / InvalidFilterOption) answer the lowercase
+  `message` member AND the generic capital `Message`
+  (moto/core/serialize.py:529-544), while UNMODELED auto-created shapes
+  (ValidationException, InvalidFilterKey via get_error_model,
+  core/errors.py:145-155) carry capital `Message` ONLY — the twin
+  carried lowercase on every row (the 2026-11-11 envelope row, raw
+  SigV4-replay verified 2026-11-12: ValidationError / required-type /
+  ParameterNotFound / ParameterAlreadyExists all byte-equal at both
+  engines). `error()` now routes by a MODELED_CODES set. Two wording
+  rows from the same census: an EMPTY Type rides moto's falsy
+  required-miss arm — "A parameter type is required when you create a
+  parameter." (models.py:2250-2256's `if not parameter_type` precedes
+  the enum check) — instead of the enum error the twin emitted
+  (botocore hides it; the raw-SigV4 replay exposed it).
+
 - **Api Gateway v2: the identifier-miss wordings follow the fork.** The
   2026-11-11 census's apigwv2 rows land: a missing API answers
   "Invalid API identifier specified <apiId>" (the wire's Integration

@@ -310,10 +310,13 @@ impl SsmHandler {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        // moto's falsy order (`if not parameter_type`): an EMPTY Type
+        // rides the required-miss arm before the enum check.
         let parameter_type = req
             .params
             .get("Type")
             .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
             .map(String::from);
         let description = req
             .params
@@ -4781,7 +4784,10 @@ fn strip_arn_prefix(raw: &str, region: &str, account: u64) -> String {
 }
 
 fn err_validation(message: &str) -> AwsResponse {
-    AwsResponse::error(400, "ValidationException", message)
+    // ValidationException is UNMODELED in moto's ssm error model — the
+    // envelope carries capital `Message` only (moto/core/serialize.py
+    // :529-544 + core/errors.py get_error_model; measured 2026-11-11).
+    AwsResponse::error_envelope(400, "ValidationException", message, false)
 }
 
 #[cfg(test)]
@@ -4803,6 +4809,22 @@ mod tests {
 
     fn body(resp: &AwsResponse) -> Value {
         serde_json::from_str(&resp.body).unwrap()
+    }
+
+    /// The `message` member normalized across moto's two error
+    /// envelopes: MODELED codes carry the lowercase `message` AND the
+    /// generic capital `Message`; UNMODELED shapes (ValidationException)
+    /// carry capital `Message` ONLY (moto/core/serialize.py:529-544,
+    /// core/errors.py get_error_model — the 2026-11-11 envelope rows).
+    fn message_of(resp: &AwsResponse) -> String {
+        let parsed = serde_json::from_str::<serde_json::Value>(&resp.body)
+            .unwrap_or(serde_json::Value::Null);
+        parsed
+            .get("message")
+            .or(parsed.get("Message"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
     }
 
     #[test]
@@ -5409,7 +5431,7 @@ mod tests {
             body(&err)["__type"],
             "InvalidFilterOption",
             "{}",
-            body(&err)["message"]
+            message_of(&err)
         );
     }
 
@@ -5440,10 +5462,10 @@ mod tests {
             body(&err)["__type"],
             "InvalidFilterKey",
             "{}",
-            body(&err)["message"]
+            message_of(&err)
         );
         assert_eq!(
-            body(&err)["message"],
+            message_of(&err),
             "The following filter key is not valid: Label. Valid filter keys include: [Path, Name, Type, KeyId, Tier]."
         );
     }
@@ -5458,7 +5480,7 @@ mod tests {
             ));
             assert_eq!(body(&err)["__type"], "InvalidFilterKey", "{key}");
             assert_eq!(
-                body(&err)["message"],
+                message_of(&err),
                 format!(
                     "The following filter key is not valid: {key}. Valid filter keys include: [Type, KeyId]."
                 )
@@ -5477,7 +5499,7 @@ mod tests {
         ));
         assert_eq!(body(&err)["__type"], "ValidationException");
         assert_eq!(
-            body(&err)["message"],
+            message_of(&err),
             "You can use either Filters or ParameterFilters in a single request."
         );
     }
@@ -5520,9 +5542,9 @@ mod tests {
                 .err()
                 .unwrap();
             assert!(
-                body(&err)["message"].as_str().unwrap().contains(&fragment),
+                message_of(&err).contains(&fragment),
                 "missing `{fragment}` in {}",
-                body(&err)["message"]
+                message_of(&err)
             );
         }
     }
@@ -5538,10 +5560,10 @@ mod tests {
             body(&resp)["__type"],
             "InvalidFilterValue",
             "{}",
-            body(&resp)["message"]
+            message_of(&resp)
         );
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             "The following filter values are missing : null for filter key Name."
         );
     }
@@ -5561,11 +5583,11 @@ mod tests {
             body(&resp)["__type"],
             "InvalidFilterKey",
             "{}",
-            body(&resp)["message"]
+            message_of(&resp)
         );
         // moto's message hardcodes "Name" even when the duplicated key differs.
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             "The following filter is duplicated in the request: Name. A request can contain only one occurrence of a specific filter."
         );
     }
@@ -5608,11 +5630,11 @@ mod tests {
                 "DescribeParameters",
                 json!({ "ParameterFilters": values }),
             ));
-            assert_eq!(body(&resp)["__type"], code, "{}", body(&resp)["message"]);
+            assert_eq!(body(&resp)["__type"], code, "{}", message_of(&resp));
             assert!(
-                body(&resp)["message"].as_str().unwrap().contains(fragment),
+                message_of(&resp).contains(fragment),
                 "missing `{fragment}` in {}",
-                body(&resp)["message"]
+                message_of(&resp)
             );
         }
     }
@@ -5622,10 +5644,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn error_of(resp: AwsResponse) -> (String, String) {
-        (
-            body(&resp)["__type"].as_str().unwrap_or("").to_string(),
-            body(&resp)["message"].as_str().unwrap_or("").to_string(),
-        )
+        let code = body(&resp)["__type"].as_str().unwrap_or("").to_string();
+        (code, message_of(&resp))
     }
 
     #[test]
@@ -5761,7 +5781,7 @@ mod tests {
             "ParameterMaxVersionLimitExceeded",
             "labeled oldest version must block pruning"
         );
-        assert!(body(&blocked)["message"].as_str().unwrap().starts_with(
+        assert!(message_of(&blocked).starts_with(
             "You attempted to create a new version of /cap by calling the PutParameter API"
         ));
         // 100 stored versions; the newest survived (moto keeps cap rows).
@@ -5822,7 +5842,7 @@ mod tests {
             }),
         ));
         assert_eq!(bad.status, 400);
-        assert_eq!(body(&bad)["message"], "The following data type is not supported: aws:ec2:imag (Data type names are all lowercase.)");
+        assert_eq!(message_of(&bad), "The following data type is not supported: aws:ec2:imag (Data type names are all lowercase.)");
         // An existing name with overwrite=false still raises
         // ParameterAlreadyExists (valid DataType short-circuit order).
         let dup = put_param(&handler, "/dt", false);
@@ -5877,7 +5897,7 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             format!(
                 "1 validation error detected: Value '[{long}]' at 'labels' failed to satisfy \
                  constraint: Member must satisfy constraint: [Member must have length less than or \
@@ -5892,7 +5912,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["__type"], "ParameterVersionLabelLimitExceeded");
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             "An error occurred (ParameterVersionLabelLimitExceeded) when calling the LabelParameterVersion operation: A parameter version can have maximum 10 labels.Move one or more labels to another version and try again."
         );
         // Missing version keeps moto's ParameterVersionNotFound text.
@@ -5914,20 +5934,20 @@ mod tests {
             json!({ "Name": "ab", "Content": content, "DocumentType": "Command" }),
         ));
         assert_eq!(resp.status, 400);
-        assert_eq!(body(&resp)["message"], "Invalid document name ab");
+        assert_eq!(message_of(&resp), "Invalid document name ab");
         // Reject list.
         let resp = handler.handle(make_req(
             "CreateDocument",
             json!({ "Name": "aws-mydoc", "Content": content, "DocumentType": "Command" }),
         ));
-        assert_eq!(body(&resp)["message"], "Invalid document name aws-mydoc");
+        assert_eq!(message_of(&resp), "Invalid document name aws-mydoc");
         // Document type enum.
         let resp = handler.handle(make_req(
             "CreateDocument",
             json!({ "Name": "valid-doc", "Content": content, "DocumentType": "Bogus" }),
         ));
         assert_eq!(resp.status, 400);
-        assert_eq!(body(&resp)["message"], "Invalid document type Bogus");
+        assert_eq!(message_of(&resp), "Invalid document type Bogus");
         // Format enum → ValidationException (not InvalidDocumentContent).
         let resp = handler.handle(make_req(
             "CreateDocument",
@@ -5935,7 +5955,7 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["__type"], "ValidationException");
-        assert_eq!(body(&resp)["message"], "Invalid document format XML");
+        assert_eq!(message_of(&resp), "Invalid document format XML");
         // YAML documents parse like moto's yaml.safe_load. GetDocument
         // without DocumentFormat renders the JSON form (moto's `_get_param`
         // defaults the format to "JSON" even for YAML documents).
@@ -6031,7 +6051,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["__type"], "DoesNotExistException");
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             "Maintenance window pb-unknown00000000000 does not exist"
         );
 
@@ -6054,7 +6074,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["__type"], "AlreadyExistsException");
         assert_eq!(
-            body(&resp)["message"],
+            message_of(&resp),
             "Patch Group baseline already has a baseline registered for OperatingSystem WINDOWS."
         );
         // A different OS registers fine for the same group.
@@ -6097,7 +6117,7 @@ mod tests {
             assert_eq!(resp.status, 400);
             assert_eq!(body(&resp)["__type"], "DoesNotExistException");
             assert_eq!(
-                body(&resp)["message"],
+                message_of(&resp),
                 "OpsMetadata arn:aws:ssm:us-east-1:123456789012:opsmetadata/o1 does not exist"
             );
         }
