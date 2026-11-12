@@ -104,11 +104,25 @@ pub struct EventsState {
     pub partner_sources: Arc<RwLock<HashMap<String, Value>>>,
     /// Endpoints keyed by endpoint name.
     pub endpoints: Arc<RwLock<HashMap<String, Value>>>,
+    /// The virtual default bus' create stamp (moto `_add_default_event_bus`
+    /// stamps it once at backend init, models.py:1221-1225) — the default
+    /// bus is never a record in `event_buses`, so its stickiness lives
+    /// here.
+    pub default_bus_created: Arc<RwLock<Option<String>>>,
+}
+
+/// Format a datetime the way moto serializes `str(datetime)` on its
+/// CreationTime/LastModifiedTime (census: `2026-11-12 09:11:04.916508+00:00`).
+pub(crate) fn fmt_moto_dt(dt: chrono::DateTime<chrono::Utc>) -> String {
+    dt.format("%Y-%m-%d %H:%M:%S%.6f+00:00").to_string()
 }
 
 impl EventsState {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            default_bus_created: Arc::new(RwLock::new(Some(fmt_moto_dt(chrono::Utc::now())))),
+            ..Default::default()
+        }
     }
 
     pub fn get_rule(&self, bus: &str, name: &str) -> Option<Arc<Rule>> {

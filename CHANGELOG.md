@@ -63,7 +63,19 @@ under *Changelog discipline*.
 
 
 
-
+- **Events: the event-bus render + the policy-body grant.**
+  describe_event_bus renders the CreationTime/LastModifiedTime pair
+  (stamped once at create / backend init), the truthy detail members
+  (Description, KmsKeyIdentifier, DeadLetterConfig) and the Policy
+  STRING when statements exist (responses.py:238-262; the
+  python-json-dumps separators the fork renders at
+  models.py:425-431); param-path statements carry the resolved bus ARN
+  as Resource (models.py:1596); PutPermission's Policy body takes the
+  _put_permission_from_policy fork (models.py:1612-1616) — invalid
+  JSON answers "This policy contains invalid Json"
+  (models.py:1539-1543) and a valid grant REPLACES the principals'
+  earlier statements keyed by Sid (add_policy, models.py:516-527)
+  while the parameter checks never run on that path.
 
 - **Events: the bus-CRUD wording + gate family.** create_event_bus
   answers the duplicate (`ResourceAlreadyExistsException "Event bus

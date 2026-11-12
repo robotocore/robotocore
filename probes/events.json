@@ -1,10 +1,10 @@
 {
   "service": "events",
-  "generated_at": "2026-11-12T08:44:24.326851+00:00",
+  "generated_at": "2026-11-12T09:19:40.107146+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/events.rs": "absent",
     "rotocore/src/services/events/": "absent",
-    "crates/events/src/": "08855c47c6626e5e043bbe83fcb0dbe297e812b7022af1edf41325f473dcee36"
+    "crates/events/src/": "0a84bdd1602c33a5fd24725259108a26eb05d3ea5c5bbecce4f5392559c65350"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
