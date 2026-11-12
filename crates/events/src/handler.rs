@@ -1,6 +1,6 @@
 //! EventBridge operation handler.
 
-use crate::models::{fmt_moto_dt, EventsState, Rule};
+use crate::models::{now_micros_f, EventsState, Rule};
 use crate::pattern::matches_pattern;
 use crate::protocol::{AwsRequest, AwsResponse};
 use once_cell::sync::Lazy;
@@ -132,10 +132,14 @@ fn py_json_string(s: &str, out: &mut String) {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
             c if (c as u32) < 0x20 => {
                 out.push_str(&format!("\\u{:04x}", c as u32));
             }
-            c if (c as u32) <= 0x7f => out.push(c),
+            c if (c as u32) < 0x7f => out.push(c),
+            // python's ensure_ascii escapes everything at or above DEL
+            // (0x7f) as \u007f.
             c if (c as u32) <= 0xffff => out.push_str(&format!("\\u{:04x}", c as u32)),
             c => {
                 // Non-BMP: python emits the surrogate pair.
@@ -1160,8 +1164,7 @@ impl EventsHandler {
         // members (the bus record carries what the fork's EventBus does:
         // description/kms/dead-letter_config, EventBus init
         // models.py:390-403); describe re-renders them truthy-only.
-        let mut bus =
-            json!({ "Name": name, "Arn": arn, "Created": fmt_moto_dt(chrono::Utc::now()) });
+        let mut bus = json!({ "Name": name, "Arn": arn, "Created": now_micros_f() });
         if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
             if !desc.is_empty() {
                 bus["Description"] = json!(desc);
@@ -1266,12 +1269,12 @@ impl EventsHandler {
                 // the same state.
                 let mut stamp = state.default_bus_created.write();
                 if stamp.is_none() {
-                    *stamp = Some(fmt_moto_dt(chrono::Utc::now()));
+                    *stamp = Some(now_micros_f());
                 }
-                stamp.clone().map(|ts| json!(ts))
+                (*stamp).map(|ts| json!(ts))
             }
         }
-        .unwrap_or_else(|| json!(fmt_moto_dt(chrono::Utc::now())));
+        .unwrap_or_else(|| json!(now_micros_f()));
         let policy_string = {
             let entry = state.bus_policies.read().get(&name).cloned();
             entry.and_then(|entry| {
@@ -1317,14 +1320,42 @@ impl EventsHandler {
     fn list_event_buses(&self, req: &AwsRequest) -> AwsResponse {
         let prefix = Self::param_str(req, &["NamePrefix"]);
         let state = self.get_state(req.account, &req.region);
-        let mut buses = vec![json!({
-            "Name": "default",
-            "Arn": state.bus_arn(req.account, &req.region, "default"),
-        })];
+        // moto responses.list_event_buses (responses.py:294-296): the row
+        // carries the Policy STRING when the bus has statements.
+        let policies = state.bus_policies.read();
+        let bus_policy_string = |bus_name: &str| -> Option<Value> {
+            policies.get(bus_name).and_then(|entry| {
+                let statements = entry.get("Statement").and_then(|s| s.as_array())?;
+                if statements.is_empty() {
+                    return None;
+                }
+                Some(json!(py_json(&json!({
+                    "Version": "2012-10-17",
+                    "Statement": statements,
+                }))))
+            })
+        };
+        let mut buses = vec![{
+            let mut row = json!({
+                "Name": "default",
+                "Arn": state.bus_arn(req.account, &req.region, "default"),
+            });
+            if let Some(policy) = bus_policy_string("default") {
+                row["Policy"] = json!(policy);
+            }
+            row
+        }];
         let stored = state.event_buses.read();
         let mut rows: Vec<Value> = stored
             .values()
-            .map(|bus| json!({ "Name": bus["Name"], "Arn": bus["Arn"] }))
+            .filter_map(|bus| {
+                let bus_name = bus.get("Name").and_then(|n| n.as_str())?;
+                let mut row = json!({ "Name": bus["Name"], "Arn": bus["Arn"] });
+                if let Some(policy) = bus_policy_string(bus_name) {
+                    row["Policy"] = json!(policy);
+                }
+                Some(row)
+            })
             .collect();
         rows.sort_by(|a, b| a["Name"].as_str().cmp(&b["Name"].as_str()));
         buses.append(&mut rows);
@@ -1482,8 +1513,18 @@ impl EventsHandler {
                         if let Some(condition) = stmt.get("Condition") {
                             record["Condition"] = condition.clone();
                         }
-                        arr.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(sid.as_str()));
-                        arr.push(record);
+                        // add_policy does `_statements[sid] = stmt` — an
+                        // EXISTING dict key keeps its INSERTION SLOT on
+                        // re-assignment; the twin's retain-then-push
+                        // appended it to the end (probe T5: moto
+                        // [pp, s1, s3] vs the twin [pp, s3, s1]).
+                        if let Some(idx) = arr.iter().position(|s| {
+                            s.get("Sid").and_then(|v| v.as_str()) == Some(sid.as_str())
+                        }) {
+                            arr[idx] = record;
+                        } else {
+                            arr.push(record);
+                        }
                     }
                 }
             }
@@ -3269,12 +3310,10 @@ mod tests {
         let resp = handler.handle(make_req("DescribeEventBus", json!({"Name": "f8-bus"})));
         assert_eq!(resp.status, 200);
         let json = body(&resp);
-        // The str(datetime) shape (`census C1`).
-        assert!(json["CreationTime"].as_str().is_some_and(|t| {
-            t.len() == "YYYY-MM-DD HH:MM:SS.ffffff+00:00".len()
-                && t.ends_with("+00:00")
-                && t[10..11] == *" "
-        }));
+        // The raw wire shape is an epoch-seconds NUMBER (the byte probe
+        // pins moto json.dumps(unix_time); the census string was a
+        // botocore-parse artifact).
+        assert!(json["CreationTime"].is_number());
         assert_eq!(json["LastModifiedTime"], json["CreationTime"]);
         assert_eq!(json["Description"], "desc");
         assert_eq!(json["KmsKeyIdentifier"], "kms-x");

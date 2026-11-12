@@ -108,19 +108,23 @@ pub struct EventsState {
     /// stamps it once at backend init, models.py:1221-1225) — the default
     /// bus is never a record in `event_buses`, so its stickiness lives
     /// here.
-    pub default_bus_created: Arc<RwLock<Option<String>>>,
+    pub default_bus_created: Arc<RwLock<Option<f64>>>,
 }
 
-/// Format a datetime the way moto serializes `str(datetime)` on its
-/// CreationTime/LastModifiedTime (census: `2026-11-12 09:11:04.916508+00:00`).
-pub(crate) fn fmt_moto_dt(dt: chrono::DateTime<chrono::Utc>) -> String {
-    dt.format("%Y-%m-%d %H:%M:%S%.6f+00:00").to_string()
+/// Epoch-seconds float with micro-second precision — moto's
+/// `unix_time()` wire shape (json.dumps renders the JSON NUMBER the raw
+/// bytes probe pinned: `1794476839.422098`).
+pub(crate) fn now_micros_f() -> f64 {
+    chrono::Utc::now()
+        .timestamp_nanos_opt()
+        .map(|ns| ns as f64 / 1_000_000_000.0)
+        .unwrap_or(0.0)
 }
 
 impl EventsState {
     pub fn new() -> Self {
         Self {
-            default_bus_created: Arc::new(RwLock::new(Some(fmt_moto_dt(chrono::Utc::now())))),
+            default_bus_created: Arc::new(RwLock::new(Some(now_micros_f()))),
             ..Default::default()
         }
     }
