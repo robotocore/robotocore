@@ -14,6 +14,11 @@ use std::sync::Arc;
 static CRON_RE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^cron\(.*\)").unwrap());
 static RATE_RE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"^rate\(\d*\s(minute|minutes|hour|hours|day|days)\)").unwrap());
+// moto EventsBackend.ACCOUNT_ID / STATEMENT_ID (events/models.py:1202-1203).
+static PRINCIPAL_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^(\d{1,12}|\*)$").unwrap());
+static STATEMENT_ID_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^[a-zA-Z0-9-_]{1,64}$").unwrap());
 
 /// Process-global EventBridge state registry, shared by every handler
 /// instance so cross-service publishers (S3, ...) can reach the same rules.
@@ -864,6 +869,18 @@ impl EventsHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
+        // moto put_events (models.py:1449-1456): >10 entries raises the
+        // server-side constraint ValidationException before any entry is
+        // validated. SDK-reachable: botocore's validator carries only
+        // {required, min} for lists — the max rides on the server.
+        if entries.len() > 10 {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value '[PutEventsRequestEntry]' at 'entries' failed to satisfy constraint: Member must have length less than or equal to 10",
+            );
+        }
+
         // moto's per-entry validation contract (models.py:1434-1490): each
         // entry answers Source/DetailType/Detail-required InvalidArgument
         // failures, and non-JSON Detail answers a MalformedDetail entry —
@@ -1045,14 +1062,19 @@ impl EventsHandler {
             );
         }
         let event_source = Self::param_str(req, &["EventSourceName"]);
-        if !event_source.is_empty() {
+        // moto create_event_bus (models.py:1660-1672): the source must be
+        // REGISTERED — the twin models partner sources (the
+        // create_partner_event_source arm stores them) — and the slash
+        // check is CONDITIONAL: a partner source's bus name may contain
+        // '/' ("aws.partner/…").
+        if !event_source.is_empty() && !state.partner_sources.read().contains_key(&event_source) {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
                 &format!("Event source {event_source} does not exist."),
             );
         }
-        if name.contains('/') {
+        if event_source.is_empty() && name.contains('/') {
             return AwsResponse::error(
                 400,
                 "ValidationException",
@@ -1245,13 +1267,87 @@ impl EventsHandler {
                 "Parameter Principal must be specified.",
             );
         }
+        // moto _put_permission_from_params (models.py:1564-1597) — the
+        // condition/principal/value/action/identifier checks ride AFTER
+        // the bus gate, in this exact order.
+        let principal = req
+            .params
+            .get("Principal")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let condition = req
+            .params
+            .get("Condition")
+            .and_then(|v| v.as_object())
+            .cloned();
+        if condition.is_some() && principal != "*" {
+            return AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "Value of the parameter 'principal' must be '*' when the parameter 'condition' is set.",
+                );
+        } else if !PRINCIPAL_RE.is_match(&principal) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                &format!(
+                    "Value {principal} at 'principal' failed to satisfy constraint: Member must satisfy regular expression pattern: (\\d{{12}}|\\*)"
+                ),
+            );
+        }
+        let action = req
+            .params
+            .get("Action")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        if action != "events:PutEvents" {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Provided value in parameter 'action' is not supported.",
+            );
+        }
         let statement_id = Self::param_str(req, &["StatementId"]);
-        let statement = json!({
+        if !STATEMENT_ID_RE.is_match(&statement_id) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                "StatementId must match ^[a-zA-Z0-9-_]{1,64}$",
+            );
+        }
+        // moto EventBus.add_permission (models.py:505-530) REPLACES the
+        // principal's prior statements — a new grant for the same
+        // principal drops earlier SIDs; the twin kept them forever.
+        let principal_arn = json!({
+            "AWS": format!("arn:aws:iam::{}:root", principal),
+        });
+        {
+            let mut policies = state.bus_policies.write();
+            if let Some(entry) = policies.get_mut(&bus) {
+                if let Some(arr) = entry.get_mut("Statement").and_then(|s| s.as_array_mut()) {
+                    arr.retain(|s| {
+                        s.get("Principal").cloned().unwrap_or(Value::Null) != principal_arn
+                    });
+                }
+            }
+        }
+        let mut statement = json!({
             "Sid": statement_id,
             "Effect": "Allow",
-            "Principal": req.params.get("Principal").cloned().unwrap_or(Value::Null),
-            "Action": req.params.get("Action").cloned().unwrap_or_else(|| json!("events:PutEvents")),
+            "Principal": principal_arn,
+            "Action": action,
         });
+        if let Some(condition) = condition {
+            // _condition_param_to_stmt_condition (models.py:1549-1557):
+            // {Type: {Key: Value}}.
+            statement["Condition"] = json!({
+                condition["Type"].as_str().unwrap_or_default(): {
+                    condition["Key"].as_str().unwrap_or_default():
+                        condition["Value"].as_str().unwrap_or_default().to_string(),
+                }
+            });
+        }
         let mut policy = state
             .bus_policies
             .read()
@@ -1272,41 +1368,74 @@ impl EventsHandler {
     }
 
     fn remove_permission(&self, req: &AwsRequest) -> AwsResponse {
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
+        let raw_bus = Self::param_str(req, &["EventBusName"]);
+        let bus = if raw_bus.is_empty() {
             "default".to_string()
         } else {
-            bus
+            Self::resolve_bus(&raw_bus, req.account)
         };
-        let statement_id = Self::param_str(req, &["StatementId"]);
         let state = self.get_state(req.account, &req.region);
-        let Some(mut policy) = state.bus_policies.read().get(&bus).cloned() else {
+        // moto remove_permission (models.py:1619-1643): the bus rides
+        // describe_event_bus FIRST — a ghost bus answers the bus miss,
+        // not the policy miss; the statements-not-empty check follows
+        // (has_permissions == len(statements) > 0).
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            );
+        }
+        // models.py:1630-1633 — RemoveAllPermissions clears the
+        // statement set unconditionally.
+        if req
+            .params
+            .get("RemoveAllPermissions")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            if let Some(entry) = state.bus_policies.write().get_mut(&bus) {
+                if let Some(arr) = entry.get_mut("Statement").and_then(|s| s.as_array_mut()) {
+                    arr.clear();
+                }
+            }
+            return AwsResponse::json(200, json!({}));
+        }
+        let mut policy = state
+            .bus_policies
+            .read()
+            .get(&bus)
+            .cloned()
+            .unwrap_or_else(|| json!({ "Version": "2012-10-17", "Statement": [] }));
+        // has_permissions == len(statements) > 0 (models.py:415-416) —
+        // the policy container existing with an empty set is no policy.
+        let statement_count = policy
+            .get("Statement")
+            .and_then(|s| s.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        if statement_count == 0 {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
                 "EventBus does not have a policy.",
             );
-        };
-        if statement_id.is_empty() {
+        }
+        let statement_id = Self::param_str(req, &["StatementId"]);
+        let statements = policy
+            .get_mut("Statement")
+            .and_then(|s| s.as_array_mut())
+            .expect("statement array checked above");
+        let before = statements.len();
+        statements.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
+        if statements.len() == before {
             return AwsResponse::error(
                 400,
-                "ValidationException",
-                "Parameter StatementId must be specified.",
+                "ResourceNotFoundException",
+                "Statement with the provided id does not exist.",
             );
         }
-        if let Some(statements) = policy.get_mut("Statement").and_then(|s| s.as_array_mut()) {
-            let before = statements.len();
-            statements
-                .retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
-            if statements.len() == before {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Statement with id {statement_id} not found"),
-                );
-            }
-            state.bus_policies.write().insert(bus, policy);
-        }
+        state.bus_policies.write().insert(bus, policy);
         AwsResponse::json(200, json!({}))
     }
 
@@ -1869,6 +1998,10 @@ impl EventsHandler {
                     req.region, req.account, name
                 );
                 let _ = row;
+                // The exact-ARN tag store never pruned deleted
+                // connections: ListTags answered the stale entry where
+                // moto/AWS 404 (review round-1 finding 4).
+                state.tags.write().remove(&arn);
                 AwsResponse::json(
                     200,
                     json!({ "ConnectionArn": arn, "ConnectionState": "DELETING" }),
@@ -2672,6 +2805,224 @@ mod tests {
         )));
         assert_eq!(rule["EventPattern"], "");
         assert_eq!(rule["ScheduleExpression"], "rate(1 hour)");
+    }
+
+    // -- Family 2 round-2 review fixes (agent-117 findings 1-5) ---------------
+
+    #[test]
+    fn put_events_rejects_more_than_ten_entries() {
+        // botocore validates only required/min client-side, so 11 entries
+        // REACH the server; the fork answers the constraint wording
+        // (models.py:1449-1456) before any entry runs.
+        let handler = EventsHandler::new();
+        let entry = json!({"Source": "com.t", "DetailType": "t", "Detail": "{}"});
+        let eleven: Vec<Value> = (0..11).map(|_| entry.clone()).collect();
+        let resp = handler.handle(make_req("PutEvents", json!({"Entries": eleven})));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "1 validation error detected: Value '[PutEventsRequestEntry]' at 'entries' failed to satisfy constraint: Member must have length less than or equal to 10"
+        );
+        // Ten is the cap exactly (the fork only balks past 10).
+        let ten: Vec<Value> = (0..10).map(|_| entry.clone()).collect();
+        let resp = handler.handle(make_req("PutEvents", json!({"Entries": ten})));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn create_event_bus_accepts_a_registered_partner_source() {
+        // The twin models partner sources (CreatePartnerEventSource
+        // stores them), so the source path must consult the registry —
+        // and a partner source allows the '/' its name carries
+        // (models.py:1660-1672: the slash check is conditional).
+        let handler = EventsHandler::new();
+        let source = "aws.partner/f7-partner/x";
+        handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({"Name": source, "Account": "123456789012"}),
+        ));
+        let resp = handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": source, "EventSourceName": source}),
+        ));
+        assert_eq!(
+            resp.status, 200,
+            "a slashy partner bus is legal with a registered source"
+        );
+        // An unregistered source still declines with the fork's wording.
+        let resp = handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": "f7-no-such", "EventSourceName": "aws.partner/nope"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(
+            json["message"],
+            "Event source aws.partner/nope does not exist."
+        );
+    }
+
+    #[test]
+    fn put_permission_param_arms_match_the_fork() {
+        let handler = EventsHandler::new();
+        // Bad principal shape (Action rides AFTER principal — arrays).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "abc", "Action": "events:PutEvents", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "InvalidParameterValue");
+        assert_eq!(
+            json["message"],
+            "Value abc at 'principal' failed to satisfy constraint: Member must satisfy regular expression pattern: (\\d{12}|\\*)"
+        );
+
+        // Wrong action value.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "Action": "events:Nope", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "Provided value in parameter 'action' is not supported."
+        );
+
+        // A missing Action is NOT defaulted (models.py:1581-1585).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Provided value in parameter 'action' is not supported."
+        );
+
+        // StatementId outside ^[a-zA-Z0-9-_]{1,64}$.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "Action": "events:PutEvents", "StatementId": "bad id!"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "StatementId must match ^[a-zA-Z0-9-_]{1,64}$"
+        );
+
+        // Condition forces the star principal.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789012", "Condition": {"Type": "StringEquals", "Key": "aws:PrincipalOrgID", "Value": "o-1"}, "Action": "events:PutEvents", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Value of the parameter 'principal' must be '*' when the parameter 'condition' is set."
+        );
+    }
+
+    #[test]
+    fn put_permission_replaces_the_principals_statements() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp-1"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // A second grant for the SAME principal replaced the first SID
+        // (models.py:508 _remove_principals_statements over the dict).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp-2"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // A different principal's grant coexists.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "999999999999", "Action": "events:PutEvents", "StatementId": "other-principal"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // stp-1 is GONE — removing it answers the statement miss.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"StatementId": "stp-1"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Statement with the provided id does not exist."
+        );
+        // stp-2 and the other principal's statement both still exist.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "RemovePermission",
+                    json!({"StatementId": "stp-2"})
+                ))
+                .status,
+            200
+        );
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "RemovePermission",
+                    json!({"StatementId": "other-principal"})
+                ))
+                .status,
+            200
+        );
+    }
+
+    #[test]
+    fn remove_permission_gates_and_wordings() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f7-pm-bus"})));
+        handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f7-pm-bus", "Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp"}),
+        ));
+
+        // A ghost bus answers the bus miss before any policy arms.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-ghost", "StatementId": "other"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(json["message"], "Event bus f7-pm-ghost does not exist.");
+
+        // The statement miss wording per models.py:1639-1642.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "StatementId": "no-such-sid"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Statement with the provided id does not exist."
+        );
+
+        // RemoveAllPermissions clears the set; a later remove reports
+        // the policy miss (has_permissions is statement-count based).
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "RemoveAllPermissions": true}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "StatementId": "whatever"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "EventBus does not have a policy.");
     }
 
     // -- PutRule event-pattern validation (F9, agent-221 finding 9) ------------

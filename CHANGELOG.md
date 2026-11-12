@@ -79,10 +79,20 @@ under *Changelog discipline*.
   already published, models.py:1498-1502); put_permission resolves
   its bus before the parameter checks (models.py:1604-1611);
   create_archive gates its source through _get_event_bus ahead of the
-  duplicate check (models.py:1739, duplicate wording keeps the
-  trailing period); list_tags_for_resource finds rule-tail names on
-  any bus and bus-name tails, and misses answer "Rule {name} does not
-  exist on EventBus default." (models.py:1714-1722).
+  duplicate check with the trailing period); list_tags_for_resource
+  finds rule-tail names on any bus and bus-name tails, and misses
+  answer "Rule {name} does not exist on EventBus default."
+  (models.py:1714-1722). The review round added: the server-side
+  >10-entries constraint arm on put_events (botocore validates only
+  min, models.py:1449-1456), the registered-partner-source path in
+  create_event_bus (plus the conditional slash check — a partner
+  bus' name may carry the '/') and the exact-ARN tag-store prune on
+  DeleteConnection; the sibling permission arms run in the fork's
+  order — principal/condition/Action/StatementId shape errors
+  (models.py:1564-1597), the RemoveAllPermissions arm and the
+  "Statement with the provided id does not exist." miss
+  (models.py:1630-1643), and a re-grant REPLACES the principal's
+  earlier statements (add_permission, models.py:505-530).
 - **Events: the rule `EventPattern` render keeps explicitly-empty
   values.** EventPattern="" is SDK-reachable (no min on the trait)
   and EventPattern.load stores the raw string verbatim
