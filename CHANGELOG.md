@@ -62,6 +62,27 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **Lambda: the alias and layer miss recipes follow the fork.** The
+  2026-11-12 census measured the twin's local wordings against moto's
+  helpers: alias ops resolve the FUNCTION first (models.py:1554-1560 via
+  _get_function_aliases → the Function-not-found arn wording, no
+  version suffix); a missing alias on an EXISTING function answers
+  UnknownAliasException "Cannot find alias arn: <the full alias arn>"
+  (models.py:1560-1564, exceptions.py:56-60) instead of the twin's
+  name-only wording; delete_alias is a SILENT no-op — moto pops with
+  `pop(name, None)` (models.py:1554-1557) where the twin 404'd. The
+  whole layer-miss family (a missing layer and a wrong version)
+  answers moto's UnknownLayerException constant "Cannot find layer"
+  (models.py:1879-1907) instead of the twin's structural messages; the
+  wrong-version delete stays a silent no-op (both engines) and
+  GetLayerVersionByArn stays a recorded crash-divergence — moto's
+  None-return turns into an HTML 500 (models.py:1910+), the twin keeps
+  its sane 404. Pins: get_alias_follows_the_function_then_moto_wording /
+  delete_alias_missing_alias_is_a_silent_noop /
+  update_alias_missing_fn_is_function_not_found /
+  layer_misses_carry_the_unknown_layer_constant; differential corpus
+  lambda_alias_layers (8 rows, 0 unexpected).
+
 - **SQS: the redrive move preserves the receive bookkeeping and the
   receive scan keeps delivering past it.** Two measured rows from the
   2026-11-11 census: (a) moto's DLQ move passes the message object to
@@ -80,7 +101,24 @@ under *Changelog discipline*.
   (census: artifacts/sqs-redrive-census.py; the differential corpus
   sqs_redrive pins the rows standing). A dangling RedrivePolicy target
   keeps the recorded "Could not find DLQ for <arn>" answer (models.py
-  :420-424, converged already). The adversarial review's re-scan row
+  :420-424, converged already).
+- **Lambda follow-up on the SAME tranche (the adversarial review rows):**
+  create_alias resolves name+qualifier in ONE split call
+  (models.py:1574 → 1724-1738) so the unknown-function arn carries the
+  ":<version>" suffix ("…:function:<fn>:1" / "…:<fn>:$LATEST" — the
+  review's BLOCKER row: previously the bare-name arn); the
+  duplicate-alias answer is ConflictException "Alias already exists:
+  arn:…:function:<fn>:<alias>" (models.py:1578-1580, exceptions.py
+  :46-50) instead of the twin's ResourceConflictException. Recorded
+  (NOT ported — the review's rows, for their own tranches): the alias/
+  layer SUCCESS statuses (moto 201s at responses.py:399,405,421,351-355
+  vs the twin's 200/204 family); list_layer_versions newest-first order
+  (responses.py:365-366); GetLayerVersionByArn: moto 5.2.5 never
+  registers the action and 500-crashes EVERY call
+  (moto/core/responses.py:483) — the earlier CHANGELOG cited the
+  models.py:1910+ helper; that is unreachable from moto_server. Corpus
+  lambda_alias_layers now carries create_alias v1/$LATEST rows (10
+  rows, 0 unexpected). The adversarial review's re-scan row
   was fixed by receipt-handle exclusion passes
   (receive_messages_excluding) — moto's scan visits each queued
   message once per call, so a VisibilityTimeout=0 delivery must not
