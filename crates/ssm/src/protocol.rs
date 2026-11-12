@@ -45,13 +45,18 @@ impl AwsResponse {
     /// this list rides the unmodeled get_error_model shape — capital
     /// `Message` only. ValidationException and InvalidFilterKey are
     /// unmodeled in SSM (auto-created via get_error_model).
-    const MODELED_CODES: [&str; 6] = [
+    const MODELED_CODES: [&str; 8] = [
         "ParameterNotFound",
         "ParameterVersionNotFound",
         "ParameterLimitExceeded",
         "ParameterMaxVersionLimitExceeded",
         "ParameterAlreadyExists",
         "InvalidFilterOption",
+        // The label-limit model: measured both-member on the wire
+        // (moto ssm/models.py:2146 — the review's BLOCKER row with an
+        // 11-label drive).
+        "ParameterVersionLabelLimitExceeded",
+        "InvalidOptionException",
     ];
 
     pub fn error(status: u16, code: &str, message: &str) -> Self {
