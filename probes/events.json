@@ -1,10 +1,10 @@
 {
   "service": "events",
-  "generated_at": "2026-11-11T07:29:43.153567+00:00",
+  "generated_at": "2026-11-12T05:15:25.437635+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/events.rs": "absent",
     "rotocore/src/services/events/": "absent",
-    "crates/events/src/": "a195b453e31d70f456612135bc78653e06a38bec2d1cf174f3518336429f1081"
+    "crates/events/src/": "5ae5cf7af1de84a813e52c8b4112c06e24e32f9d62d5eac182d128e1e4f48f31"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -238,7 +238,7 @@
     {
       "operation": "PutRule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "PutTargets",

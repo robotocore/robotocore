@@ -349,10 +349,11 @@ impl EventsHandler {
         let state = self.get_state(req.account, &req.region);
         match state.get_rule(&key.0, &key.1) {
             Some(rule) => AwsResponse::json(200, rule.to_value()),
+            // moto events/models.py:1328 — "Rule {name} does not exist."
             None => AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
-                &format!("Rule not found: {}", key.1),
+                &format!("Rule {} does not exist.", key.1),
             ),
         }
     }
@@ -428,6 +429,32 @@ impl EventsHandler {
             .cloned()
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        // moto validates every target ARN shape BEFORE the rule lookup
+        // (models.py:1399-1411 — the "super simple ARN check",
+        // `re.match(r"arn:[\d\w:\-/]*", …)`): an invalid Arn answers
+        // ValidationException "Parameter {arn} is not valid. Reason:
+        // Provided Arn is not in correct format." ahead of the rule-miss
+        // ResourceNotFound. The predicate mirrors the fork EXACTLY
+        // (the review's B-row): `re.match` anchors the `arn:` literal at
+        // the start and the `*` class NEVER needs to consume (an
+        // arbitrary tail beyond the class, unicode \w members, and an
+        // empty rest all match); an EMPTY Arn is a falsy jump out of
+        // `if invalid_arn:` — the validation only fires for a
+        // non-empty Arn that does not start with `arn:`.
+        let invalid_arn = targets
+            .iter()
+            .map(|t| t.get("Arn").and_then(Value::as_str).unwrap_or_default())
+            .find(|arn| !arn.is_empty() && !arn.starts_with("arn:"));
+        if let Some(bad) = invalid_arn {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "Parameter {} is not valid. Reason: Provided Arn is not in correct format.",
+                    bad
+                ),
+            );
+        }
         // moto `EventsBackend.put_targets` raises for a missing rule; the
         // twin used to report all-green failed-entry totals for one.
         let Some(rule) = state.get_rule(&key.0, &key.1) else {
