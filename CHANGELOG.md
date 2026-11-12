@@ -61,6 +61,24 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **DynamoDB: the error `__type` carries the service namespace on the
+  prefixed families.** moto's ERROR_TYPE_PREFIX
+  `com.amazonaws.dynamodb.v20120810#` rides the MockValidation family
+  (the "1 validation error detected" roster, KeyIsEmptyString,
+  ItemSize, TransactWriteSingleOp) and the eight bare-literal
+  Resource* / Stream* classes (exceptions.py:7-40, 205-260, the
+  ResourceInUse construction) — but NOT the bare
+  ValidationException / SerializationException / InvalidConversion
+  classes (exceptions.py:380-401: table.py's N-conversion legs —
+  "The parameter cannot be converted to a numeric value",
+  "Number overflow.", "Number underflow.", "Null attribute value
+  types must have the value of true", "NUMBER_VALUE cannot be
+  converted to String"). The twin's writer namespaces by that raise-
+  class split (the put_item N-families the reviewer refuted stay
+  bare). The batch_execute_statement per-row codes strip the
+  envelope's prefix — moto's rows carry bare literal codes
+  (models/__init__.py:935,945) and never the namespace.
+
 - **S3: the multipart-uploads render + the NoSuchUpload wording.**
   list_multipart_uploads drops the NextKeyMarker/NextUploadIdMarker
   pair it emitted on every shape — the fork's arm does not paginate
