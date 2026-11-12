@@ -1984,6 +1984,7 @@ dependencies = [
  "chrono",
  "hex",
  "parking_lot",
+ "secretsmanager",
  "serde",
  "serde_json",
  "serde_yaml",

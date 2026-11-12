@@ -104,6 +104,26 @@ under *Changelog discipline*.
   the enum check) — instead of the enum error the twin emitted
   (botocore hides it; the raw-SigV4 replay exposed it).
 
+- **SSM: the `/aws/reference/secretsmanager/` rows resolve through the
+  owning Secrets Manager store.** The whole family (moto responses.py
+  :171-177 + models.py:178-180, `_get_secretsmanager_parameter`):
+  Without WithDecryption the gate answers ValidationException
+  "WithDecryption flag must be True for retrieving a Secret Manager
+  secret." ahead of any lookup (the twin answered the generic
+  ParameterNotFound); WithDecryption rides the bridge
+  (secretsmanager::bridge — the s3::bridge pattern, registered from
+  the secretsman handler get_state) to render the secret as a
+  SecureString parameter: the secret's own Name, the AWSCURRENT
+  decrypted value, `Version: 0`, a SourceResult with the secret's
+  describe-dict (ARN/Name/LastChangedDate/LastAccessedDate/
+  NextRotationDate/DeletedDate/CreatedDate/KmsKeyId/Description/
+  VersionIdsToStages/SecretVersionsToStages — measured key order), and
+  the ssm ARN riding the secret's name. A missing secret answers
+  "An error occurred (ParameterNotFound) when referencing Secrets
+  Manager: Secret <path> not found." riding the ParameterNotFound
+  both-member envelope. Live-verified 2026-11-12: gate + resolved +
+  miss rows byte-equal at both engines (secret minted per engine).
+
 - **Api Gateway v2: the identifier-miss wordings follow the fork.** The
   2026-11-11 census's apigwv2 rows land: a missing API answers
   "Invalid API identifier specified <apiId>" (the wire's Integration

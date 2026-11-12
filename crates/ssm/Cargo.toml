@@ -6,6 +6,9 @@ license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
+# The /aws/reference/secretsmanager/ rows resolve through the owning
+# Secrets Manager store (moto _get_secretsmanager_parameter).
+secretsmanager = { path = "../secretsmanager" }
 serde_json = "1.0"
 serde_yaml = "0.9"
 bytes = "1.5"

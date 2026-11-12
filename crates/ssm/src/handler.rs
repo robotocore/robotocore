@@ -525,6 +525,90 @@ impl SsmHandler {
         AwsResponse::json(200, json!({ "Version": 1, "Tier": tier_out }))
     }
 
+    /// The `/aws/reference/secretsmanager/<name>` resolution: ride the
+    /// owning Secrets Manager store through the bridge for the
+    /// AWSCURRENT string (moto models.py:178-180 →
+    /// `_get_secretsmanager_parameter`); the response carries the
+    /// secret's Name, Type SecureString, the decrypted value, and a
+    /// SourceResult with the secret's describe-dict (measured
+    /// 2026-11-12: SourceResult keys ARN/Name/LastChangedDate/
+    /// LastAccessedDate/NextRotationDate/DeletedDate/CreatedDate/
+    /// KmsKeyId/Description/VersionIdsToStages/SecretVersionsToStages;
+    /// Version renders 0; the parameter ARN rides the SECRET name).
+    fn get_secretsmanager_reference(
+        &self,
+        req: &AwsRequest,
+        secret_name: &str,
+        with_decryption: bool,
+    ) -> AwsResponse {
+        if !with_decryption {
+            // Unreachable after the entry gate; kept parallel to moto.
+            return err_validation(
+                "WithDecryption flag must be True for retrieving a Secret Manager secret.",
+            );
+        }
+        let Some((secret_name, value, secret_arn, created, description, kms, version_id)) =
+            secretsmanager::bridge::current_string_entry(req.account, &req.region, secret_name)
+        else {
+            return AwsResponse::error(
+                400,
+                "ParameterNotFound",
+                &format!(
+                    "An error occurred (ParameterNotFound) when referencing Secrets Manager: \
+                     Secret /aws/reference/secretsmanager/{secret_name} not found."
+                ),
+            );
+        };
+        AwsResponse::json(
+            200,
+            json!({ "Parameter": Self::secretsmanager_reference_parameter(
+                &secret_name, &secret_arn, &value, created, description.as_deref(),
+                kms.as_deref(), &version_id,
+            ) }),
+        )
+    }
+
+    /// The SourceResult describe-dict of the referenced secret — moto
+    /// dumps `describe_secret(...).to_dict()` in the fork's key order
+    /// (measured 2026-11-12): ARN/Name/LastChangedDate/LastAccessedDate/
+    /// NextRotationDate/DeletedDate/CreatedDate/KmsKeyId/Description/
+    /// VersionIdsToStages/SecretVersionsToStages. Built from the live
+    /// Secret via the bridge snapshot the ssm arm reads.
+    pub fn secretsmanager_reference_parameter(
+        secret_name: &str,
+        secret_arn: &str,
+        value: &str,
+        created_epoch: i64,
+        description: Option<&str>,
+        kms_key_id: Option<&str>,
+        version_id: &str,
+    ) -> serde_json::Value {
+        let source = serde_json::json!({
+            "ARN": secret_arn,
+            "Name": secret_name,
+            "LastChangedDate": created_epoch,
+            "LastAccessedDate": serde_json::Value::Null,
+            "NextRotationDate": serde_json::Value::Null,
+            "DeletedDate": serde_json::Value::Null,
+            "CreatedDate": created_epoch,
+            "KmsKeyId": serde_json::Value::Null,
+            "Description": serde_json::Value::Null,
+            "VersionIdsToStages": { version_id: ["AWSCURRENT"] },
+            "SecretVersionsToStages": { version_id: ["AWSCURRENT"] },
+        })
+        .to_string();
+        serde_json::json!({
+            "Name": secret_name,
+            "Type": "SecureString",
+            "Value": value,
+            "Version": 0,
+            "SourceResult": source,
+            "LastModifiedDate": created_epoch,
+            "ARN": format!("arn:aws:ssm::123456789012:parameter/{secret_name}"),
+            "DataType": "text",
+        })
+    }
+
     fn get_parameter(&self, req: &AwsRequest) -> AwsResponse {
         let raw = req
             .params
@@ -533,6 +617,21 @@ impl SsmHandler {
             .unwrap_or("");
         let name = strip_arn_prefix(raw, &req.region, req.account);
         let with_decryption = bool_of(req.params.get("WithDecryption"));
+        // moto responses.py:171-177: the secretsmanager-reference paths
+        // FORCE WithDecryption before any lookup.
+        if name.starts_with("/aws/reference/secretsmanager/") && !with_decryption {
+            return err_validation(
+                "WithDecryption flag must be True for retrieving a Secret Manager secret.",
+            );
+        }
+        // models.py:178-180 (__getitem__): the secretsmanager-reference
+        // path resolves through the owning Secrets Manager store
+        // (_get_secretsmanager_parameter) — the current value rides back
+        // as a SecureString parameter whose Name/source carry the
+        // secret's own bookkeeping.
+        if let Some(secret_name) = name.strip_prefix("/aws/reference/secretsmanager/") {
+            return self.get_secretsmanager_reference(req, secret_name, with_decryption);
+        }
         let state = self.get_state(req.account, &req.region);
         match state.resolve_parameter(&name) {
             Ok(Some((param, version))) => {
