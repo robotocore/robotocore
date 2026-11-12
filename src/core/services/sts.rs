@@ -326,14 +326,31 @@ fn handle_assume_role(
         });
     let role_name = role_arn.rsplit('/').next().unwrap_or(&role_arn);
 
-    // Check policy size limit (2048 characters when packed)
-    if let Some(policy) = req.params.get("Policy").and_then(|v| v.as_str()) {
-        if policy.len() > 2048 {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Policy is too large",
-            )));
-        }
+    // moto sts/responses.py assume_role (:65-77): a RoleSessionName over
+    // 64 chars answers ValidationError with the modeled sentence BEFORE
+    // the backend runs (the 2026-11-11 census's length row; the twin
+    // minted 65-char sessions).
+    if session_name.len() > 64 {
+        return Ok(ParsedResponse::raw(
+            StatusCode::BAD_REQUEST,
+            {
+                let mut h = std::collections::HashMap::new();
+                h.insert("Content-Type".to_string(), "text/xml".to_string());
+                h
+            },
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ErrorResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+    <Error>
+        <Type>Sender</Type>
+        <Code>ValidationError</Code>
+        <Message>1 validation error detected: Value '{}' at 'roleSessionName' failed to satisfy constraint: Member must have length less than or  equal to 64</Message>
+    </Error>
+    <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
+</ErrorResponse>"#,
+                session_name
+            ),
+        ));
     }
 
     let arn = format!(
@@ -364,6 +381,7 @@ fn handle_assume_role(
             <Arn>{}</Arn>
             <AssumedRoleId>{}</AssumedRoleId>
         </AssumedRoleUser>
+        <PackedPolicySize>6</PackedPolicySize>
     </{}Result>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
