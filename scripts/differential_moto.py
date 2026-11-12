@@ -990,6 +990,59 @@ def corpus_iam_sts(engine):
     return out
 
 
+@corpus("sqs_redrive")
+def corpus_sqs_redrive(engine):
+    """SQS redrive semantics the 2026-11-11 blitz measured (the 2026-11-12
+    twin port landed the rows; artifacts/sqs-redrive-census.py). moto's
+    receive scan (sqs/models.py:1011-1056) `continue`s a DLQ-eligible
+    head into the DLQ move and keeps delivering the fresh messages
+    behind it in the SAME receive up to the count; the DLQ move passes
+    the message object to the DLQ's add_message unchanged
+    (models.py:1044-1051) so ApproximateReceiveCount carries across
+    (source rc 2 pre-move -> "3" on the DLQ receive)."""
+    out = []
+    sqs = engine.client("sqs")
+    dlq = engine.res_name("diff-rd-dlq")
+    src = engine.res_name("diff-rd-src")
+    dlq_url = sqs.create_queue(QueueName=dlq)["QueueUrl"]
+    src_url = sqs.create_queue(
+        QueueName=src,
+        Attributes={
+            "RedrivePolicy": json.dumps(
+                {
+                    "deadLetterTargetArn": f"arn:aws:sqs:us-east-1:123456789012:{dlq}",
+                    "maxReceiveCount": 2,
+                }
+            )
+        },
+    )["QueueUrl"]
+    sqs.send_message(QueueUrl=src_url, MessageBody="EXHAUSTED")
+    sqs.send_message(QueueUrl=src_url, MessageBody="fresh-0")
+    near = dict(QueueUrl=src_url, MaxNumberOfMessages=1, VisibilityTimeout=0)
+    receive = lambda: sqs.receive_message(**near)  # noqa: E731
+    out.append(("exhaust_recv1", err_wrap(receive)))
+    out.append(("exhaust_recv2", err_wrap(receive)))
+    # The keep-scan receive: the head redrives and fresh-0 still delivers
+    # in the SAME default-capacity call.
+    out.append(
+        ("keep_scan", err_wrap(lambda: sqs.receive_message(QueueUrl=src_url, VisibilityTimeout=0)))
+    )
+    out.append(
+        (
+            "dlq_receive",
+            err_wrap(
+                lambda: sqs.receive_message(
+                    QueueUrl=dlq_url,
+                    MaxNumberOfMessages=10,
+                    WaitTimeSeconds=1,
+                    AttributeNames=["All"],
+                )
+            ),
+        )
+    )
+    return out
+
+
 @corpus("lambda_roles")
 def corpus_lambda_roles(engine):
     """Lambda create-path role gate (moto LambdaBackend.put_function,

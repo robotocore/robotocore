@@ -62,6 +62,32 @@ under *Changelog discipline*.
 
 ### Fixed
 
+- **SQS: the redrive move preserves the receive bookkeeping and the
+  receive scan keeps delivering past it.** Two measured rows from the
+  2026-11-11 census: (a) moto's DLQ move passes the message object to
+  the DLQ's add_message unchanged (sqs/models.py:1044-1051) —
+  ApproximateReceiveCount carries across the move and the first-receive
+  stamp survives, the DLQ's own receive then increments the preserved
+  value (source rc 2 pre-move → "3" on the DLQ receive — the twin
+  zeroed it to "1"); (b) moto's receive scan `continue`s past a
+  DLQ-eligible head (models.py:1021-1034) — the fresh messages behind
+  it deliver in the SAME receive up to the count, so a default (uncapped)
+  receive after a redrive-threshold head neither reports empty nor
+  wastes the scan. The twin now re-scans within the held critical
+  section until capacity is filled or the queue drains, and the moved
+  message keeps its pre-scan count. Pins:
+  test_redrive_move_preserves_receive_count_and_keeps_scanning
+  (census: artifacts/sqs-redrive-census.py; the differential corpus
+  sqs_redrive pins the rows standing). A dangling RedrivePolicy target
+  keeps the recorded "Could not find DLQ for <arn>" answer (models.py
+  :420-424, converged already). The adversarial review's re-scan row
+  was fixed by receipt-handle exclusion passes
+  (receive_messages_excluding) — moto's scan visits each queued
+  message once per call, so a VisibilityTimeout=0 delivery must not
+  re-receive in a later pass of the same call and inflate
+  ApproximateReceiveCount into a spurious DLQ move; the flaky in-process
+  pin came out in favor of the standing corpus step.
+
 - **SNS: the validation table.** The 2026-11-11 census gaps all follow
   moto's wire now (lines pinned in the crate pins): Publish
   MessageAttributes validate at entry — a DataType off the
