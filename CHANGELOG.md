@@ -72,12 +72,16 @@ under *Changelog discipline*.
   "super simple ARN check"` re.match(r"arn:[\d\w:\-/]*")` BEFORE the
   rule resolution (models.py:1399-1411) — an off-shape Arn answers
   ValidationException "Parameter {arn} is not valid. Reason: Provided
-  Arn is not in correct format." ahead of the rule-miss row (the
-  re.match start anchor requires the `arn:` literal prefix — "arn:"
-  alone packs zero rest and passes). Wire-verified 2026-11-12: both
-  rows byte-equal at both engines across the 4-shape matrix.
+  Arn is not in correct format." ahead of the rule-miss row. The
+  predicate mirrors the fork EXACTLY after the review's BLOCKER:
+  `re.match` anchors the `arn:` literal at the start and the class
+  NEVER needs to consume — an arbitrary tail beyond the class, unicode
+  \w members, and an empty rest all match; the EMPTY Arn is a falsy
+  skip out of moto's `if invalid_arn:` (the char-scan port rejected
+  ARNs the fork attaches — arn:x? / arn:café-x / empty rows).
+  Wire-verified: the 4-shape matrix byte-equal at both engines.
 
-- **SQS: the redrive move preserves The
+- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
   2026-11-11 census's apigwv2 rows land: a missing API answers
   "Invalid API identifier specified <apiId>" (the wire's Integration
   and Route questions run through the api gate first, models.py
@@ -88,7 +92,7 @@ under *Changelog discipline*.
   carries the Route wording even with a RouteResponseId riding along,
   models.py:1013-1020) — the twin carried "<X> <id> not found" shapes
   for all of them. Pins: apigatewayv2::identifier_wording_pins (the api
-  gate + the per-kind family + the route-first row); wire-verified
+  gate + the per-kind family + the route-first row). Wire-verified
   2026-11-12: every GET-miss wording byte-equal at both engines. The
   DELETE arms after the review: delete_api / delete_route /
   delete_integration / delete_route_response on a missing id answer
@@ -105,15 +109,14 @@ under *Changelog discipline*.
   DLQ-eligible head (models.py:1021-1034) — the fresh messages behind
   it deliver in the SAME receive up to the count, so a default (uncapped)
   receive after a redrive-threshold head neither reports empty nor
-  wastes the scan. The twin now re-scans within the held critical
-  section until capacity is filled or the queue drains, and the moved
-  message keeps its pre-scan count. Pins:
+  wastes the scan. The twin re-scans within the held critical section
+  until capacity is filled or the queue drains, and the moved message
+  keeps its pre-scan count. Pins:
   test_redrive_move_preserves_receive_count_and_keeps_scanning
   (census: artifacts/sqs-redrive-census.py; the differential corpus
   sqs_redrive pins the rows standing). A dangling RedrivePolicy target
   keeps the recorded "Could not find DLQ for <arn>" answer (models.py
-  :420-424, converged already).
-- **Lambda: the alias and layer miss recipes follow the fork.** The
+  :420-424, converged already).- **Lambda: the alias and layer miss recipes follow the fork.** The
   2026-11-12 census measured the twin's local wordings against moto's
   helpers: alias ops resolve the FUNCTION first (models.py:1554-1560 via
   _get_function_aliases → the Function-not-found arn wording, no
