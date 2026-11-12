@@ -176,11 +176,13 @@ impl EventsHandler {
         if name.is_empty() {
             return AwsResponse::error(400, "ValidationException", "Name is required");
         }
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
+        let raw_bus = Self::param_str(req, &["EventBusName"]);
+        // moto _normalize_event_bus_arn (events/models.py:1300-1303):
+        // the full EventBus ARN form resolves to its tail segment.
+        let bus = if raw_bus.is_empty() {
             "default".to_string()
         } else {
-            bus
+            raw_bus.rsplit('/').next().unwrap_or(&raw_bus).to_string()
         };
         let state = self.get_state(req.account, &req.region);
 
@@ -278,7 +280,7 @@ impl EventsHandler {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
-                &format!("Event bus {bus} not found"),
+                &format!("Event bus {bus} does not exist."),
             );
         }
         // The caller's State param must stick (era parity: moto's
@@ -334,7 +336,12 @@ impl EventsHandler {
     }
 
     fn rule_key(req: &AwsRequest) -> (String, String) {
-        let bus = Self::param_str(req, &["EventBusName"]);
+        let mut bus = Self::param_str(req, &["EventBusName"]);
+        // moto _normalize_event_bus_arn (events/models.py:1300-1303):
+        // the full EventBus ARN form resolves to its tail segment.
+        if !bus.is_empty() {
+            bus = bus.rsplit('/').next().unwrap_or(&bus).to_string();
+        }
         let bus = if bus.is_empty() {
             "default".to_string()
         } else {
@@ -351,7 +358,14 @@ impl EventsHandler {
     /// rule resolution on every rule-scoped op carrying an
     /// EventBusName.
     fn bus_gate(req: &AwsRequest, state: &EventsState) -> Result<(), AwsResponse> {
-        let bus = Self::param_str(req, &["EventBusName"]);
+        // moto _normalize_event_bus_arn (events/models.py:1300-1303):
+        // the ARN form resolves to its tail segment before the lookup.
+        let raw_bus = Self::param_str(req, &["EventBusName"]);
+        let bus = if raw_bus.is_empty() {
+            "default".to_string()
+        } else {
+            raw_bus.rsplit('/').next().unwrap_or(&raw_bus).to_string()
+        };
         if !bus.is_empty() && bus != "default" && !state.event_buses.read().contains_key(&bus) {
             return Err(AwsResponse::error(
                 400,
@@ -404,6 +418,9 @@ impl EventsHandler {
     fn set_rule_state(&self, req: &AwsRequest, state: &str) -> AwsResponse {
         let key = Self::rule_key(req);
         let state_store = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state_store) {
+            return resp;
+        }
         match state_store.get_rule(&key.0, &key.1) {
             Some(rule) => {
                 *rule.state.write() = state.to_string();
@@ -429,6 +446,9 @@ impl EventsHandler {
             _ => "default".to_string(),
         };
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         let rules: Vec<Value> = state
             .rules
             .read()
@@ -575,7 +595,11 @@ impl EventsHandler {
 
     fn list_targets_by_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
-        let state = self.get_state(req.account, &req.region);
+        let bus_state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+            return resp;
+        }
+        let state = bus_state;
         // moto `responses.list_targets_by_rule`: KeyError on a missing rule
         // renders as ResourceNotFoundException ("Rule <name> does not
         // exist.").
@@ -593,6 +617,9 @@ impl EventsHandler {
     fn list_rule_names_by_target(&self, req: &AwsRequest) -> AwsResponse {
         let target_arn = Self::param_str(req, &["TargetArn"]);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         let names: Vec<String> = state
             .rules
             .read()

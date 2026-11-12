@@ -1,10 +1,10 @@
 {
   "service": "events",
-  "generated_at": "2026-11-12T07:08:25.536177+00:00",
+  "generated_at": "2026-11-12T07:26:22.128368+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/events.rs": "absent",
     "rotocore/src/services/events/": "absent",
-    "crates/events/src/": "874bc7c5cf11406155286fded23874fc707beb8d5e2e18034bac0b6098b9d508"
+    "crates/events/src/": "cb10b1eccd0de602b43b369565940dbcfef7b35b695570a5f8e7cf73f486832b"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -203,12 +203,12 @@
     {
       "operation": "ListRuleNamesByTarget",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListRules",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTagsForResource",
