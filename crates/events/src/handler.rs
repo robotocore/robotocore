@@ -1,6 +1,6 @@
 //! EventBridge operation handler.
 
-use crate::models::{EventsState, Rule};
+use crate::models::{now_micros_f, EventsState, Rule};
 use crate::pattern::matches_pattern;
 use crate::protocol::{AwsRequest, AwsResponse};
 use once_cell::sync::Lazy;
@@ -76,6 +76,81 @@ fn now_f() -> f64 {
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+/// Serialize a Value the way python's `json.dumps` does by default: a
+/// space after every `,` and `:` outside string literals. moto's
+/// `EventBus.policy` property (models.py:425-431) renders its Policy
+/// members through plain `json.dumps`, and DescribeEventBus carries the
+/// policy as a STRING — the twin must byte-match that format.
+fn py_json(v: &Value) -> String {
+    let mut out = String::new();
+    py_json_into(v, &mut out);
+    out
+}
+
+fn py_json_into(v: &Value, out: &mut String) {
+    match v {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) => out.push_str(&n.to_string()),
+        Value::String(s) => py_json_string(s, out),
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                py_json_into(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            out.push('{');
+            for (i, (key, item)) in map.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                py_json_string(key, out);
+                out.push_str(": ");
+                py_json_into(item, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// python json.dumps defaults: ensure_ascii escapes, ", " and ": " apart,
+/// same string escapes python emits (short \\uXXXX, surrogate pair
+/// encoded forography outside the BMP).
+fn py_json_string(s: &str, out: &mut String) {
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c if (c as u32) < 0x7f => out.push(c),
+            // python's ensure_ascii escapes everything at or above DEL
+            // (0x7f) as \u007f.
+            c if (c as u32) <= 0xffff => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => {
+                // Non-BMP: python emits the surrogate pair.
+                let cp = c as u32 - 0x10000;
+                let hi = 0xd800 + (cp >> 10);
+                let lo = 0xdc00 + (cp & 0x3ff);
+                out.push_str(&format!("\\u{:04x}\\u{:04x}", hi, lo));
+            }
+        }
+    }
+    out.push('"');
 }
 
 /// Archive capture: `event` lands in every archive whose EventSourceArn
@@ -1085,7 +1160,29 @@ impl EventsHandler {
             "arn:aws:events:{}:{}:event-bus/{}",
             req.region, req.account, name
         );
-        let bus = json!({ "Name": name, "Arn": arn });
+        // The record stores the CREATE stamps + the optional detail
+        // members (the bus record carries what the fork's EventBus does:
+        // description/kms/dead-letter_config, EventBus init
+        // models.py:390-403); describe re-renders them truthy-only.
+        let mut bus = json!({ "Name": name, "Arn": arn, "Created": now_micros_f() });
+        if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
+            if !desc.is_empty() {
+                bus["Description"] = json!(desc);
+            }
+        }
+        if let Some(kms) = req.params.get("KmsKeyIdentifier").and_then(|v| v.as_str()) {
+            if !kms.is_empty() {
+                bus["KmsKeyIdentifier"] = json!(kms);
+            }
+        }
+        if let Some(dlc) = req
+            .params
+            .get("DeadLetterConfig")
+            .and_then(|v| v.as_object())
+            .filter(|d| !d.is_empty())
+        {
+            bus["DeadLetterConfig"] = json!(dlc);
+        }
         state.event_buses.write().insert(name.clone(), bus);
         // moto responses.create_event_bus renders EventBusArn ONLY.
         AwsResponse::json(200, json!({ "EventBusArn": arn }))
@@ -1156,20 +1253,109 @@ impl EventsHandler {
             );
         }
         let arn = state.bus_arn(req.account, &req.region, &name);
-        AwsResponse::json(200, json!({ "Name": name, "Arn": arn }))
+        // moto responses.describe_event_bus (responses.py:238-262): the
+        // four core members + the truth-only detail members (Description
+        // / KmsKeyIdentifier / DeadLetterConfig) and the Policy STRING
+        // when the bus has statements (EventBus.policy,
+        // models.py:425-431 — python json.dumps separators).
+        let stored = state.event_buses.read().get(&name).cloned();
+        // The create stamp: a stored bus carries its own; the virtual
+        // default consults the once-stamped state cache (moto stamps the
+        // default bus at backend init, models.py:1221-1225).
+        let created = match &stored {
+            Some(s) => s.get("Created").cloned(),
+            None => {
+                // Write-once so the stamp is stable across every call on
+                // the same state.
+                let mut stamp = state.default_bus_created.write();
+                if stamp.is_none() {
+                    *stamp = Some(now_micros_f());
+                }
+                (*stamp).map(|ts| json!(ts))
+            }
+        }
+        .unwrap_or_else(|| json!(now_micros_f()));
+        let policy_string = {
+            let entry = state.bus_policies.read().get(&name).cloned();
+            entry.and_then(|entry| {
+                let statements = entry.get("Statement").and_then(|s| s.as_array())?;
+                if statements.is_empty() {
+                    return None;
+                }
+                Some(py_json(&json!({
+                    "Version": "2012-10-17",
+                    "Statement": statements,
+                })))
+            })
+        };
+        let mut response = json!({
+            "Arn": arn,
+            "CreationTime": created,
+            "Name": name,
+            "LastModifiedTime": created,
+        });
+        if let Some(stored) = &stored {
+            if let Some(dlc) = stored.get("DeadLetterConfig").filter(|d| !d.is_null()) {
+                if dlc.as_object().is_some_and(|o| !o.is_empty()) {
+                    response["DeadLetterConfig"] = dlc.clone();
+                }
+            }
+            if let Some(desc) = stored.get("Description").and_then(|v| v.as_str()) {
+                if !desc.is_empty() {
+                    response["Description"] = json!(desc);
+                }
+            }
+            if let Some(kms) = stored.get("KmsKeyIdentifier").and_then(|v| v.as_str()) {
+                if !kms.is_empty() {
+                    response["KmsKeyIdentifier"] = json!(kms);
+                }
+            }
+        }
+        if let Some(policy) = policy_string {
+            response["Policy"] = json!(policy);
+        }
+        AwsResponse::json(200, response)
     }
 
     fn list_event_buses(&self, req: &AwsRequest) -> AwsResponse {
         let prefix = Self::param_str(req, &["NamePrefix"]);
         let state = self.get_state(req.account, &req.region);
-        let mut buses = vec![json!({
-            "Name": "default",
-            "Arn": state.bus_arn(req.account, &req.region, "default"),
-        })];
+        // moto responses.list_event_buses (responses.py:294-296): the row
+        // carries the Policy STRING when the bus has statements.
+        let policies = state.bus_policies.read();
+        let bus_policy_string = |bus_name: &str| -> Option<Value> {
+            policies.get(bus_name).and_then(|entry| {
+                let statements = entry.get("Statement").and_then(|s| s.as_array())?;
+                if statements.is_empty() {
+                    return None;
+                }
+                Some(json!(py_json(&json!({
+                    "Version": "2012-10-17",
+                    "Statement": statements,
+                }))))
+            })
+        };
+        let mut buses = vec![{
+            let mut row = json!({
+                "Name": "default",
+                "Arn": state.bus_arn(req.account, &req.region, "default"),
+            });
+            if let Some(policy) = bus_policy_string("default") {
+                row["Policy"] = json!(policy);
+            }
+            row
+        }];
         let stored = state.event_buses.read();
         let mut rows: Vec<Value> = stored
             .values()
-            .map(|bus| json!({ "Name": bus["Name"], "Arn": bus["Arn"] }))
+            .filter_map(|bus| {
+                let bus_name = bus.get("Name").and_then(|n| n.as_str())?;
+                let mut row = json!({ "Name": bus["Name"], "Arn": bus["Arn"] });
+                if let Some(policy) = bus_policy_string(bus_name) {
+                    row["Policy"] = json!(policy);
+                }
+                Some(row)
+            })
             .collect();
         rows.sort_by(|a, b| a["Name"].as_str().cmp(&b["Name"].as_str()));
         buses.append(&mut rows);
@@ -1260,6 +1446,90 @@ impl EventsHandler {
                 &format!("Event bus {bus} does not exist."),
             );
         }
+        // moto put_permission splits on Policy vs params
+        // (models.py:1612-1616): a Policy body takes _put_permission_from_policy
+        // — the param checks NEVER run — and invalid JSON answers
+        // "This policy contains invalid Json" (models.py:1539-1543).
+        if let Some(policy_body) = req
+            .params
+            .get("Policy")
+            .and_then(|v| v.as_str())
+            .filter(|p| !p.is_empty())
+        {
+            let parsed: Value = match serde_json::from_str(policy_body) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "This policy contains invalid Json",
+                    );
+                }
+            };
+            // EventBus.add_policy (models.py:516-527): the statement list
+            // indexed by Sid — every PRIOR statement for the SAME
+            // principal disappears, and the statement dict carries the
+            // body's Sid/Effect/Principal/Action/Resource (+Condition)
+            // verbatim into `EventBusPolicyStatement.from_dict`
+            // (models.py:439-458 — missing keys would KeyError; bodies
+            // that crash moto are out of the twin's model).
+            let mut policies = state.bus_policies.write();
+            if let Some(entry) = policies.get_mut(&bus) {
+                if let Some(arr) = entry.get_mut("Statement").and_then(|s| s.as_array_mut()) {
+                    let principals: Vec<Value> = parsed["Statement"]
+                        .as_array()
+                        .map(|stmts| {
+                            stmts
+                                .iter()
+                                .filter_map(|s| s.get("Principal").cloned())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    arr.retain(|s| {
+                        !principals.contains(&s.get("Principal").cloned().unwrap_or(Value::Null))
+                    });
+                }
+            }
+            let container = policies
+                .entry(bus.clone())
+                .or_insert_with(|| json!({ "Version": "2012-10-17", "Statement": [] }));
+            if let Some(arr) = container
+                .get_mut("Statement")
+                .and_then(|s| s.as_array_mut())
+            {
+                if let Some(stmts) = parsed.get("Statement").and_then(|s| s.as_array()) {
+                    for stmt in stmts {
+                        let sid = stmt
+                            .get("Sid")
+                            .and_then(|v| v.as_str().map(String::from))
+                            .unwrap_or_default();
+                        let mut record = json!({
+                            "Sid": sid,
+                            "Effect": stmt.get("Effect").cloned().unwrap_or(json!("Allow")),
+                            "Principal": stmt.get("Principal").cloned().unwrap_or(json!({})),
+                            "Action": stmt.get("Action").cloned().unwrap_or(json!("events:PutEvents")),
+                            "Resource": stmt.get("Resource").cloned().unwrap_or(json!(Value::Null)),
+                        });
+                        if let Some(condition) = stmt.get("Condition") {
+                            record["Condition"] = condition.clone();
+                        }
+                        // add_policy does `_statements[sid] = stmt` — an
+                        // EXISTING dict key keeps its INSERTION SLOT on
+                        // re-assignment; the twin's retain-then-push
+                        // appended it to the end (probe T5: moto
+                        // [pp, s1, s3] vs the twin [pp, s3, s1]).
+                        if let Some(idx) = arr.iter().position(|s| {
+                            s.get("Sid").and_then(|v| v.as_str()) == Some(sid.as_str())
+                        }) {
+                            arr[idx] = record;
+                        } else {
+                            arr.push(record);
+                        }
+                    }
+                }
+            }
+            return AwsResponse::json(200, json!({}));
+        }
         if req.params.get("Principal").is_none() {
             return AwsResponse::error(
                 400,
@@ -1337,6 +1607,9 @@ impl EventsHandler {
             "Effect": "Allow",
             "Principal": principal_arn,
             "Action": action,
+            // The fork stamps every param-path statement with the RESOLVED
+            // bus ARN (models.py:1596 resource=self.arn).
+            "Resource": state.bus_arn(req.account, &req.region, &bus),
         });
         if let Some(condition) = condition {
             // _condition_param_to_stmt_condition (models.py:1549-1557):
@@ -3023,6 +3296,108 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["message"], "EventBus does not have a policy.");
+    }
+
+    // -- Family 3: describe_event_bus render + the Policy-body path ----------
+
+    #[test]
+    fn describe_event_bus_renders_stamps_and_members() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": "f8-bus", "Description": "desc", "KmsKeyIdentifier": "kms-x"}),
+        ));
+        let resp = handler.handle(make_req("DescribeEventBus", json!({"Name": "f8-bus"})));
+        assert_eq!(resp.status, 200);
+        let json = body(&resp);
+        // The raw wire shape is an epoch-seconds NUMBER (the byte probe
+        // pins moto json.dumps(unix_time); the census string was a
+        // botocore-parse artifact).
+        assert!(json["CreationTime"].is_number());
+        assert_eq!(json["LastModifiedTime"], json["CreationTime"]);
+        assert_eq!(json["Description"], "desc");
+        assert_eq!(json["KmsKeyIdentifier"], "kms-x");
+        // The default bus renders the same stamp pair and is stable
+        // across calls (moto stamps it at backend init).
+        let d1 = body(&handler.handle(make_req("DescribeEventBus", json!({}))));
+        let d2 = body(&handler.handle(make_req("DescribeEventBus", json!({}))));
+        assert_eq!(d1["CreationTime"], d2["CreationTime"]);
+        assert_eq!(d1["Name"], "default");
+    }
+
+    #[test]
+    fn describe_event_bus_policy_string_python_format() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f8-pol-bus"})));
+        handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f8-pol-bus", "Principal": "123456789014", "StatementId": "f8-st", "Action": "events:PutEvents"}),
+        ));
+        let json =
+            body(&handler.handle(make_req("DescribeEventBus", json!({"Name": "f8-pol-bus"}))));
+        let policy = json["Policy"].as_str().expect("Policy is a JSON STRING");
+        // python json.dumps separators (": " and ", ").
+        assert!(policy.starts_with("{\"Version\": \"2012-10-17\", \"Statement\": ["));
+        let parsed: Value = serde_json::from_str(policy).expect("valid policy JSON");
+        assert_eq!(parsed["Statement"][0]["Sid"], "f8-st");
+        assert_eq!(
+            parsed["Statement"][0]["Resource"],
+            "arn:aws:events:us-east-1:123456789012:event-bus/f8-pol-bus"
+        );
+        assert!(
+            parsed["Statement"][0].get("Condition").is_none(),
+            "the param-path statement without a Condition param carries none"
+        );
+
+        // RemoveAllPermissions clears the set → the Policy member goes
+        // (models.py:425-431 renders only when statements exist).
+        handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f8-pol-bus", "RemoveAllPermissions": true}),
+        ));
+        let json =
+            body(&handler.handle(make_req("DescribeEventBus", json!({"Name": "f8-pol-bus"}))));
+        assert!(json.get("Policy").is_none());
+    }
+
+    #[test]
+    fn put_permission_policy_body_skips_the_param_checks() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f8-pb-bus"})));
+        const POLICY: &str = r#"{"Version": "2012-10-17", "Statement": [{"Sid": "pb-1", "Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::123456789013:root"}, "Action": "events:PutEvents", "Resource": "arn:aws:events:us-east-1:123456789012:event-bus/f8-pb-bus"}]}"#;
+        // No Principal/Action/StatementId — the policy path runs.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f8-pb-bus", "Policy": POLICY}),
+        ));
+        assert_eq!(resp.status, 200);
+        // Invalid JSON answers models.py:1539-1543.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f8-pb-bus", "Policy": "{not-json"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(json["message"], "This policy contains invalid Json");
+        // add_policy REPLACES by principal: re-granting 013 via body
+        // (new Sid) drops the pb-1 entry.
+        const POLICY2: &str = r#"{"Version": "2012-10-17", "Statement": [{"Sid": "pb-2", "Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::123456789013:root"}, "Action": "events:PutEvents", "Resource": "arn:aws:events:us-east-1:123456789012:event-bus/f8-pb-bus"}]}"#;
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f8-pb-bus", "Policy": POLICY2}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f8-pb-bus", "StatementId": "pb-1"}),
+        ));
+        assert_eq!(resp.status, 400, "pb-1 replaced by the re-grant");
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f8-pb-bus", "StatementId": "pb-2"}),
+        ));
+        assert_eq!(resp.status, 200);
     }
 
     // -- PutRule event-pattern validation (F9, agent-221 finding 9) ------------

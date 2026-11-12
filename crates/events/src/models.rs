@@ -104,11 +104,29 @@ pub struct EventsState {
     pub partner_sources: Arc<RwLock<HashMap<String, Value>>>,
     /// Endpoints keyed by endpoint name.
     pub endpoints: Arc<RwLock<HashMap<String, Value>>>,
+    /// The virtual default bus' create stamp (moto `_add_default_event_bus`
+    /// stamps it once at backend init, models.py:1221-1225) — the default
+    /// bus is never a record in `event_buses`, so its stickiness lives
+    /// here.
+    pub default_bus_created: Arc<RwLock<Option<f64>>>,
+}
+
+/// Epoch-seconds float with micro-second precision — moto's
+/// `unix_time()` wire shape (json.dumps renders the JSON NUMBER the raw
+/// bytes probe pinned: `1794476839.422098`).
+pub(crate) fn now_micros_f() -> f64 {
+    chrono::Utc::now()
+        .timestamp_nanos_opt()
+        .map(|ns| ns as f64 / 1_000_000_000.0)
+        .unwrap_or(0.0)
 }
 
 impl EventsState {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            default_bus_created: Arc::new(RwLock::new(Some(now_micros_f()))),
+            ..Default::default()
+        }
     }
 
     pub fn get_rule(&self, bus: &str, name: &str) -> Option<Arc<Rule>> {
