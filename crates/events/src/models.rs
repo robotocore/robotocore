@@ -15,6 +15,11 @@ pub struct Rule {
     pub name: String,
     pub bus_name: String,
     pub arn: String,
+    /// The creating account — moto renders it as CreatedBy in every
+    /// rule's to_dict (events models.py rule fields, the 2026-11-12
+    /// census row).
+    #[serde(default)]
+    pub created_by: u64,
     pub description: String,
     /// Event pattern as a JSON string ("" when the rule only has a schedule).
     pub event_pattern: String,
@@ -40,6 +45,7 @@ impl Rule {
             "Arn": self.arn,
             "State": self.state.read().clone(),
             "EventBusName": self.bus_name,
+            "CreatedBy": self.created_by.to_string(),
         });
         let obj = resp.as_object_mut().unwrap();
         if !self.description.is_empty() {

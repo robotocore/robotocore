@@ -303,6 +303,7 @@ impl EventsHandler {
             name: name.clone(),
             bus_name: bus.clone(),
             arn,
+            created_by: req.account,
             description,
             event_pattern,
             state: RwLock::new(rule_state),
@@ -344,9 +345,29 @@ impl EventsHandler {
         (bus, name)
     }
 
+    /// moto's bus gate (events/models.py:1325 → _get_event_bus): a
+    /// non-default EventBusName that isn't registered answers
+    /// "Event bus {bus} does not exist." — the miss rides BEFORE the
+    /// rule resolution on every rule-scoped op carrying an
+    /// EventBusName.
+    fn bus_gate(req: &AwsRequest, state: &EventsState) -> Result<(), AwsResponse> {
+        let bus = Self::param_str(req, &["EventBusName"]);
+        if !bus.is_empty() && bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return Err(AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            ));
+        }
+        Ok(())
+    }
+
     fn describe_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
         let state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &state) {
+            return resp;
+        }
         match state.get_rule(&key.0, &key.1) {
             Some(rule) => AwsResponse::json(200, rule.to_value()),
             // moto events/models.py:1328 — "Rule {name} does not exist."
@@ -422,13 +443,17 @@ impl EventsHandler {
 
     fn put_targets(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
+        let bus_state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+            return resp;
+        }
         let targets: Vec<Value> = req
             .params
             .get("Targets")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
+        let state = bus_state;
         // moto validates every target ARN shape BEFORE the rule lookup
         // (models.py:1399-1411 — the "super simple ARN check",
         // `re.match(r"arn:[\d\w:\-/]*", …)`): an invalid Arn answers
@@ -516,6 +541,11 @@ impl EventsHandler {
 
     fn remove_targets(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
+        let bus_state = self.get_state(req.account, &req.region);
+        if let Err(resp) = Self::bus_gate(req, &bus_state) {
+            return resp;
+        }
+        let state = bus_state;
         let ids: Vec<String> = req
             .params
             .get("Ids")

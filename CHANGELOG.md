@@ -65,6 +65,15 @@ under *Changelog discipline*.
 
 
 
+- **Events: the ghost-bus gate + CreatedBy.** Every rule-scoped op
+  carrying a non-default EventBusName answers the fork's bus gate
+  BEFORE the rule resolution — "Event bus {bus} does not exist."
+  (events/models.py:1325 → _get_event_bus) on describe_rule /
+  put_targets / remove_targets; the twin carried its rule-miss wording
+  instead. describe_rule's render carries `CreatedBy` — the creating
+  account (moto rule fields, the 2026-11-11 census drift; the twin
+  omitted it).
+
 - **Events: describe_rule's miss wording + the put_targets ARN shape
   gate.** describe_rule on a missing name answers "Rule {name} does
   not exist." (events/models.py:1328) instead of the twin's "Rule not
