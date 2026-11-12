@@ -41,6 +41,27 @@ impl AwsResponse {
         }
     }
 
+    /// moto's ERROR_TYPE_PREFIX (dynamodb/exceptions.py:7): rides the
+    /// MOCK-family + the eight bare-literal Resource* classes — but NOT
+    /// the bare `ValidationException`/`SerializationException`/`
+    /// InvalidConversion` classes (exceptions.py:380-401, raised from
+    /// table.py's N-conversion/type legs). The writer namespaces by the
+    /// FORK's raise-class semantics: the bare families are pinned by
+    /// their exact message texts.
+    fn bare_family_message(message: &str) -> bool {
+        const BARE_PREFIXES: [&str; 4] = [
+            "Null attribute value types must have the value of true",
+            "The parameter cannot be converted to a numeric value:",
+            "Number overflow.",
+            "Number underflow.",
+        ];
+        const BARE_EQUALS: [&str; 2] = [
+            "NUMBER_VALUE cannot be converted to String",
+            "Start of structure or map found where not expected",
+        ];
+        BARE_PREFIXES.iter().any(|p| message.starts_with(p)) || BARE_EQUALS.contains(&message)
+    }
+
     /// Namespace any inline `__type` member a caller-built body carries
     /// (the TransactionCanceled arm already prefixes; this normalizes the
     /// callers that don't).
@@ -78,8 +99,13 @@ impl AwsResponse {
     }
 
     pub fn error(status: u16, code: &str, message: &str) -> Self {
+        // The fork's raise-class split (Review: moto prefixes the mock
+        // family + the eight Resource* literal classes; the N-conversion
+        // and serialization legs ride BARE — exceptions.py:380-401,
+        // table.py:550-611). The bare families are pinned by message.
+        let bare = Self::bare_family_message(message);
         let body = serde_json::json!({
-            "__type": Self::referenced_code(code),
+            "__type": if bare { code.to_string() } else { Self::referenced_code(code) },
             "message": message
         });
         Self {

@@ -3908,11 +3908,14 @@ impl DynamoDbHandler {
                 // batch_execute_statement: responses[idx] = {"Error": ...}).
                 Err(e) => {
                     let body: Value = serde_json::from_str::<Value>(&e.body).unwrap_or(Value::Null);
-                    // The row code rides the RELATIVE type (moto
-                    // `relative_error_type`, core/exceptions.py:104-108):
-                    // the envelope's __type now carries the
-                    // com.amazonaws.dynamodb.v20120810# namespace, the
-                    // per-row codes do not.
+                    // The envelope's __type now carries the
+                    // com.amazonaws.dynamodb.v20120810# namespace; the
+                    // per-row Error codes do NOT (moto's rows answer bare
+                    // literal codes — models/__init__.py:935,945 "Resource
+                    // NotFound"/"ValidationError" — and the fork's
+                    // execution rows carry werkzeug's class name, a
+                    // separate recorded divergence). Strip the envelope
+                    // prefix so the twin's row codes ride bare.
                     let code = body
                         .get("__type")
                         .and_then(Value::as_str)
