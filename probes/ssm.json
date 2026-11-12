@@ -1,10 +1,10 @@
 {
   "service": "ssm",
-  "generated_at": "2026-11-01T18:00:03.457205+00:00",
+  "generated_at": "2026-11-12T06:13:23.271612+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/ssm.rs": "absent",
     "rotocore/src/services/ssm/": "absent",
-    "crates/ssm/src/": "759abde3b0b9dac4b654f006f905a658f1c6a99aaed045daa958c7251c7eb2ba"
+    "crates/ssm/src/": "337f2591805148123fefa52e4293e344b6f4e0fada33d0a5e7efcb10da94f88a"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -68,7 +68,7 @@
     {
       "operation": "CreateOpsMetadata",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreatePatchBaseline",
@@ -138,7 +138,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "likely implemented (DoesNotExistException: arn:aws:ssm:us-east-1:123456789012:thing/probe-test does not)"
+      "message": "OK"
     },
     {
       "operation": "DeregisterManagedInstance",

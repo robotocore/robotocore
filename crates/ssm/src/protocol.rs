@@ -39,8 +39,49 @@ impl AwsResponse {
         }
     }
 
+    /// moto ssm's MODELED error codes (exceptions.py classes carrying
+    /// their own shapes — the wire measured 2026-11-12: lowercase
+    /// `message` AND capital `Message` both present). Everything OFF
+    /// this list rides the unmodeled get_error_model shape — capital
+    /// `Message` only. ValidationException and InvalidFilterKey are
+    /// unmodeled in SSM (auto-created via get_error_model).
+    const MODELED_CODES: [&str; 8] = [
+        "ParameterNotFound",
+        "ParameterVersionNotFound",
+        "ParameterLimitExceeded",
+        "ParameterMaxVersionLimitExceeded",
+        "ParameterAlreadyExists",
+        "InvalidFilterOption",
+        // The label-limit model: measured both-member on the wire
+        // (moto ssm/models.py:2146 — the review's BLOCKER row with an
+        // 11-label drive).
+        "ParameterVersionLabelLimitExceeded",
+        "InvalidOptionException",
+    ];
+
     pub fn error(status: u16, code: &str, message: &str) -> Self {
-        let body = serde_json::json!({ "__type": code, "message": message });
+        let modeled = {
+            use std::sync::OnceLock;
+            static SET: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+            let set = SET.get_or_init(|| Self::MODELED_CODES.iter().copied().collect());
+            set.contains(code)
+        };
+        Self::error_envelope(status, code, message, modeled)
+    }
+
+    /// Moto's JSON error serializer (moto/core/serialize.py :529-544 + the
+    /// get_error_model empty-member shape at core/errors.py:145-155):
+    /// MODELED codes carry the lowercase `message` member AND the generic
+    /// capital `Message`; UNMODELED shapes (get_error_model fabricates
+    /// the members from an empty shape — ValidationException in SSM is
+    /// auto-created) carry capital `Message` ONLY — the measured
+    /// envelope on the 2026-11-11 census rows.
+    pub fn error_envelope(status: u16, code: &str, message: &str, modeled: bool) -> Self {
+        let body = if modeled {
+            serde_json::json!({ "__type": code, "message": message, "Message": message })
+        } else {
+            serde_json::json!({ "__type": code, "Message": message })
+        };
         Self {
             status,
             headers: vec![
