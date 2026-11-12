@@ -61,6 +61,22 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **DynamoDB: the transaction catch-all collects the ghost-table
+  rows on the Delete/ConditionCheck arms.** The fork's per-arm
+  structure routes the Delete/ConditionCheck ghost-table misses into
+  the transaction's catch-all — `TransactionCanceledException` with
+  one `CancellationReasons` entry per row (`Code:
+  ResourceNotFoundException`, `Message:` werkzeug's HTTPException
+  string `400 Bad Request: {"__type":
+  "com.amazonaws.dynamodb.v20120810#ResourceNotFoundException",
+  "message": "Requested resource not found"}` — the catch-all at
+  models/__init__.py:708-710 collects `str(e)`, and a JsonRESTError's
+  string is the JSON envelope it carries) — while Put/Update on a
+  ghost raise directly from the validation phase; the twin answered
+  the plain envelope for every arm. The Put/Update wording carries
+  the recorded [awscall] suffix (real-AWS "…: Table: <name> not
+  found", don't regress).
+
 - **DynamoDB: the error `__type` carries the service namespace on the
   prefixed families.** moto's ERROR_TYPE_PREFIX
   `com.amazonaws.dynamodb.v20120810#` rides the MockValidation family

@@ -3125,6 +3125,11 @@ impl DynamoDbHandler {
         /// exceptions.py TransactionCanceledException:251-255).
         struct RowCancellation {
             code: Option<String>,
+            /// None → moto's default row message ("The conditional
+            /// request failed"); Some carries the fork's per-row
+            /// `str(e)` from the catch-all collect (the
+            /// ResourceNotFoundException rows, models/__init__.py:706).
+            message: Option<String>,
             item: Option<AttrMap>,
         }
 
@@ -3214,11 +3219,40 @@ impl DynamoDbHandler {
             {
                 Some(t) => t,
                 None => {
+                    // moto transact_write_items (models/__init__.py:706,
+                    // the catch-all collect): the Delete/ConditionCheck
+                    // arms' ghost-table miss lands in the transaction's
+                    // catch-all — the row carries type(e).__name__ +
+                    // str(e) into TransactionCanceledException(errors)
+                    // (models/__init__.py:708-710, the raise at
+                    // :712-716) — while the Put/Update arms' table
+                    // check rides the validation phase and raises
+                    // directly (probed T1-T5, 2026-11-12). str(e) of a
+                    // JsonRESTError is werkzeug's HTTPException string:
+                    // "400 Bad Request: <the JSON envelope the fork's
+                    // JsonRESTError.__init__ left in e.description>"
+                    // (moto/core/exceptions.py:50-51, 99-101) — the
+                    // plain-text form does not exist in the fork's row
+                    // render (round-1 review, wire-pinned twice).
+                    if op_name == "Delete" || op_name == "ConditionCheck" {
+                        failed = true;
+                        cancellation.push(RowCancellation {
+                            code: Some("ResourceNotFoundException".to_string()),
+                            message: Some(
+                                "400 Bad Request: {\"__type\": \"com.amazonaws.dynamodb.\
+                                 v20120810#ResourceNotFoundException\", \"message\": \"\
+                                 Requested resource not found\"}"
+                                    .to_string(),
+                            ),
+                            item: None,
+                        });
+                        continue;
+                    }
                     return AwsResponse::error(
                         400,
                         "ResourceNotFoundException",
                         &format!("Requested resource not found: Table: {table_name} not found"),
-                    )
+                    );
                 }
             };
             let key_json = op.get("Key").cloned();
@@ -3292,6 +3326,7 @@ impl DynamoDbHandler {
                                 return e;
                             }
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: None,
                                 item: None,
                             });
@@ -3311,6 +3346,7 @@ impl DynamoDbHandler {
                             }
                             failed = true;
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: Some("ConditionalCheckFailed".to_string()),
                                 item: reason_item(&pre),
                             });
@@ -3405,6 +3441,7 @@ impl DynamoDbHandler {
                                 return e;
                             }
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: None,
                                 item: None,
                             });
@@ -3424,6 +3461,7 @@ impl DynamoDbHandler {
                             }
                             failed = true;
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: Some("ConditionalCheckFailed".to_string()),
                                 item: reason_item(&pre),
                             });
@@ -3455,6 +3493,7 @@ impl DynamoDbHandler {
                     match check {
                         Ok(()) => {
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: None,
                                 item: None,
                             });
@@ -3470,6 +3509,7 @@ impl DynamoDbHandler {
                             }
                             failed = true;
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: Some("ConditionalCheckFailed".to_string()),
                                 item: reason_item(&pre),
                             });
@@ -3509,6 +3549,7 @@ impl DynamoDbHandler {
                     match Self::eval_condition_on(cond, pre.as_ref(), &op_names(op), &op_values(op))
                     {
                         Ok(()) => cancellation.push(RowCancellation {
+                            message: None,
                             code: None,
                             item: None,
                         }),
@@ -3521,6 +3562,7 @@ impl DynamoDbHandler {
                             }
                             failed = true;
                             cancellation.push(RowCancellation {
+                                message: None,
                                 code: Some("ConditionalCheckFailed".to_string()),
                                 item: reason_item(&pre),
                             });
@@ -3558,7 +3600,10 @@ impl DynamoDbHandler {
                     Some(code) => {
                         let mut reason = json!({
                             "Code": code,
-                            "Message": "The conditional request failed",
+                            "Message": r
+                                .message
+                                .as_deref()
+                                .unwrap_or("The conditional request failed"),
                         });
                         if let Some(item) = &r.item {
                             if !item.is_empty() {
@@ -6507,6 +6552,91 @@ mod tests {
     // for that input instead (2026-10-31 wave review: 500_error is reserved
     // for genuine crashes and the probe's required-only fill is exactly
     // this shape) — with the same single-op message the >1-op row carries.
+    #[test]
+    fn transact_delete_on_ghost_table_cancels_the_transaction() {
+        // moto transact_write_items (models/__init__.py:706): the
+        // Delete/ConditionCheck arms' ghost-table miss lands in the
+        // transaction's catch-all — the row collects type(e).__name__ +
+        // str(e) into TransactionCanceledException(errors); the
+        // Put/Update arms' check rides the validation phase and raises
+        // directly (census T1-T5, 2026-11-12). The "…: Table: X not
+        // found" suffix on the direct rows is the recorded [awscall]
+        // (real-AWS wording; don't regress).
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "tg-good",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        // A Put on the ghost stays DIRECT.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"Put": {"TableName": "tg-ghost",
+                     "Item": {"pk": {"S": "x"}}}}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#ResourceNotFoundException"
+        );
+        assert_eq!(
+            body["message"],
+            "Requested resource not found: Table: tg-ghost not found"
+        );
+        // A Delete on the ghost CANCELS.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"Delete": {"TableName": "tg-ghost",
+                     "Key": {"pk": {"S": "x"}}}}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#TransactionCanceledException"
+        );
+        assert_eq!(
+            body["Message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ResourceNotFoundException]"
+        );
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ResourceNotFoundException",
+                    "Message": "400 Bad Request: {\"__type\": \"com.amazonaws.dynamodb.v20120810#ResourceNotFoundException\", \"message\": \"Requested resource not found\"}"}])
+        );
+        // A ConditionCheck on the ghost CANCELS the same way.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"ConditionCheck": {"TableName": "tg-ghost",
+                     "Key": {"pk": {"S": "x"}},
+                     "ConditionExpression": "attribute_exists(pk)"}}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ResourceNotFoundException]"
+        );
+        // Nothing was committed to the real table either way.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "GetItem",
+                    json!({"TableName": "tg-good",
+                         "Key": {"pk": {"S": "x"}}})
+                ))
+                .status,
+            200
+        );
+    }
+
     #[test]
     fn transact_zero_op_row_answers_validation_exception() {
         let handler = DynamoDbHandler::new();
