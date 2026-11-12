@@ -3907,11 +3907,17 @@ impl DynamoDbHandler {
                 // of aborting the whole batch (dynamodb/models/__init__.py
                 // batch_execute_statement: responses[idx] = {"Error": ...}).
                 Err(e) => {
-                    let body: Value = serde_json::from_str(&e.body).unwrap_or(Value::Null);
+                    let body: Value = serde_json::from_str::<Value>(&e.body).unwrap_or(Value::Null);
+                    // The row code rides the RELATIVE type (moto
+                    // `relative_error_type`, core/exceptions.py:104-108):
+                    // the envelope's __type now carries the
+                    // com.amazonaws.dynamodb.v20120810# namespace, the
+                    // per-row codes do not.
                     let code = body
                         .get("__type")
                         .and_then(Value::as_str)
-                        .unwrap_or("ValidationException");
+                        .map(|t| t.rsplit('#').next().unwrap_or(t).to_string())
+                        .unwrap_or_else(|| "ValidationException".to_string());
                     let message = body.get("message").and_then(Value::as_str).unwrap_or("");
                     responses.push(json!({
                         "Error": {"Code": code, "Message": message}
@@ -5863,7 +5869,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         assert_eq!(
             resp.body,
-            json!({"__type": "ResourceInUseException", "message": "Cannot enable stream"})
+            json!({"__type": "com.amazonaws.dynamodb.v20120810#ResourceInUseException", "message": "Cannot enable stream"})
                 .to_string()
         );
         let resp = handler.handle(make_req(
@@ -6328,7 +6334,7 @@ mod tests {
         assert_eq!(
             resp.body,
             json!({
-                "__type": "ValidationException",
+                "__type": "com.amazonaws.dynamodb.v20120810#ValidationException",
                 "message": "1 validation error detected at 'transactItems' failed to satisfy \
                             constraint: Member must have length less than or equal to 100."
             })
@@ -6370,7 +6376,7 @@ mod tests {
         assert_eq!(
             resp.body,
             json!({
-                "__type": "ValidationException",
+                "__type": "com.amazonaws.dynamodb.v20120810#ValidationException",
                 "message": format!(
                     "1 validation error detected: Value '[{ids}] at 'transactItems' failed to \
                      satisfy constraint: Member must have length less than or equal to 25"
@@ -6516,7 +6522,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "ValidationException");
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#ValidationException"
+        );
         assert_eq!(
             body["message"],
             "TransactItems can only contain one of Check, Put, Update or Delete"
@@ -6534,7 +6543,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "ValidationException");
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#ValidationException"
+        );
         let resp = handler.handle(make_req(
             "GetItem",
             json!({"TableName": "zeroop", "Key": {"pk": {"S": "p"}}}),
@@ -6583,7 +6595,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "ValidationException");
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#ValidationException"
+        );
 
         // Put + Get executes as a plain Put, and the row commits.
         let resp = handler.handle(make_req(
@@ -6619,7 +6634,7 @@ mod tests {
         assert_eq!(
             resp.body,
             json!({
-                "__type": "ValidationException",
+                "__type": "com.amazonaws.dynamodb.v20120810#ValidationException",
                 "message": "TransactItems can only contain one of Check, Put, Update or Delete"
             })
             .to_string()
@@ -6653,7 +6668,7 @@ mod tests {
         assert_eq!(
             resp.body,
             json!({
-                "__type": "ValidationException",
+                "__type": "com.amazonaws.dynamodb.v20120810#ValidationException",
                 "message": "TransactItems can only contain one of Check, Put, Update or Delete"
             })
             .to_string()

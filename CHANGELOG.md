@@ -61,6 +61,16 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **DynamoDB: the error `__type` carries the service namespace.**
+  Every DDB error envelope's `__type` adopts moto's
+  ERROR_TYPE_PREFIX `com.amazonaws.dynamodb.v20120810#` (exceptions
+  .py:9) — modeled and unmodeled alike (describe_table's ghost-table
+  ResourceNotFoundException and the >100-keys ValidationException
+  both ride it; probed raw). The batch_execute_statement per-row
+  codes strip back to the RELATIVE type (`relative_error_type`,
+  core/exceptions.py:104-108) — the row codes were never
+  namespaced.
+
 - **S3: the multipart-uploads render + the NoSuchUpload wording.**
   list_multipart_uploads drops the NextKeyMarker/NextUploadIdMarker
   pair it emitted on every shape — the fork's arm does not paginate

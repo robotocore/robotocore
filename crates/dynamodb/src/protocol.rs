@@ -25,6 +25,37 @@ pub struct AwsResponse {
 }
 
 impl AwsResponse {
+    /// moto's ERROR_TYPE_PREFIX (dynamodb/exceptions.py:9).
+    pub(crate) const ERROR_TYPE_PREFIX: &'static str = "com.amazonaws.dynamodb.v20120810#";
+
+    /// The namespace rides every DDB error envelope's `__type` —
+    /// modeled and unmodeled alike (the raw-byte census pin: the fork
+    /// answers "com.amazonaws.dynamodb.v20120810#ResourceNotFound…" on
+    /// describe_table of a ghost table where the twin answered the bare
+    /// code).
+    fn referenced_code(code: &str) -> String {
+        if code.starts_with(Self::ERROR_TYPE_PREFIX) {
+            code.to_string()
+        } else {
+            format!("{}{}", Self::ERROR_TYPE_PREFIX, code)
+        }
+    }
+
+    /// Namespace any inline `__type` member a caller-built body carries
+    /// (the TransactionCanceled arm already prefixes; this normalizes the
+    /// callers that don't).
+    fn namespaced_body(body: Value) -> Value {
+        if let Some(name) = body.get("__type").and_then(Value::as_str) {
+            let namespaced = Self::referenced_code(name);
+            let mut out = body;
+            if let Some(obj) = out.as_object_mut() {
+                obj.insert("__type".into(), Value::String(namespaced));
+            }
+            return out;
+        }
+        body
+    }
+
     pub fn json(status: u16, body: Value) -> Self {
         Self {
             status,
@@ -48,7 +79,7 @@ impl AwsResponse {
 
     pub fn error(status: u16, code: &str, message: &str) -> Self {
         let body = serde_json::json!({
-            "__type": code,
+            "__type": Self::referenced_code(code),
             "message": message
         });
         Self {
@@ -71,6 +102,7 @@ impl AwsResponse {
     /// as `error`, for codes that need extra members beyond `__type`/`message`
     /// (e.g. moto's TransactionCanceledException with per-row CancellationReasons).
     pub fn error_with_body(status: u16, body: Value) -> Self {
+        let body = Self::namespaced_body(body);
         Self {
             status,
             headers: vec![
