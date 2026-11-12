@@ -5160,7 +5160,7 @@ impl S3Handler {
             return AwsResponse::error(
                 404,
                 "NoSuchUpload",
-                "The specified multipart upload does not exist (upload might have been aborted or completed)",
+                "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
             );
         }
 
@@ -5203,7 +5203,7 @@ impl S3Handler {
             return AwsResponse::error(
                 404,
                 "NoSuchUpload",
-                "The specified multipart upload does not exist (upload might have been aborted or completed)",
+                "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
             );
         }
         // moto's copy path validates only through backend.set_part
@@ -5335,7 +5335,7 @@ impl S3Handler {
                     return AwsResponse::error(
                         404,
                         "NoSuchUpload",
-                        "The specified multipart upload does not exist (upload might have been aborted or completed)",
+                        "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
                     )
                 }
             }
@@ -5523,8 +5523,16 @@ impl S3Handler {
 
         let uploads: Vec<(String, String, u64)> = {
             let mp = bucket.multipart_uploads.read();
+            // moto responses.py:700-704 filters in-flight uploads by
+            // the `prefix` param before the sort.
+            let prefix = req.query_params.get("prefix");
             let mut v: Vec<(String, String, u64)> = mp
                 .values()
+                .filter(|u| {
+                    prefix
+                        .map(|p| u.key.starts_with(p.as_str()))
+                        .unwrap_or(true)
+                })
                 .map(|u| (u.key.clone(), u.upload_id.clone(), u.initiated))
                 .collect();
             v.sort();
@@ -5542,8 +5550,13 @@ impl S3Handler {
                 disp = OWNER_DISPLAY
             ));
         }
+        // moto list_multipart_uploads (responses.py:728-735) renders the
+        // empty KeyMarker/UploadIdMarker pair and NEVER the Next* pair
+        // (this arm does not paginate) — the twin's template emitted
+        // NextKeyMarker/NextUploadIdMarker for every shape (census
+        // S1/S2, 2026-11-12).
         let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListMultipartUploadsResult xmlns=\"{ns}\"><Bucket>{b}</Bucket><KeyMarker></KeyMarker><UploadIdMarker></UploadIdMarker><NextKeyMarker></NextKeyMarker><NextUploadIdMarker></NextUploadIdMarker><MaxUploads>1000</MaxUploads><IsTruncated>false</IsTruncated>{uploads}</ListMultipartUploadsResult>",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListMultipartUploadsResult xmlns=\"{ns}\"><Bucket>{b}</Bucket><KeyMarker></KeyMarker><UploadIdMarker></UploadIdMarker><MaxUploads>1000</MaxUploads><IsTruncated>false</IsTruncated>{uploads}</ListMultipartUploadsResult>",
             ns = S3_NS,
             b = xml_escape(&bucket_name),
             uploads = uploads_xml
@@ -5590,7 +5603,7 @@ impl S3Handler {
                     return AwsResponse::error(
                         404,
                         "NoSuchUpload",
-                        "The specified multipart upload does not exist (upload might have been aborted or completed)",
+                        "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.",
                     )
                 }
             }
