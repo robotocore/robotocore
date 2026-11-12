@@ -20,10 +20,16 @@ impl SecretsManagerHandler {
 
     pub(crate) fn get_state(&self, account: u64, region: &str) -> SmState {
         let mut states = self.state.write();
-        states
+        let state = states
             .entry((account, region.to_string()))
             .or_default()
-            .clone()
+            .clone();
+        drop(states);
+        // Every secrets touch keeps the cross-service bridge live (see
+        // bridge.rs) so SSM's secretsmanager-reference rows read this
+        // state.
+        crate::bridge::register_state(account, region, &state);
+        state
     }
 
     /// Resolve a secret by name, full ARN, or partial ARN (moto-compatible).

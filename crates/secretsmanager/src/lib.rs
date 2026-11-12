@@ -7,6 +7,8 @@ pub mod models;
 pub mod protocol;
 pub mod snapshot;
 
+pub mod bridge;
+
 pub use protocol::{AwsRequest, AwsResponse};
 
 pub struct DefaultSecretsManagerHandler {
