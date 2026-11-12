@@ -1780,13 +1780,34 @@ impl EventsHandler {
         // default." — regardless of which bus would have matched. The
         // twin used to answer Tags: [] for unknown targets.
         let name = arn.split('/').next_back().unwrap_or(&arn).to_string();
+        // moto scans the bus registries in DICT order and answers the
+        // first hit; the twin's rule map is not order-stable, so the
+        // pick mirrors moto's creation-order via the bus stamps (#538):
+        // same-named rules resolve on the EARLIEST-created bus.
+        let bus_created = state.event_buses.read().clone();
         let rules = state.rules.read();
         let target_arn = rules
             .values()
-            .find(|r| r.name == name)
-            .map(|r| r.arn.clone());
+            .filter(|r| r.name == name)
+            .map(|r| {
+                let created = bus_created
+                    .get(&r.bus_name)
+                    .and_then(|b| b.get("Created"))
+                    .and_then(Value::as_f64);
+                (created.unwrap_or(0.0_f64), r.arn.clone())
+            })
+            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(_, arn)| arn);
         drop(rules);
         let target_arn = target_arn.or_else(|| {
+            // moto's registry scan ends on `self.event_buses` — which
+            // INCLUDES the virtual default bus (models.py:1221-1225): a
+            // "default" tail serves the default bus' tags even though no
+            // record sits behind it. The twin used to fall to the ghost
+            // wording here.
+            if name == "default" {
+                return Some(state.bus_arn(req.account, &req.region, "default"));
+            }
             state
                 .event_buses
                 .read()
@@ -3059,6 +3080,75 @@ mod tests {
             json["message"],
             "Rule f7-ghost-rule does not exist on EventBus default."
         );
+    }
+
+    #[test]
+    fn list_tags_same_name_picks_the_earliest_bus() {
+        // moto scans the bus registries in dict order — the default bus
+        // is first, customs ride creation order; the twin reproduces
+        // that via the #538 create stamps (review round UNKNOWN row).
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f9-late-bus"})));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f9-dup", "EventPattern": "{}", "EventBusName": "f9-late-bus",
+                    "Tags": [{"Key": "late", "Value": "2"}]}),
+        ));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f9-dup", "EventPattern": "{}",
+                    "Tags": [{"Key": "default", "Value": "1"}]}),
+        ));
+        // default has no stamp → earliest → its rule wins.
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:rule/f9-dup"}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["Tags"][0]["Key"], "default");
+    }
+
+    #[test]
+    fn list_tags_custom_buses_pick_in_creation_order() {
+        // The sharper axis: the RULE lands on the LATER bus but the
+        // queried tail name exists on both — the EARLIER bus wins
+        // regardless of rule creation order (real-moto keep-slot shape).
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f9-ba"})));
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f9-bb"})));
+        // Same-named rule on the EARLIER bus first... then on the later
+        // one; the earlier bus's rule keeps the pick.
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f9-dupc", "EventPattern": "{}", "EventBusName": "f9-ba",
+                    "Tags": [{"Key": "ba", "Value": "a"}]}),
+        ));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f9-dupc", "EventPattern": "{}", "EventBusName": "f9-bb",
+                    "Tags": [{"Key": "bb", "Value": "b"}]}),
+        ));
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:rule/f9-dupc"}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["Tags"][0]["Key"], "ba");
+
+        // The `rule/default` tail serves the VIRTUAL default bus' tags
+        // (moto's registry scan ends on self.event_buses which includes
+        // default — the twin used to raise the ghost wording).
+        handler.handle(make_req(
+            "TagResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:event-bus/default",
+                    "Tags": [{"Key": "db", "Value": "1"}]}),
+        ));
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:rule/default"}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["Tags"][0]["Key"], "db");
     }
 
     #[test]

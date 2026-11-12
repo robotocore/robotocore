@@ -63,6 +63,13 @@ under *Changelog discipline*.
 
 
 
+- **Events: the same-name tag pick is deterministic.** moto's
+  list_tags_for_resource scans the bus registries in creation order —
+  the twin's rule map rode HashMap order, so same-named rules on two
+  buses picked nondeterministically across processes; the pick now
+  mirrors creation order via the #538 bus stamps (the earlier bus's
+  rule wins).
+
 - **Events: the event-bus render + the policy-body grant.**
   describe_event_bus renders the CreationTime/LastModifiedTime pair
   (stamped once at create / backend init), the truthy detail members
