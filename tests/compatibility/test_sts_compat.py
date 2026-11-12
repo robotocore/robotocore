@@ -490,7 +490,10 @@ class TestSTSExtended:
         assert "federated-user" in fed_arn
 
     def test_assume_role_packed_policy_too_large(self, sts):
-        """AssumeRole with an excessively large Policy should fail."""
+        """AssumeRole with a large Policy PACKS it — moto passes the policy
+        through and answers PackedPolicySize 6
+        (sts/responses.py:78-96; the twin's over-reject guard 500'd
+        until the 2026-11-12 port)."""
         import uuid
 
         iam = make_client("iam")
@@ -509,12 +512,15 @@ class TestSTSExtended:
                 )
                 + "]}"
             )
-            with pytest.raises(Exception):
-                sts.assume_role(
-                    RoleArn=role_arn,
-                    RoleSessionName="bigpol-session",
-                    Policy=huge_policy,
-                )
+            # moto packs the policy and keeps going: the 2048+ policy is
+            # answered with PackedPolicySize 6 (sts/responses.py:78-96),
+            # never an error.
+            response = sts.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName="bigpol-session",
+                Policy=huge_policy,
+            )
+            assert response.get("PackedPolicySize") == 6
         finally:
             iam.delete_role(RoleName=role_name)
 
