@@ -598,6 +598,10 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_user(&username) {
             Some(user) => {
+                // moto list_access_keys (responses.py:765-768) renders ONLY
+                // the AccessKeyMetadata member — live-pinned: the fork's
+                // generated-model serializer drops the UserName and there
+                // is NO IsTruncated member (the census I10 row).
                 let keys = user.access_keys.read();
                 let mut body = String::from("<AccessKeyMetadata>");
                 for key in keys.iter() {
@@ -609,7 +613,7 @@ impl IamHandler {
                         ms_to_iso(key.created)
                     ));
                 }
-                body.push_str("</AccessKeyMetadata><IsTruncated>false</IsTruncated>");
+                body.push_str("</AccessKeyMetadata>");
                 AwsResponse::xml(200, "ListAccessKeys", body)
             }
             None => err(
@@ -998,11 +1002,9 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_role(&role_name) {
             Some(role) => AwsResponse::xml(200, "GetRole", self.role_xml(&role, true)),
-            None => err(
-                404,
-                "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name),
-            ),
+            // moto get_role (models.py:2191): NotFound("Role {name} not
+            // found").
+            None => err(404, "NoSuchEntity", &format!("Role {role_name} not found")),
         }
     }
 
@@ -1194,8 +1196,50 @@ impl IamHandler {
         let Some(role) = state.get_role(&role_name) else {
             return err(404, "NoSuchEntity", &format!("Role {role_name} not found"));
         };
-        let tags = role.tags.read().clone();
-        AwsResponse::xml(200, "ListRoleTags", tags_xml(&tags))
+        let mut tags = role.tags.read().clone();
+        // moto list_role_tags (responses.py:1014-1032 + models.py:
+        // 2304-2318): rows sort by tag-KEY, slice start=Marker(int) at
+        // max_items (MaxItems defaults to 100), the returned Marker is
+        // the NEXT index only while rows remain, and the response
+        // carries Tags + Marker + IsTruncated — the round-1 review's
+        // MaxItems blocker rode the twin's hard 100-slice that never
+        // read MaxItems.
+        tags.sort_by(|a, b| {
+            a.get("Key")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .cmp(b.get("Key").and_then(Value::as_str).unwrap_or(""))
+        });
+        let max_items: usize = get_param(req, "MaxItems")
+            .and_then(|m| m.parse::<usize>().ok())
+            .unwrap_or(100);
+        let start_idx: usize = get_param(req, "Marker")
+            .and_then(|m| m.parse::<usize>().ok())
+            .unwrap_or(0);
+        let marker_next = if tags.len() <= start_idx + max_items {
+            None
+        } else {
+            Some((start_idx + max_items).to_string())
+        };
+        let rendered: Vec<Value> = tags
+            .iter()
+            .skip(start_idx)
+            .take(max_items)
+            .cloned()
+            .collect();
+        let truncated = marker_next.is_some();
+        let marker_xml = marker_next
+            .map(|m| format!("<Marker>{m}</Marker>"))
+            .unwrap_or_default();
+        AwsResponse::xml(
+            200,
+            "ListRoleTags",
+            format!(
+                "{marker_xml}<IsTruncated>{}</IsTruncated>{}",
+                truncated,
+                tags_xml(&rendered)
+            ),
+        )
     }
 
     fn attach_role_policy(&self, req: &AwsRequest) -> AwsResponse {
@@ -1290,11 +1334,14 @@ impl IamHandler {
                     xml_escape(policy_name.as_str()),
                     escape_policy(doc)
                 )),
+                // moto get_role_policy (models.py:2243-2245): a missing
+                // policy name is NotFound("Policy Document {p} not
+                // attached to role {r}").
                 None => err(404, "NoSuchEntity",
-                    &format!("The role policy with name {} cannot be found.", policy_name)),
+                    &format!("Policy Document {policy_name} not attached to role {role_name}")),
             },
             None => err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name)),
+                &format!("Role {role_name} not found")),
         }
     }
 

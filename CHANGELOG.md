@@ -61,6 +61,21 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **IAM: the role-family wordings and member shapes ride the fork.**
+  get_role's ghost wording is "Role {name} not found"
+  (models.py:2191) — the twin's real-AWS "The role with name …"
+  text rode it; get_role_policy's missing-policy row answers
+  "Policy Document {p} not attached to role {r}"
+  (models.py:2243-2245); list_access_keys renders ONLY
+  `AccessKeyMetadata` (responses.py:765-768 — the generated-model
+  serializer drops UserName and there is no IsTruncated member —
+  live-pinned) and list_role_tags rides the fork's MaxItems/Marker
+  pagination (rows sort by tag key, the slice + next-Marker
+  arithmetic at models.py:2304-2318, rendered Tags + Marker +
+  IsTruncated per responses.py:1014-1032). The
+  user-family rows keep the real-AWS-faithful AIDA/AKIA ID mint
+  where moto mints lowercase ids ([awscall] — don't regress).
+
 - **DynamoDB: the batch statement rows ride the fork's literal
   shapes.** moto's batch_execute_statement validates every statement
   before execution and answers the misses as batch rows: a ghost
