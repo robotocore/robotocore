@@ -284,6 +284,25 @@ impl Queue {
         max_count: usize,
         visibility_timeout: u32,
     ) -> Vec<SqsMessage> {
+        self.receive_messages_excluding(max_count, visibility_timeout, &[])
+    }
+
+    /// receive_messages with a receipt-handle exclusion list — moto's
+    /// receive scan (sqs/models.py:1011-1056) visits each queued message
+    /// EXACTLY once per receive call (the for-loop walks the list; the
+    /// outer while only repeats when the result was empty), so a
+    /// multi-pass redrive scan must never re-receive a message it
+    /// delivered in an earlier pass of the same call (the review's
+    /// B1/B2 rows: a VisibilityTimeout=0 delivery is instantly
+    /// re-visible, so without the exclusion the second pass re-delivers
+    /// it and inflates ApproximateReceiveCount into a spurious DLQ
+    /// move).
+    pub fn receive_messages_excluding(
+        &mut self,
+        max_count: usize,
+        visibility_timeout: u32,
+        exclude: &[String],
+    ) -> Vec<SqsMessage> {
         let mut result = Vec::new();
         let now_ms = (Utc::now().timestamp_millis()) as u64;
 
@@ -303,6 +322,9 @@ impl Queue {
         for msg in self.messages.iter_mut() {
             if result.len() >= max_count {
                 break;
+            }
+            if exclude.contains(&msg.receipt_handle) {
+                continue;
             }
             if fifo {
                 if let Some(group) = msg.attributes.get("MessageGroupId") {

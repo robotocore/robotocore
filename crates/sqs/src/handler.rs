@@ -1369,28 +1369,66 @@ impl DefaultSqsHandler {
                     super::bridge::drain_pending(account, region, &queue_name, &mut src);
                     let visibility_timeout =
                         params_visibility.unwrap_or(src.attributes.visibility_timeout);
-                    let received = src.receive_messages(max_messages, visibility_timeout);
-                    let mut stayed = Vec::with_capacity(received.len());
-                    for msg in received {
-                        if msg.receive_count > max_receive {
-                            // Real SQS preserves the original MessageId
-                            // across the dead-letter move; only the receipt
-                            // handle is re-minted for the DLQ scope.
-                            let mut moved = msg.clone();
-                            moved.receipt_handle =
-                                Self::generate_receipt_handle(&moved.message_id, &dl.url);
-                            moved.receive_count = 0;
-                            moved.first_receive_timestamp = None;
-                            moved.visibility_until = None;
-                            moved.available_at = None;
-                            dl.send_message(moved);
-                            // moto's redrive mutates _messages directly
-                            // (models.py:1047-1051) without walking
-                            // delete_message — no deleted-handle booking
-                            src.messages
-                                .retain(|m| m.receipt_handle != msg.receipt_handle);
-                        } else {
-                            stayed.push(msg);
+                    // moto's receive scan (models.py:1011-1056) iterates the
+                    // queue candidates one by one: a DLQ-eligible head
+                    // `continue`s into messages_to_dlq and the SAME scan still
+                    // delivers the fresh ones behind it up to `count` — the
+                    // redrive never buys a wasted receive. The twin mirrors
+                    // that by re-scanning in-place until capacity is filled
+                    // or the queue drains, within the held critical section.
+                    let mut stayed: Vec<crate::models::SqsMessage> =
+                        Vec::with_capacity(max_messages);
+                    // Receipt handles this same receive has already
+                    // delivered — moto's scan visits each queued message
+                    // once per call, so later passes must skip them even
+                    // when VisibilityTimeout made them instantly
+                    // re-visible (the review's B1/B2 rows).
+                    let mut delivered: Vec<String> = Vec::new();
+                    loop {
+                        let received = src.receive_messages_excluding(
+                            max_messages.saturating_sub(stayed.len()),
+                            visibility_timeout,
+                            &delivered,
+                        );
+                        if received.is_empty() {
+                            break;
+                        }
+                        let mut moved_this_pass = false;
+                        for msg in received {
+                            if msg.receive_count > max_receive {
+                                // Real SQS preserves the original MessageId
+                                // across the dead-letter move; only the receipt
+                                // handle is re-minted for the DLQ scope. The
+                                // move ALSO preserves the receive bookkeeping
+                                // (moto models.py:1044-1051 passes the message
+                                // object to the DLQ's add_message unchanged —
+                                // ApproximateReceiveCount carries and the
+                                // first-receive stamp is not reset), so undo
+                                // this pass's increment: moto's redrive gates
+                                // on the PRE-SCAN count and leaves the bumped
+                                // number for the DLQ's own receive (the
+                                // measured DLQ rc-row: 2 pre-move -> "3" on
+                                // the DLQ receive).
+                                let mut moved = msg.clone();
+                                moved.receipt_handle =
+                                    Self::generate_receipt_handle(&moved.message_id, &dl.url);
+                                moved.receive_count = moved.receive_count.saturating_sub(1);
+                                moved.visibility_until = None;
+                                moved.available_at = None;
+                                dl.send_message(moved);
+                                // moto's redrive mutates _messages directly
+                                // (models.py:1047-1051) without walking
+                                // delete_message — no deleted-handle booking
+                                src.messages
+                                    .retain(|m| m.receipt_handle != msg.receipt_handle);
+                                moved_this_pass = true;
+                            } else {
+                                delivered.push(msg.receipt_handle.clone());
+                                stayed.push(msg);
+                            }
+                        }
+                        if stayed.len() >= max_messages || !moved_this_pass {
+                            break;
                         }
                     }
                     stayed
