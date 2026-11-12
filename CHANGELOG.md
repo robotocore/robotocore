@@ -61,6 +61,18 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **DynamoDB: the batch statement rows ride the fork's literal
+  shapes.** moto's batch_execute_statement validates every statement
+  before execution and answers the misses as batch rows: a ghost
+  table carries Code `ResourceNotFound` / bare "Requested resource
+  not found" and a SELECT that does not pin every key attribute in
+  the WHERE carries Code `ValidationError` with the row's
+  `TableName` member (models/__init__.py:927-946, live-pinned
+  twice) — the twin surfed its own error envelopes there. The
+  success rows now carry ONLY the `TableName` member (the fork's
+  rows never carry Items on SELECT or part rows, live-pinned on
+  INSERT/UPDATE/DELETE + a pk-pinned SELECT).
+
 - **DynamoDB: the transaction catch-all collects the ghost-table
   rows on the Delete/ConditionCheck arms.** The fork's per-arm
   structure routes the Delete/ConditionCheck ghost-table misses into
