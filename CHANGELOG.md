@@ -59,29 +59,11 @@ under *Changelog discipline*.
   DynamoDB and IAM** is checked in under `docs/semantic-audit-2026-11-06/`
   (37 file:line-precise divergences; the fixed ones are struck as
   fixed-in-this-branch, the rest are the open fidelity backlog).
-
 ### Fixed
 
-- **Lambda: the alias and layer miss recipes follow the fork.** The
-  2026-11-12 census measured the twin's local wordings against moto's
-  helpers: alias ops resolve the FUNCTION first (models.py:1554-1560 via
-  _get_function_aliases → the Function-not-found arn wording, no
-  version suffix); a missing alias on an EXISTING function answers
-  UnknownAliasException "Cannot find alias arn: <the full alias arn>"
-  (models.py:1560-1564, exceptions.py:56-60) instead of the twin's
-  name-only wording; delete_alias is a SILENT no-op — moto pops with
-  `pop(name, None)` (models.py:1554-1557) where the twin 404'd. The
-  whole layer-miss family (a missing layer and a wrong version)
-  answers moto's UnknownLayerException constant "Cannot find layer"
-  (models.py:1879-1907) instead of the twin's structural messages; the
-  wrong-version delete stays a silent no-op (both engines) and
-  GetLayerVersionByArn stays a recorded crash-divergence — moto's
-  None-return turns into an HTML 500 (models.py:1910+), the twin keeps
-  its sane 404. Pins: get_alias_follows_the_function_then_moto_wording /
-  delete_alias_missing_alias_is_a_silent_noop /
-  update_alias_missing_fn_is_function_not_found /
-  layer_misses_carry_the_unknown_layer_constant; differential corpus
-  lambda_alias_layers (8 rows, 0 unexpected).
+
+
+
 
 - **SQS: the redrive move preserves the receive bookkeeping and the
   receive scan keeps delivering past it.** Two measured rows from the
@@ -94,7 +76,20 @@ under *Changelog discipline*.
   DLQ-eligible head (models.py:1021-1034) — the fresh messages behind
   it deliver in the SAME receive up to the count, so a default (uncapped)
   receive after a redrive-threshold head neither reports empty nor
-  wastes the scan. The twin now re-scans within the held critical
+  wastes the scan.
+- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
+  2026-11-11 census's apigwv2 rows land: a missing API answers
+  "Invalid API identifier specified <apiId>" (the wire's Integration
+  and Route questions run through the api gate first, models.py
+  :1188-1191, 959-962), "Invalid Integration identifier specified
+  <id>" / "Invalid Route identifier specified <id>" per-entity,
+  "Invalid RouteResponse identifier specified <id>", and the
+  route-response lookup resolves the ROUTE first (a missing route
+  carries the Route wording even with a RouteResponseId riding along,
+  models.py:1013-1020) — the twin carried "<X> <id> not found" shapes
+  for all of them. Pins: apigatewayv2::identifier_wording_pins (the api
+  gate + the per-kind family + the route-first row). Wire-verified
+  2026-11-12: every wording byte-equal at both engines. The twin now re-scans within the held critical
   section until capacity is filled or the queue drains, and the moved
   message keeps its pre-scan count. Pins:
   test_redrive_move_preserves_receive_count_and_keeps_scanning
@@ -1228,7 +1223,43 @@ recorded decision in `tooling/surface-absence.json`).
   version tag from the release lane (the standard image IS the `runtimes`
   stage).
 
-### Fixed
+
+- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
+  2026-11-11 census's apigwv2 rows: a missing API/Integration/Route
+  answers the fork's kind-wording family — "Invalid API identifier
+  specified <apiId>" (the wire's Integration and Route questions run
+  through the api gate first, models.py:1188-1191, 959-962),
+  "Invalid Integration identifier specified <id>" and "Invalid Route
+  identifier specified <id>" per-entity, "Invalid RouteResponse
+  identifier specified <id>", and the route-response lookup resolves
+  the ROUTE first (a missing route carries the Route wording even with
+  a RouteResponseId riding along, models.py:1013-1020) — the twin
+  carried "<X> <id> not found" shapes for all of them. Pins:
+  apigatewayv2::identifier_wording_pins (api gate + the per-kind family
+  + the route-first row). Wire-verified: every wording byte-equal at
+  both engines (2026-11-12).
+
+- **Lambda: the alias and layer miss recipes follow the fork.** The
+  2026-11-12 census measured the twin's local wordings against moto's
+  helpers: alias ops resolve the FUNCTION first (models.py:1554-1560 via
+  _get_function_aliases → the Function-not-found arn wording, no
+  version suffix); a missing alias on an EXISTING function answers
+  UnknownAliasException "Cannot find alias arn: <the full alias arn>"
+  (models.py:1560-1564, exceptions.py:56-60) instead of the twin's
+  name-only wording; delete_alias is a SILENT no-op — moto pops with
+  `pop(name, None)` (models.py:1554-1557) where the twin 404'd. The
+  whole layer-miss family (a missing layer and a wrong version)
+  answers moto's UnknownLayerException constant "Cannot find layer"
+  (models.py:1879-1907) instead of the twin's structural messages; the
+  wrong-version delete stays a silent no-op (both engines) and
+  GetLayerVersionByArn stays a recorded crash-divergence — moto's
+  None-return turns into an HTML 500 (models.py:1910+), the twin keeps
+  its sane 404. Pins: get_alias_follows_the_function_then_moto_wording /
+  delete_alias_missing_alias_is_a_silent_noop /
+  update_alias_missing_fn_is_function_not_found /
+  layer_misses_carry_the_unknown_layer_constant; differential corpus
+  lambda_alias_layers (8 rows, 0 unexpected).
+
 
 See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
 rollback cascade, lambda docker executor hardening, iam/kms/sfn/events

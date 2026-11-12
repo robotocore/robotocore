@@ -1,6 +1,11 @@
 {
   "service": "apigatewayv2",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-12T02:14:35.620216+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/apigatewayv2.rs": "ad014ada4157b80cdd50cd47abe16e8268ec4dee7dbdb5d6a7a8d7903f902b9a",
+    "rotocore/src/services/apigatewayv2/": "absent",
+    "crates/apigatewayv2/src/": "absent"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 102,
@@ -520,10 +525,5 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/apigatewayv2.rs": "aa0fe94cc6cca17aee690cd826cdfebda4d3cf5bf8b85868e26ebe580156aa17",
-    "rotocore/src/services/apigatewayv2/": "absent",
-    "crates/apigatewayv2/src/": "absent"
-  }
+  ]
 }
