@@ -14,7 +14,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 sha2 = "0.10"
-hmac = "0.12"
+hmac = "0.13"
 md5 = "0.8"
 # aws-chunked trailer checksum verification (already in Cargo.lock via
 # flate2; sha1 mirrors rotocore's direct dependency).
