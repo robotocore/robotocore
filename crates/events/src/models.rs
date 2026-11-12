@@ -24,8 +24,11 @@ pub struct Rule {
     /// explicitly-empty one stays.
     #[serde(default)]
     pub description: Option<String>,
-    /// Event pattern as a JSON string ("" when the rule only has a schedule).
-    pub event_pattern: String,
+    /// moto EventPattern.load accepts ANY string and `dump()` returns the
+    /// raw pattern — an explicitly-empty one is kept on the render
+    /// (models.py:1129-1136, 1159-1164; probed 200).
+    #[serde(default)]
+    pub event_pattern: Option<String>,
     #[serde(with = "crate::snapshot::rw")]
     pub state: RwLock<String>,
     pub role_arn: Option<String>,
@@ -56,8 +59,8 @@ impl Rule {
         if let Some(ref description) = self.description {
             obj.insert("Description".into(), json!(description));
         }
-        if !self.event_pattern.is_empty() {
-            obj.insert("EventPattern".into(), json!(self.event_pattern));
+        if let Some(ref event_pattern) = self.event_pattern {
+            obj.insert("EventPattern".into(), json!(event_pattern));
         }
         if let Some(ref sched) = self.schedule_expression {
             obj.insert("ScheduleExpression".into(), json!(sched));

@@ -14,6 +14,11 @@ use std::sync::Arc;
 static CRON_RE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^cron\(.*\)").unwrap());
 static RATE_RE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"^rate\(\d*\s(minute|minutes|hour|hours|day|days)\)").unwrap());
+// moto EventsBackend.ACCOUNT_ID / STATEMENT_ID (events/models.py:1202-1203).
+static PRINCIPAL_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^(\d{1,12}|\*)$").unwrap());
+static STATEMENT_ID_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^[a-zA-Z0-9-_]{1,64}$").unwrap());
 
 /// Process-global EventBridge state registry, shared by every handler
 /// instance so cross-service publishers (S3, ...) can reach the same rules.
@@ -138,7 +143,7 @@ pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
             .filter(|rule| rule.bus_name == "default")
             .filter(|rule| *rule.state.read() == "ENABLED")
             .filter(|rule| {
-                serde_json::from_str::<Value>(&rule.event_pattern)
+                serde_json::from_str::<Value>(rule.event_pattern.as_deref().unwrap_or(""))
                     .map(|pattern| matches_pattern(&pattern, event))
                     .unwrap_or(false)
             })
@@ -198,13 +203,24 @@ impl EventsHandler {
             .get("Description")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let event_pattern = Self::param_str(req, &["EventPattern"]);
+        let event_pattern: Option<String> = req
+            .params
+            .get("EventPattern")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        // The fork's checks treat "" as absent (EventPatternParser.parse:
+        // `if self.pattern else {}`); the OPTION carries the explicit-
+        // empty rule forward for the render.
+        let pattern_set = event_pattern
+            .as_deref()
+            .map(|p| !p.is_empty())
+            .unwrap_or(false);
         let schedule_expression = req
             .params
             .get("ScheduleExpression")
             .and_then(|v| v.as_str())
             .map(String::from);
-        if schedule_expression.is_none() && event_pattern.is_empty() {
+        if schedule_expression.is_none() && !pattern_set {
             // moto `EventsBackend.put_rule`: ValidationException with the
             // "Parameter(s) ..." text; the twin used "InvalidParameter".
             return AwsResponse::error(
@@ -253,11 +269,11 @@ impl EventsHandler {
                 &format!("Event bus {bus} does not exist."),
             );
         }
-        if !event_pattern.is_empty() {
+        if let Some(pattern) = event_pattern.as_deref().filter(|p| !p.is_empty()) {
             // moto `EventPatternParser.parse` + era `_put_rule`: patterns
             // are parsed and shape-checked at PutRule time; the twin used
             // to store garbage patterns that could then never match.
-            let parsed = match serde_json::from_str::<Value>(&event_pattern) {
+            let parsed = match serde_json::from_str::<Value>(pattern) {
                 Ok(parsed) => parsed,
                 Err(_) => {
                     return AwsResponse::error(
@@ -327,16 +343,31 @@ impl EventsHandler {
         AwsResponse::json(200, json!({ "RuleArn": rule.arn }))
     }
 
-    /// moto `_normalize_event_bus_arn` (events/models.py:1300-1303):
-    /// the full EventBus ARN form resolves to its tail segment;
-    /// empty (omitted) means the "default" bus.
-    fn normalize_bus(req: &AwsRequest) -> String {
-        let raw = Self::param_str(req, &["EventBusName"]);
+    /// moto `_normalize_event_bus_arn` (events/models.py:1300-1303) on a
+    /// raw value: the full EventBus ARN form resolves to its tail
+    /// segment; empty (omitted) means the "default" bus.
+    fn normalize_bus_value(raw: &str) -> String {
         if raw.is_empty() {
             "default".to_string()
         } else {
-            raw.rsplit('/').next().unwrap_or(&raw).to_string()
+            raw.rsplit('/').next().unwrap_or(raw).to_string()
         }
+    }
+
+    fn normalize_bus(req: &AwsRequest) -> String {
+        Self::normalize_bus_value(&Self::param_str(req, &["EventBusName"]))
+    }
+
+    /// moto `_get_event_bus` (events/models.py:1227-1237): the lookup
+    /// AND its error message resolve the name after splitting on the
+    /// caller's "…:{account}:event-bus/" token — the ARN tail rides
+    /// every event-bus-scoped read that goes through it
+    /// (describe_event_bus, put_events entries, permissions, archives).
+    fn resolve_bus(name: &str, account: u64) -> String {
+        name.split(&format!("{account}:event-bus/"))
+            .last()
+            .unwrap_or(name)
+            .to_string()
     }
 
     fn rule_key(req: &AwsRequest) -> (String, String) {
@@ -775,7 +806,7 @@ impl EventsHandler {
                 .filter(|r| r.bus_name == bus_name)
                 .filter(|r| r.state.read().as_str() == "ENABLED")
                 .filter(|r| {
-                    serde_json::from_str::<Value>(&r.event_pattern)
+                    serde_json::from_str::<Value>(r.event_pattern.as_deref().unwrap_or(""))
                         .map(|p| matches_pattern(&p, &event_value))
                         .unwrap_or(false)
                 })
@@ -837,6 +868,18 @@ impl EventsHandler {
             .cloned()
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+
+        // moto put_events (models.py:1449-1456): >10 entries raises the
+        // server-side constraint ValidationException before any entry is
+        // validated. SDK-reachable: botocore's validator carries only
+        // {required, min} for lists — the max rides on the server.
+        if entries.len() > 10 {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value '[PutEventsRequestEntry]' at 'entries' failed to satisfy constraint: Member must have length less than or equal to 10",
+            );
+        }
 
         // moto's per-entry validation contract (models.py:1434-1490): each
         // entry answers Source/DetailType/Detail-required InvalidArgument
@@ -910,24 +953,24 @@ impl EventsHandler {
                 "detail": detail,
             });
 
-            let bus_name = entry
+            // moto put_events (models.py:1498-1502): the entry bus is
+            // normalized (ARN tail; absent means "default") and resolved
+            // through describe_event_bus, which RAISES — a ghost bus
+            // answers the whole-request "Event bus {bus} does not
+            // exist." (unquoted, no per-entry failure; entries before
+            // the offender were already published, later ones never
+            // run). The twin used per-entry quoted failures.
+            let raw_bus = entry
                 .get("EventBusName")
                 .and_then(|v| v.as_str())
-                .filter(|b| !b.is_empty())
-                .unwrap_or("default")
-                .to_string();
-
-            // The Python provider fails entries for buses that do not exist
-            // (the default bus always exists).
-            let bus_exists =
-                bus_name == "default" || state.event_buses.read().contains_key(&bus_name);
-            if !bus_exists {
-                failed_count += 1;
-                results.push(json!({
-                    "ErrorCode": "ResourceNotFoundException",
-                    "ErrorMessage": format!("Event bus '{bus_name}' does not exist."),
-                }));
-                continue;
+                .unwrap_or_default();
+            let bus_name = Self::normalize_bus_value(raw_bus);
+            if bus_name != "default" && !state.event_buses.read().contains_key(&bus_name) {
+                return AwsResponse::error(
+                    400,
+                    "ResourceNotFoundException",
+                    &format!("Event bus {bus_name} does not exist."),
+                );
             }
 
             // Archive capture (shared with publish_event_to_bus): the
@@ -944,7 +987,10 @@ impl EventsHandler {
                 .filter(|r| r.bus_name == bus_name)
                 .filter(|r| r.state.read().as_str() == "ENABLED")
                 .filter(|r| {
-                    let Some(parsed) = serde_json::from_str::<Value>(&r.event_pattern).ok() else {
+                    let Some(parsed) =
+                        serde_json::from_str::<Value>(r.event_pattern.as_deref().unwrap_or(""))
+                            .ok()
+                    else {
                         return false;
                     };
                     matches_pattern(&parsed, &event)
@@ -1004,25 +1050,63 @@ impl EventsHandler {
             return AwsResponse::error(400, "ValidationException", "Name is required");
         }
         let state = self.get_state(req.account, &req.region);
+        // moto create_event_bus (models.py:1659-1666): the duplicate
+        // check precedes the shape check; the partner-source path
+        // follows (the fork answers ResourceNotFound for a source it
+        // has not registered — the twin models none).
+        if state.event_buses.read().contains_key(&name) {
+            return AwsResponse::error(
+                400,
+                "ResourceAlreadyExistsException",
+                &format!("Event bus {name} already exists."),
+            );
+        }
+        let event_source = Self::param_str(req, &["EventSourceName"]);
+        // moto create_event_bus (models.py:1660-1672): the source must be
+        // REGISTERED — the twin models partner sources (the
+        // create_partner_event_source arm stores them) — and the slash
+        // check is CONDITIONAL: a partner source's bus name may contain
+        // '/' ("aws.partner/…").
+        if !event_source.is_empty() && !state.partner_sources.read().contains_key(&event_source) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event source {event_source} does not exist."),
+            );
+        }
+        if event_source.is_empty() && name.contains('/') {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Event bus name must not contain '/'.",
+            );
+        }
         let arn = format!(
             "arn:aws:events:{}:{}:event-bus/{}",
             req.region, req.account, name
         );
         let bus = json!({ "Name": name, "Arn": arn });
         state.event_buses.write().insert(name.clone(), bus);
-        AwsResponse::json(200, json!({ "EventBusName": name, "EventBusArn": arn }))
+        // moto responses.create_event_bus renders EventBusArn ONLY.
+        AwsResponse::json(200, json!({ "EventBusArn": arn }))
     }
 
     fn delete_event_bus(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["Name"]);
         let state = self.get_state(req.account, &req.region);
-        let existed = state.event_buses.write().remove(&name).is_some();
-        if !existed && name != "default" {
+        // moto delete_event_bus (models.py:1705-1713): "default" is the
+        // ONLY rejection; every other miss — ghost, slashy foreign
+        // shape, ARN — deletes silently.
+        if name == "default" {
             return AwsResponse::error(
                 400,
-                "ResourceNotFoundException",
-                &format!("Event bus {name} not found"),
+                "ValidationException",
+                "Cannot delete event bus default.",
             );
+        }
+        let found = state.event_buses.write().remove(&name).is_some();
+        if !found {
+            return AwsResponse::json(200, json!({}));
         }
         // Cascade: remove all rules on the bus plus their tags (moto behavior).
         let removed: Vec<Arc<Rule>> = {
@@ -1059,11 +1143,16 @@ impl EventsHandler {
             name
         };
         let state = self.get_state(req.account, &req.region);
+        // moto describe_event_bus → _get_event_bus (models.py:1646-1652,
+        // 1227-1237): the name resolves AFTER the account:event-bus tail
+        // split, and a miss answers "Event bus {tail} does not exist."
+        // (the twin used "not found" and passed the raw name through).
+        let name = Self::resolve_bus(&name, req.account);
         if name != "default" && !state.event_buses.read().contains_key(&name) {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
-                &format!("Event bus {name} not found"),
+                &format!("Event bus {name} does not exist."),
             );
         }
         let arn = state.bus_arn(req.account, &req.region, &name);
@@ -1152,12 +1241,25 @@ impl EventsHandler {
     // ---------------- Permissions ----------------
 
     fn put_permission(&self, req: &AwsRequest) -> AwsResponse {
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
+        let state = self.get_state(req.account, &req.region);
+        // moto put_permission (models.py:1604-1611): the bus (empty →
+        // "default") resolves via describe_event_bus BEFORE the param
+        // checks — a ghost bus answers the bus miss, not the Principal
+        // error, and the ARN form resolves through _get_event_bus's
+        // tail split.
+        let raw_bus = Self::param_str(req, &["EventBusName"]);
+        let bus = if raw_bus.is_empty() {
             "default".to_string()
         } else {
-            bus
+            Self::resolve_bus(&raw_bus, req.account)
         };
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            );
+        }
         if req.params.get("Principal").is_none() {
             return AwsResponse::error(
                 400,
@@ -1165,14 +1267,87 @@ impl EventsHandler {
                 "Parameter Principal must be specified.",
             );
         }
-        let state = self.get_state(req.account, &req.region);
+        // moto _put_permission_from_params (models.py:1564-1597) — the
+        // condition/principal/value/action/identifier checks ride AFTER
+        // the bus gate, in this exact order.
+        let principal = req
+            .params
+            .get("Principal")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let condition = req
+            .params
+            .get("Condition")
+            .and_then(|v| v.as_object())
+            .cloned();
+        if condition.is_some() && principal != "*" {
+            return AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "Value of the parameter 'principal' must be '*' when the parameter 'condition' is set.",
+                );
+        } else if !PRINCIPAL_RE.is_match(&principal) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                &format!(
+                    "Value {principal} at 'principal' failed to satisfy constraint: Member must satisfy regular expression pattern: (\\d{{12}}|\\*)"
+                ),
+            );
+        }
+        let action = req
+            .params
+            .get("Action")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        if action != "events:PutEvents" {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Provided value in parameter 'action' is not supported.",
+            );
+        }
         let statement_id = Self::param_str(req, &["StatementId"]);
-        let statement = json!({
+        if !STATEMENT_ID_RE.is_match(&statement_id) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                "StatementId must match ^[a-zA-Z0-9-_]{1,64}$",
+            );
+        }
+        // moto EventBus.add_permission (models.py:505-530) REPLACES the
+        // principal's prior statements — a new grant for the same
+        // principal drops earlier SIDs; the twin kept them forever.
+        let principal_arn = json!({
+            "AWS": format!("arn:aws:iam::{}:root", principal),
+        });
+        {
+            let mut policies = state.bus_policies.write();
+            if let Some(entry) = policies.get_mut(&bus) {
+                if let Some(arr) = entry.get_mut("Statement").and_then(|s| s.as_array_mut()) {
+                    arr.retain(|s| {
+                        s.get("Principal").cloned().unwrap_or(Value::Null) != principal_arn
+                    });
+                }
+            }
+        }
+        let mut statement = json!({
             "Sid": statement_id,
             "Effect": "Allow",
-            "Principal": req.params.get("Principal").cloned().unwrap_or(Value::Null),
-            "Action": req.params.get("Action").cloned().unwrap_or_else(|| json!("events:PutEvents")),
+            "Principal": principal_arn,
+            "Action": action,
         });
+        if let Some(condition) = condition {
+            // _condition_param_to_stmt_condition (models.py:1549-1557):
+            // {Type: {Key: Value}}.
+            statement["Condition"] = json!({
+                condition["Type"].as_str().unwrap_or_default(): {
+                    condition["Key"].as_str().unwrap_or_default():
+                        condition["Value"].as_str().unwrap_or_default().to_string(),
+                }
+            });
+        }
         let mut policy = state
             .bus_policies
             .read()
@@ -1193,41 +1368,74 @@ impl EventsHandler {
     }
 
     fn remove_permission(&self, req: &AwsRequest) -> AwsResponse {
-        let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() {
+        let raw_bus = Self::param_str(req, &["EventBusName"]);
+        let bus = if raw_bus.is_empty() {
             "default".to_string()
         } else {
-            bus
+            Self::resolve_bus(&raw_bus, req.account)
         };
-        let statement_id = Self::param_str(req, &["StatementId"]);
         let state = self.get_state(req.account, &req.region);
-        let Some(mut policy) = state.bus_policies.read().get(&bus).cloned() else {
+        // moto remove_permission (models.py:1619-1643): the bus rides
+        // describe_event_bus FIRST — a ghost bus answers the bus miss,
+        // not the policy miss; the statements-not-empty check follows
+        // (has_permissions == len(statements) > 0).
+        if bus != "default" && !state.event_buses.read().contains_key(&bus) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {bus} does not exist."),
+            );
+        }
+        // models.py:1630-1633 — RemoveAllPermissions clears the
+        // statement set unconditionally.
+        if req
+            .params
+            .get("RemoveAllPermissions")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            if let Some(entry) = state.bus_policies.write().get_mut(&bus) {
+                if let Some(arr) = entry.get_mut("Statement").and_then(|s| s.as_array_mut()) {
+                    arr.clear();
+                }
+            }
+            return AwsResponse::json(200, json!({}));
+        }
+        let mut policy = state
+            .bus_policies
+            .read()
+            .get(&bus)
+            .cloned()
+            .unwrap_or_else(|| json!({ "Version": "2012-10-17", "Statement": [] }));
+        // has_permissions == len(statements) > 0 (models.py:415-416) —
+        // the policy container existing with an empty set is no policy.
+        let statement_count = policy
+            .get("Statement")
+            .and_then(|s| s.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        if statement_count == 0 {
             return AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
                 "EventBus does not have a policy.",
             );
-        };
-        if statement_id.is_empty() {
+        }
+        let statement_id = Self::param_str(req, &["StatementId"]);
+        let statements = policy
+            .get_mut("Statement")
+            .and_then(|s| s.as_array_mut())
+            .expect("statement array checked above");
+        let before = statements.len();
+        statements.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
+        if statements.len() == before {
             return AwsResponse::error(
                 400,
-                "ValidationException",
-                "Parameter StatementId must be specified.",
+                "ResourceNotFoundException",
+                "Statement with the provided id does not exist.",
             );
         }
-        if let Some(statements) = policy.get_mut("Statement").and_then(|s| s.as_array_mut()) {
-            let before = statements.len();
-            statements
-                .retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
-            if statements.len() == before {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Statement with id {statement_id} not found"),
-                );
-            }
-            state.bus_policies.write().insert(bus, policy);
-        }
+        state.bus_policies.write().insert(bus, policy);
         AwsResponse::json(200, json!({}))
     }
 
@@ -1293,7 +1501,42 @@ impl EventsHandler {
     fn list_tags_for_resource(&self, req: &AwsRequest) -> AwsResponse {
         let arn = Self::param_str(req, &["ResourceARN", "ResourceArn"]);
         let state = self.get_state(req.account, &req.region);
-        AwsResponse::json(200, json!({ "Tags": state.get_tags(&arn) }))
+        // moto list_tags_for_resource (models.py:1714-1722): a rule (by
+        // tail name, any bus) or a bus name wins its CANONICAL ARN's
+        // tags; a miss answers "Rule {name} does not exist on EventBus
+        // default." — regardless of which bus would have matched. The
+        // twin used to answer Tags: [] for unknown targets.
+        let name = arn.split('/').next_back().unwrap_or(&arn).to_string();
+        let rules = state.rules.read();
+        let target_arn = rules
+            .values()
+            .find(|r| r.name == name)
+            .map(|r| r.arn.clone());
+        drop(rules);
+        let target_arn = target_arn.or_else(|| {
+            state
+                .event_buses
+                .read()
+                .get(&name)
+                .and_then(|bus| bus.get("Arn").and_then(Value::as_str).map(String::from))
+        });
+        // AWS keeps taggable cousins the fork's registry scan never
+        // reaches — connections, archives, replays, endpoints — and
+        // answers their tags from the exact-ARN store (the compat
+        // corpora pin TagResource+ListTags round-trips on both). The
+        // rule/bus registry decides FIRST (fork semantics; the
+        // 2026-11-12 census row), the ARN store fills the rest, and the
+        // ghost wording surfaces for anything neither knows about.
+        let target_arn =
+            target_arn.or_else(|| state.tags.read().contains_key(&arn).then(|| arn.clone()));
+        let Some(target_arn) = target_arn else {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Rule {name} does not exist on EventBus default."),
+            );
+        };
+        AwsResponse::json(200, json!({ "Tags": state.get_tags(&target_arn) }))
     }
 
     // ---------------- Archives ----------------
@@ -1301,11 +1544,25 @@ impl EventsHandler {
     fn create_archive(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["ArchiveName"]);
         let state = self.get_state(req.account, &req.region);
+        // moto create_archive (models.py:1739): the SOURCE resolves via
+        // _get_event_bus BEFORE the duplicate check — a ghost source
+        // (name or ARN; the ARN tail is split off) answers "Event bus
+        // {tail} does not exist." No default-normalization here: an
+        // empty source is looked up verbatim exactly like the fork's.
+        let source = Self::param_str(req, &["EventSourceArn"]);
+        let resolved = Self::resolve_bus(&source, req.account);
+        if resolved != "default" && !state.event_buses.read().contains_key(&resolved) {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Event bus {resolved} does not exist."),
+            );
+        }
         if state.archives.read().contains_key(&name) {
             return AwsResponse::error(
                 400,
                 "ResourceAlreadyExistsException",
-                &format!("Archive {name} already exists"),
+                &format!("Archive {name} already exists."),
             );
         }
         let arn = format!(
@@ -1547,7 +1804,7 @@ impl EventsHandler {
                 .filter(|r| r.bus_name == dest_bus)
                 .filter(|r| r.state.read().as_str() == "ENABLED")
                 .filter(|r| {
-                    serde_json::from_str::<Value>(&r.event_pattern)
+                    serde_json::from_str::<Value>(r.event_pattern.as_deref().unwrap_or(""))
                         .map(|p| matches_pattern(&p, &event))
                         .unwrap_or(false)
                 })
@@ -1741,6 +1998,10 @@ impl EventsHandler {
                     req.region, req.account, name
                 );
                 let _ = row;
+                // The exact-ARN tag store never pruned deleted
+                // connections: ListTags answered the stale entry where
+                // moto/AWS 404 (review round-1 finding 4).
+                state.tags.write().remove(&arn);
                 AwsResponse::json(
                     200,
                     json!({ "ConnectionArn": arn, "ConnectionState": "DELETING" }),
@@ -2323,6 +2584,445 @@ mod tests {
             resp.status, 200,
             "deleting a missing rule succeeds (era/moto)"
         );
+    }
+
+    // -- Family 2: the bus CRUD wordings / gates (census 2026-11-12) ----------
+
+    #[test]
+    fn put_events_ghost_bus_answers_whole_request() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [{"EventBusName": "f7-ghost", "Source": "com.t",
+                                  "DetailType": "t", "Detail": "{}"}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        // Unquoted, exactly like _get_event_bus.
+        assert_eq!(json["message"], "Event bus f7-ghost does not exist.");
+    }
+
+    #[test]
+    fn put_events_valid_first_entry_delivery_does_not_mask_the_miss() {
+        // The rode per-entry error arms run BEFORE the bus resolution;
+        // a valid entry on a real bus does NOT mask a later ghost entry
+        // (fork raises at the offender).
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f7-bus"})));
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [{"EventBusName": "f7-bus", "Source": "com.t",
+                                  "DetailType": "t", "Detail": "{}"},
+                                 {"EventBusName": "f7-ghost", "Source": "com.t",
+                                  "DetailType": "t", "Detail": "{}"}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "Event bus f7-ghost does not exist.");
+    }
+
+    #[test]
+    fn put_events_missing_source_beats_the_bus_check() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutEvents",
+            json!({"Entries": [{"EventBusName": "f7-ghost", "DetailType": "t", "Detail": "{}"}]}),
+        ));
+        assert_eq!(resp.status, 200, "the per-entry arm stays per-entry");
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 1);
+        assert_eq!(
+            json["Entries"][0]["ErrorMessage"],
+            "Parameter Source is not valid. Reason: Source is a required argument."
+        );
+    }
+
+    #[test]
+    fn create_event_bus_duplicate_delete_and_shape() {
+        let handler = EventsHandler::new();
+        // only EventBusArn rides the response (moto responses:263-287).
+        let resp = handler.handle(make_req("CreateEventBus", json!({"Name": "f7-shape"})));
+        assert_eq!(resp.status, 200);
+        let json = body(&resp);
+        assert_eq!(
+            json["EventBusArn"],
+            "arn:aws:events:us-east-1:123456789012:event-bus/f7-shape"
+        );
+        assert!(
+            json.get("EventBusName").is_none(),
+            "moto adds NO EventBusName"
+        );
+
+        // The duplicate goes ResourceAlreadyExists, not a silent overwrite.
+        let resp = handler.handle(make_req("CreateEventBus", json!({"Name": "f7-shape"})));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceAlreadyExistsException");
+        assert_eq!(json["message"], "Event bus f7-shape already exists.");
+
+        // A slashy name fails the shape check (and never mints a bus).
+        let resp = handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": "arn:aws:events:us-east-1:123456789012:event-bus/f7-shape"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Event bus name must not contain '/'."
+        );
+
+        // Deleting "default" is the ONE rejection (models.py:1705-1709).
+        let resp = handler.handle(make_req("DeleteEventBus", json!({"Name": "default"})));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(json["message"], "Cannot delete event bus default.");
+        // The default bus' rules survive the failed delete.
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f7-default-rule", "EventPattern": "{}"}),
+        ));
+        handler.handle(make_req("DeleteEventBus", json!({"Name": "default"})));
+        assert_eq!(
+            handler
+                .handle(make_req("DescribeRule", json!({"Name": "f7-default-rule"})))
+                .status,
+            200,
+            "default rules are untouched"
+        );
+
+        // Any other ghost deletes silently — including ARN-shaped names
+        // (models.py:1710-1713 pops verbatim).
+        let resp = handler.handle(make_req(
+            "DeleteEventBus",
+            json!({"Name": "arn:aws:events:us-east-1:123456789012:event-bus/f7-ghost"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("DeleteEventBus", json!({"Name": "f7-ghost"})));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn describe_event_bus_wording_and_arn_tail() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req("DescribeEventBus", json!({"Name": "f7-ghost"})));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(json["message"], "Event bus f7-ghost does not exist.");
+
+        // The ARN form resolves to the tail via _get_event_bus' token
+        // split — the message carries the TAIL.
+        let resp = handler.handle(make_req(
+            "DescribeEventBus",
+            json!({"Name": "arn:aws:events:us-east-1:123456789012:event-bus/f7-ghost"}),
+        ));
+        assert_eq!(body(&resp)["message"], "Event bus f7-ghost does not exist.");
+    }
+
+    #[test]
+    fn put_permission_gates_the_bus_before_the_params() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f7-ghost"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(json["message"], "Event bus f7-ghost does not exist.");
+    }
+
+    #[test]
+    fn create_archive_gates_the_source_bus() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "CreateArchive",
+            json!({
+                "ArchiveName": "f7-arch",
+                "EventSourceArn": "arn:aws:events:us-east-1:123456789012:event-bus/f7-ghost",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(json["message"], "Event bus f7-ghost does not exist.");
+    }
+
+    #[test]
+    fn list_tags_rule_bus_or_miss() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f7-tagbus"})));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f7-tag-rule", "EventPattern": "{}", "EventBusName": "f7-tagbus",
+                    "Tags": [{"Key": "k", "Value": "v"}]}),
+        ));
+        // The tail name finds the rule on ANY bus, and tags land on the
+        // RULE, not the queried ARN string's prefix.
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:eu-west-9:987:rule/f7-tag-rule"}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["Tags"][0]["Key"], "k");
+
+        // A bus-name tail resolves to the BUS.
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:event-bus/f7-tagbus"}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // The miss pins "default" in the message whatever the input.
+        let resp = handler.handle(make_req(
+            "ListTagsForResource",
+            json!({"ResourceARN": "arn:aws:events:us-east-1:123456789012:rule/f7-ghost-rule"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(
+            json["message"],
+            "Rule f7-ghost-rule does not exist on EventBus default."
+        );
+    }
+
+    #[test]
+    fn event_pattern_empty_string_sticks_to_the_render() {
+        let handler = EventsHandler::new();
+        // EventPattern="" is SDK-reachable (no min on the Pattern trait)
+        // and moto's dump() keeps it verbatim (models.py:1159-1164).
+        let resp = handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "f7-empty-pattern", "EventPattern": "",
+                    "ScheduleExpression": "rate(1 hour)"}),
+        ));
+        assert_eq!(resp.status, 200, "empty pattern plus a schedule puts fine");
+        let rule = body(&handler.handle(make_req(
+            "DescribeRule",
+            json!({"Name": "f7-empty-pattern"}),
+        )));
+        assert_eq!(rule["EventPattern"], "");
+        assert_eq!(rule["ScheduleExpression"], "rate(1 hour)");
+    }
+
+    // -- Family 2 round-2 review fixes (agent-117 findings 1-5) ---------------
+
+    #[test]
+    fn put_events_rejects_more_than_ten_entries() {
+        // botocore validates only required/min client-side, so 11 entries
+        // REACH the server; the fork answers the constraint wording
+        // (models.py:1449-1456) before any entry runs.
+        let handler = EventsHandler::new();
+        let entry = json!({"Source": "com.t", "DetailType": "t", "Detail": "{}"});
+        let eleven: Vec<Value> = (0..11).map(|_| entry.clone()).collect();
+        let resp = handler.handle(make_req("PutEvents", json!({"Entries": eleven})));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "1 validation error detected: Value '[PutEventsRequestEntry]' at 'entries' failed to satisfy constraint: Member must have length less than or equal to 10"
+        );
+        // Ten is the cap exactly (the fork only balks past 10).
+        let ten: Vec<Value> = (0..10).map(|_| entry.clone()).collect();
+        let resp = handler.handle(make_req("PutEvents", json!({"Entries": ten})));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn create_event_bus_accepts_a_registered_partner_source() {
+        // The twin models partner sources (CreatePartnerEventSource
+        // stores them), so the source path must consult the registry —
+        // and a partner source allows the '/' its name carries
+        // (models.py:1660-1672: the slash check is conditional).
+        let handler = EventsHandler::new();
+        let source = "aws.partner/f7-partner/x";
+        handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({"Name": source, "Account": "123456789012"}),
+        ));
+        let resp = handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": source, "EventSourceName": source}),
+        ));
+        assert_eq!(
+            resp.status, 200,
+            "a slashy partner bus is legal with a registered source"
+        );
+        // An unregistered source still declines with the fork's wording.
+        let resp = handler.handle(make_req(
+            "CreateEventBus",
+            json!({"Name": "f7-no-such", "EventSourceName": "aws.partner/nope"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(
+            json["message"],
+            "Event source aws.partner/nope does not exist."
+        );
+    }
+
+    #[test]
+    fn put_permission_param_arms_match_the_fork() {
+        let handler = EventsHandler::new();
+        // Bad principal shape (Action rides AFTER principal — arrays).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "abc", "Action": "events:PutEvents", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "InvalidParameterValue");
+        assert_eq!(
+            json["message"],
+            "Value abc at 'principal' failed to satisfy constraint: Member must satisfy regular expression pattern: (\\d{12}|\\*)"
+        );
+
+        // Wrong action value.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "Action": "events:Nope", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "Provided value in parameter 'action' is not supported."
+        );
+
+        // A missing Action is NOT defaulted (models.py:1581-1585).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Provided value in parameter 'action' is not supported."
+        );
+
+        // StatementId outside ^[a-zA-Z0-9-_]{1,64}$.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "*", "Action": "events:PutEvents", "StatementId": "bad id!"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "StatementId must match ^[a-zA-Z0-9-_]{1,64}$"
+        );
+
+        // Condition forces the star principal.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789012", "Condition": {"Type": "StringEquals", "Key": "aws:PrincipalOrgID", "Value": "o-1"}, "Action": "events:PutEvents", "StatementId": "s"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Value of the parameter 'principal' must be '*' when the parameter 'condition' is set."
+        );
+    }
+
+    #[test]
+    fn put_permission_replaces_the_principals_statements() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp-1"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // A second grant for the SAME principal replaced the first SID
+        // (models.py:508 _remove_principals_statements over the dict).
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp-2"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // A different principal's grant coexists.
+        let resp = handler.handle(make_req(
+            "PutPermission",
+            json!({"Principal": "999999999999", "Action": "events:PutEvents", "StatementId": "other-principal"}),
+        ));
+        assert_eq!(resp.status, 200);
+        // stp-1 is GONE — removing it answers the statement miss.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"StatementId": "stp-1"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Statement with the provided id does not exist."
+        );
+        // stp-2 and the other principal's statement both still exist.
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "RemovePermission",
+                    json!({"StatementId": "stp-2"})
+                ))
+                .status,
+            200
+        );
+        assert_eq!(
+            handler
+                .handle(make_req(
+                    "RemovePermission",
+                    json!({"StatementId": "other-principal"})
+                ))
+                .status,
+            200
+        );
+    }
+
+    #[test]
+    fn remove_permission_gates_and_wordings() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "f7-pm-bus"})));
+        handler.handle(make_req(
+            "PutPermission",
+            json!({"EventBusName": "f7-pm-bus", "Principal": "123456789013", "Action": "events:PutEvents", "StatementId": "stp"}),
+        ));
+
+        // A ghost bus answers the bus miss before any policy arms.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-ghost", "StatementId": "other"}),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ResourceNotFoundException");
+        assert_eq!(json["message"], "Event bus f7-pm-ghost does not exist.");
+
+        // The statement miss wording per models.py:1639-1642.
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "StatementId": "no-such-sid"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            "Statement with the provided id does not exist."
+        );
+
+        // RemoveAllPermissions clears the set; a later remove reports
+        // the policy miss (has_permissions is statement-count based).
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "RemoveAllPermissions": true}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "RemovePermission",
+            json!({"EventBusName": "f7-pm-bus", "StatementId": "whatever"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "EventBus does not have a policy.");
     }
 
     // -- PutRule event-pattern validation (F9, agent-221 finding 9) ------------

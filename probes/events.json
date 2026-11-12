@@ -1,10 +1,10 @@
 {
   "service": "events",
-  "generated_at": "2026-11-12T07:40:40.747703+00:00",
+  "generated_at": "2026-11-12T08:44:24.326851+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/events.rs": "absent",
     "rotocore/src/services/events/": "absent",
-    "crates/events/src/": "387c65f561817c0c393862abb7f4c3a3339f2cbc5958a8a79f97bedd1efff106"
+    "crates/events/src/": "08855c47c6626e5e043bbe83fcb0dbe297e812b7022af1edf41325f473dcee36"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
@@ -33,7 +33,7 @@
     {
       "operation": "CreateArchive",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateConnection",
@@ -48,7 +48,7 @@
     {
       "operation": "CreateEventBus",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreatePartnerEventSource",
@@ -73,7 +73,7 @@
     {
       "operation": "DeleteArchive",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteConnection",
@@ -213,7 +213,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTargetsByRule",
@@ -233,7 +233,7 @@
     {
       "operation": "PutPermission",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutRule",
@@ -248,7 +248,7 @@
     {
       "operation": "RemovePermission",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RemoveTargets",
