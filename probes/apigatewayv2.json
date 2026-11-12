@@ -1,6 +1,11 @@
 {
   "service": "apigatewayv2",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
+  "generated_at": "2026-11-12T02:56:22.584215+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/apigatewayv2.rs": "335f34edbe91e73c85dee72f40e87bedc5af7519701ae16fcb36f99a6972dae7",
+    "rotocore/src/services/apigatewayv2/": "absent",
+    "crates/apigatewayv2/src/": "absent"
+  },
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 102,
@@ -178,7 +183,7 @@
     {
       "operation": "DeleteRouteResponse",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteRouteSettings",
@@ -520,10 +525,5 @@
       "status": "working",
       "message": "implemented (NotFoundException)"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/apigatewayv2.rs": "aa0fe94cc6cca17aee690cd826cdfebda4d3cf5bf8b85868e26ebe580156aa17",
-    "rotocore/src/services/apigatewayv2/": "absent",
-    "crates/apigatewayv2/src/": "absent"
-  }
+  ]
 }

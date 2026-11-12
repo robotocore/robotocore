@@ -59,9 +59,48 @@ under *Changelog discipline*.
   DynamoDB and IAM** is checked in under `docs/semantic-audit-2026-11-06/`
   (37 file:line-precise divergences; the fixed ones are struck as
   fixed-in-this-branch, the rest are the open fidelity backlog).
-
 ### Fixed
 
+
+
+
+
+- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
+  2026-11-11 census's apigwv2 rows land: a missing API answers
+  "Invalid API identifier specified <apiId>" (the wire's Integration
+  and Route questions run through the api gate first, models.py
+  :1188-1191, 959-962), "Invalid Integration identifier specified
+  <id>" and "Invalid Route identifier specified <id>" per-entity,
+  "Invalid RouteResponse identifier specified <id>", and the
+  route-response lookup resolves the ROUTE first (a missing route
+  carries the Route wording even with a RouteResponseId riding along,
+  models.py:1013-1020) — the twin carried "<X> <id> not found" shapes
+  for all of them. Pins: apigatewayv2::identifier_wording_pins (the api
+  gate + the per-kind family + the route-first row); wire-verified
+  2026-11-12: every GET-miss wording byte-equal at both engines. The
+  DELETE arms after the review: delete_api / delete_route /
+  delete_integration / delete_route_response on a missing id answer
+  moto's silent empty 200 "{}" pops (models.py:1185-1187, 952-953,
+  812-813, 497-498) instead of the twin's 404 family.
+- **SQS: the redrive move preserves the receive bookkeeping and the
+  receive scan keeps delivering past it.** Two measured rows from the
+  2026-11-11 census: (a) moto's DLQ move passes the message object to
+  the DLQ's add_message unchanged (sqs/models.py:1044-1051) —
+  ApproximateReceiveCount carries across the move and the first-receive
+  stamp survives, the DLQ's own receive then increments the preserved
+  value (source rc 2 pre-move → "3" on the DLQ receive — the twin
+  zeroed it to "1"); (b) moto's receive scan `continue`s past a
+  DLQ-eligible head (models.py:1021-1034) — the fresh messages behind
+  it deliver in the SAME receive up to the count, so a default (uncapped)
+  receive after a redrive-threshold head neither reports empty nor
+  wastes the scan. The twin now re-scans within the held critical
+  section until capacity is filled or the queue drains, and the moved
+  message keeps its pre-scan count. Pins:
+  test_redrive_move_preserves_receive_count_and_keeps_scanning
+  (census: artifacts/sqs-redrive-census.py; the differential corpus
+  sqs_redrive pins the rows standing). A dangling RedrivePolicy target
+  keeps the recorded "Could not find DLQ for <arn>" answer (models.py
+  :420-424, converged already).
 - **Lambda: the alias and layer miss recipes follow the fork.** The
   2026-11-12 census measured the twin's local wordings against moto's
   helpers: alias ops resolve the FUNCTION first (models.py:1554-1560 via
@@ -83,25 +122,30 @@ under *Changelog discipline*.
   layer_misses_carry_the_unknown_layer_constant; differential corpus
   lambda_alias_layers (8 rows, 0 unexpected).
 
-- **SQS: the redrive move preserves the receive bookkeeping and the
-  receive scan keeps delivering past it.** Two measured rows from the
-  2026-11-11 census: (a) moto's DLQ move passes the message object to
-  the DLQ's add_message unchanged (sqs/models.py:1044-1051) —
-  ApproximateReceiveCount carries across the move and the first-receive
-  stamp survives, the DLQ's own receive then increments the preserved
-  value (source rc 2 pre-move → "3" on the DLQ receive — the twin
-  zeroed it to "1"); (b) moto's receive scan `continue`s past a
-  DLQ-eligible head (models.py:1021-1034) — the fresh messages behind
-  it deliver in the SAME receive up to the count, so a default (uncapped)
-  receive after a redrive-threshold head neither reports empty nor
-  wastes the scan. The twin now re-scans within the held critical
-  section until capacity is filled or the queue drains, and the moved
-  message keeps its pre-scan count. Pins:
-  test_redrive_move_preserves_receive_count_and_keeps_scanning
-  (census: artifacts/sqs-redrive-census.py; the differential corpus
-  sqs_redrive pins the rows standing). A dangling RedrivePolicy target
-  keeps the recorded "Could not find DLQ for <arn>" answer (models.py
-  :420-424, converged already).
+
+See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
+rollback cascade, lambda docker executor hardening, iam/kms/sfn/events
+semantic fixes from the adversarial review waves).
+
+## 2026.10.24 (shipped in 2.0.0)
+- **Api Gateway v2: the identifier-miss wordings follow the fork.** The
+  2026-11-11 census's apigwv2 rows land: a missing API answers
+  "Invalid API identifier specified <apiId>" (the wire's Integration
+  and Route questions run through the api gate first, models.py
+  :1188-1191, 959-962), "Invalid Integration identifier specified
+  <id>" / "Invalid Route identifier specified <id>" per-entity,
+  "Invalid RouteResponse identifier specified <id>", and the
+  route-response lookup resolves the ROUTE first (a missing route
+  carries the Route wording even with a RouteResponseId riding along,
+  models.py:1013-1020) — the twin carried "<X> <id> not found" shapes
+  for all of them. Pins: apigatewayv2::identifier_wording_pins (the api
+  gate + the per-kind family + the route-first row). Wire-verified
+  2026-11-12: every GET-miss wording byte-equal at both engines; the
+  DELETE rows stay the twin's own 404 family after this slice — moto's
+  deletes are silent pops (models.py:952-953, 812-813, 497-498,
+  ~1186-1187) and land in the next tranche. The dead
+  "RouteResponse identifier" arm without the id interpolation was
+  dropped for the id-bearing wording.
 - **Lambda follow-up on the SAME tranche (the adversarial review rows):**
   create_alias resolves name+qualifier in ONE split call
   (models.py:1574 → 1724-1738) so the unknown-function arn carries the
@@ -1228,13 +1272,10 @@ recorded decision in `tooling/surface-absence.json`).
   version tag from the release lane (the standard image IS the `runtimes`
   stage).
 
+
+
 ### Fixed
 
-See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
-rollback cascade, lambda docker executor hardening, iam/kms/sfn/events
-semantic fixes from the adversarial review waves).
-
-## 2026.10.24 (shipped in 2.0.0)
 
 ### Fixed: crashed probe rows now match moto's exact wire behavior
 

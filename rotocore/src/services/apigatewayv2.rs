@@ -41,6 +41,10 @@ fn created(status: u16, body: Value) -> Response {
     json_resp(status, body)
 }
 
+fn ok_empty_json() -> Response {
+    json_resp(200, json!({}))
+}
+
 fn no_content() -> Response {
     Response::new(204, "application/json", Vec::new())
 }
@@ -403,6 +407,100 @@ fn route(
     }
 }
 
+// ==== identifier-miss wordings pins (2026-11-11 census tranche-4b; moto
+// apigatewayv2 exceptions.py ApiNotFound/IntegrationNotFound/Route arms
+// + models.py:1188-1191, 959-962 route-first GetRouteResponse) — the twin
+// carried "<X> <id> not found" shapes; the fork's wordings are the
+// "Invalid <Kind> identifier specified <id>" family and the route-response
+// lookup resolves the ROUTE first (models.py:1013-1020).
+#[cfg(test)]
+mod identifier_wording_pins {
+    use super::*;
+
+    fn state() -> (State, String, String) {
+        let mut st = State::default();
+        let params = serde_json::from_value(serde_json::json!({
+            "protocolType": "HTTP", "name": "pin-api"
+        }))
+        .expect("the create params parse");
+        let resp = create_api(&mut st, &params, "us-east-1");
+        let parsed: Value = serde_json::from_str(&String::from_utf8_lossy(&resp.body))
+            .expect("create_api answers json");
+        let api_id = parsed["apiId"]
+            .as_str()
+            .expect("apiId rides the create")
+            .to_string();
+        // Mint one route through the real arm.
+        let route_params = serde_json::from_value(serde_json::json!({
+            "routeKey": "GET /x"
+        }))
+        .expect("the create route params parse");
+        let rresp = create_route(&mut st, &route_params, &api_id);
+        let rparsed: Value =
+            serde_json::from_str(&String::from_utf8_lossy(&rresp.body)).expect("create_route json");
+        let route_id = rparsed["routeId"]
+            .as_str()
+            .expect("routeId rides create_route")
+            .to_string();
+        (st, api_id, route_id)
+    }
+
+    fn body(resp: &Response) -> String {
+        String::from_utf8_lossy(&resp.body).to_string()
+    }
+
+    #[test]
+    fn api_gate_misses_carry_the_api_identifier_wording() {
+        let (st, _api_id, _route) = state();
+        let resp = require_api(&st, "no-such-api").expect_err("require_api 404s misses");
+        assert!(
+            body(&resp).contains("Invalid API identifier specified"),
+            "body: {}",
+            body(&resp)
+        );
+        assert!(
+            body(&resp).contains("NotFoundException"),
+            "body: {}",
+            body(&resp)
+        );
+    }
+
+    #[test]
+    fn integration_route_route_response_misses_follow_the_kind_wording() {
+        let (mut st, api_id, _real_route) = state();
+
+        let resp = get_integration(&mut st, &api_id, "int-x");
+        assert!(
+            body(&resp).contains("Invalid Integration identifier specified int-x"),
+            "body: {}",
+            body(&resp)
+        );
+
+        let resp = get_route(&mut st, &api_id, "r-x");
+        assert!(
+            body(&resp).contains("Invalid Route identifier specified r-x"),
+            "body: {}",
+            body(&resp)
+        );
+
+        // route-first: a missing ROUTE id answers the Route wording even
+        // with a RouteResponseId present (models.py:1013-1020).
+        let resp = get_route_response(&mut st, &api_id, "r-x", "rr-x");
+        assert!(
+            body(&resp).contains("Invalid Route identifier specified r-x"),
+            "body: {}",
+            body(&resp)
+        );
+
+        let resp = get_route_response(&mut st, &api_id, &_real_route, "rr-real");
+        assert!(
+            body(&resp).contains("Invalid RouteResponse identifier specified rr-real"),
+            "body: {}",
+            body(&resp)
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Handlers: apis
 // ---------------------------------------------------------------------------
@@ -412,7 +510,9 @@ fn require_api(state: &State, api_id: &str) -> Result<(), Response> {
     if state.apis.contains_key(api_id) {
         Ok(())
     } else {
-        Err(not_found(&format!("API {api_id} not found")))
+        Err(not_found(&format!(
+            "Invalid API identifier specified {api_id}"
+        )))
     }
 }
 
@@ -474,7 +574,7 @@ fn update_api(state: &mut State, params: &Map<String, Value>, api_id: &str) -> R
         return resp;
     }
     let Some(api) = state.apis.get_mut(api_id) else {
-        return not_found(&format!("API {api_id} not found"));
+        return not_found(&format!("Invalid API identifier specified {api_id}"));
     };
     let mut patched = api.clone();
     for key in [
@@ -507,9 +607,9 @@ fn capitalized(key: &str) -> String {
 }
 
 fn delete_api(state: &mut State, api_id: &str) -> Response {
-    if let Err(resp) = require_api(state, api_id) {
-        return resp;
-    }
+    // moto delete_api (models.py:1185-1187): a silent pop — the api gate
+    // is Get/Update-only; the DELETE answers 200 {} for a missing id too
+    // (the response-wire review row).
     state.apis.remove(api_id);
     state.routes.remove(api_id);
     state.integrations.remove(api_id);
@@ -551,7 +651,7 @@ fn reimport_api(state: &mut State, params: &Map<String, Value>, api_id: &str) ->
     }
     let spec = spec_from(params);
     let Some(api) = state.apis.get_mut(api_id) else {
-        return not_found(&format!("API {api_id} not found"));
+        return not_found(&format!("Invalid API identifier specified {api_id}"));
     };
     if let Some(title) = spec.pointer("/info/title").and_then(Value::as_str) {
         api["name"] = json!(title);
@@ -588,7 +688,9 @@ fn with_route(
             f(route);
             Ok(())
         }
-        None => Err(not_found(&format!("Route {route_id} not found"))),
+        None => Err(not_found(&format!(
+            "Invalid Route identifier specified {route_id}"
+        ))),
     }
 }
 
@@ -635,7 +737,7 @@ fn get_route(state: &mut State, api_id: &str, route_id: &str) -> Response {
     }
     match snapshot {
         Some(value) => ok(value),
-        None => not_found(&format!("Route {route_id} not found")),
+        None => not_found(&format!("Invalid Route identifier specified {route_id}")),
     }
 }
 
@@ -677,7 +779,7 @@ fn update_route(
         .cloned();
     match snapshot {
         Some(value) => ok(value),
-        None => not_found(&format!("Route {route_id} not found")),
+        None => not_found(&format!("Invalid Route identifier specified {route_id}")),
     }
 }
 
@@ -685,10 +787,10 @@ fn delete_route(state: &mut State, api_id: &str, route_id: &str) -> Response {
     if let Err(resp) = require_api(state, api_id) {
         return resp;
     }
-    match child_entry(&mut state.routes, api_id).remove(route_id) {
-        Some(_) => no_content(),
-        None => not_found(&format!("Route {route_id} not found")),
-    }
+    // moto delete_route (models.py:952-953): a silent pop — the empty
+    // 200 "{}" delete response covers both missing and present ids.
+    child_entry(&mut state.routes, api_id).remove(route_id);
+    ok_empty_json()
 }
 
 // --- route responses -------------------------------------------------------
@@ -754,7 +856,7 @@ fn with_route_response(
         .get_mut(response_id)
     else {
         return Err(not_found(&format!(
-            "Route response {response_id} not found"
+            "Invalid RouteResponse identifier specified {response_id}"
         )));
     };
     f(response);
@@ -775,7 +877,7 @@ fn get_route_response(
     }
     match snapshot {
         Some(value) => ok(value),
-        None => not_found("Route response not found"),
+        None => not_found("Invalid RouteResponse identifier specified"),
     }
 }
 
@@ -808,7 +910,7 @@ fn update_route_response(
     }
     match snapshot {
         Some(value) => ok(value),
-        None => not_found("Route response not found"),
+        None => not_found("Invalid RouteResponse identifier specified"),
     }
 }
 
@@ -818,9 +920,10 @@ fn delete_route_response(
     route_id: &str,
     response_id: &str,
 ) -> Response {
-    if let Err(resp) = with_route_response(state, api_id, route_id, response_id, |_| {}) {
-        return resp;
-    }
+    // moto delete_route_response (models.py:497-498): a silent pop —
+    // with_route_response's misses must NOT 404 the delete (the fork
+    // answers the empty delete response for both a missing route and a
+    // missing response id).
     state
         .route_responses
         .entry(api_id.to_string())
@@ -828,7 +931,7 @@ fn delete_route_response(
         .entry(route_id.to_string())
         .or_default()
         .remove(response_id);
-    no_content()
+    ok_empty_json()
 }
 
 // --- integrations -----------------------------------------------------------
@@ -846,7 +949,7 @@ fn with_integration(
             Ok(())
         }
         None => Err(not_found(&format!(
-            "Integration {integration_id} not found"
+            "Invalid Integration identifier specified {integration_id}"
         ))),
     }
 }
@@ -954,10 +1057,10 @@ fn delete_integration(state: &mut State, api_id: &str, integration_id: &str) -> 
     if let Err(resp) = require_api(state, api_id) {
         return resp;
     }
-    match child_entry(&mut state.integrations, api_id).remove(integration_id) {
-        Some(_) => no_content(),
-        None => not_found(&format!("Integration {integration_id} not found")),
-    }
+    // moto delete_integration (models.py:812-813): a silent pop —
+    // the empty 200 "{}" delete response covers a missing id too.
+    child_entry(&mut state.integrations, api_id).remove(integration_id);
+    ok_empty_json()
 }
 
 // --- integration responses --------------------------------------------------
@@ -1836,7 +1939,7 @@ fn export_api(state: &mut State, api_id: &str, specification: &str) -> Response 
     }
     let snapshot = state.apis.get(api_id).cloned();
     let Some(api) = snapshot else {
-        return not_found(&format!("API {api_id} not found"));
+        return not_found(&format!("Invalid API identifier specified {api_id}"));
     };
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
     if let Some(routes) = state.routes.get(api_id) {
