@@ -1,6 +1,6 @@
 {
   "service": "apigatewayv2",
-  "generated_at": "2026-11-12T02:14:35.620216+00:00",
+  "generated_at": "2026-11-12T02:21:57.862584+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/apigatewayv2.rs": "ad014ada4157b80cdd50cd47abe16e8268ec4dee7dbdb5d6a7a8d7903f902b9a",
     "rotocore/src/services/apigatewayv2/": "absent",
