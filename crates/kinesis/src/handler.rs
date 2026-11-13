@@ -1718,9 +1718,25 @@ impl KinesisHandler {
 
         // The fork's described consumer always carries StreamARN
         // (responses.py describe_stream_consumer → to_json(include_stream_arn=
-        // True)). Describing by ConsumerName + StreamARN over a ghost stream
-        // 500s there (`stream.consumers` on a None stream, models.py:979-993);
-        // we keep the clean ResourceNotFoundException. [oracledefect]
+        // True)), and its dispatch tries the name walk FIRST (when StreamARN +
+        // ConsumerName are both given) and only falls to the ARN walk across
+        // all streams when that found nothing (models.py:984-993). A ghost
+        // StreamARN 500s there (`stream.consumers` on a None stream); we skip
+        // the walk and answer the miss cleanly instead. [oracledefect]
+        if !stream_arn.is_empty() {
+            if let Some(stream) = state.find_stream_by_arn(stream_arn) {
+                if let Some(consumer) = stream
+                    .consumers
+                    .read()
+                    .iter()
+                    .find(|c| c.name == consumer_name)
+                {
+                    let mut desc = consumer.to_value();
+                    desc["StreamARN"] = json!(stream.arn);
+                    return AwsResponse::json(200, json!({ "ConsumerDescription": desc }));
+                }
+            }
+        }
         if !consumer_arn.is_empty() {
             return match Self::find_consumer_by_arn(&state, consumer_arn) {
                 Some((stream, consumer)) => {
@@ -1735,25 +1751,17 @@ impl KinesisHandler {
                 ),
             };
         }
-
-        for stream in state.streams.read().values() {
-            if stream.arn == stream_arn {
-                if let Some(consumer) = stream
-                    .consumers
-                    .read()
-                    .iter()
-                    .find(|c| c.name == consumer_name)
-                {
-                    let mut desc = consumer.to_value();
-                    desc["StreamARN"] = json!(stream.arn);
-                    return AwsResponse::json(200, json!({ "ConsumerDescription": desc }));
-                }
-            }
-        }
         AwsResponse::error(
             400,
             "ResourceNotFoundException",
-            &format!("Consumer {consumer_name} not found"),
+            &format!(
+                "Consumer {} not found",
+                if consumer_name.is_empty() {
+                    consumer_arn
+                } else {
+                    consumer_name
+                }
+            ),
         )
     }
 
@@ -1806,34 +1814,49 @@ impl KinesisHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
-        // ConsumerARN-only lookup: remove every record carrying that ARN. The
-        // fork does the same per stream (a noop where the ARN doesn't live,
-        // models.py:229-231) — ARNs embed their stream name, so removing from
-        // the owning stream is equivalent. A miss is a silent noop there;
-        // deregister never raises (models.py:995-1010).
-        if !consumer_arn.is_empty() && stream_arn.is_empty() {
-            if let Some((stream, _)) = Self::find_consumer_by_arn(&state, consumer_arn) {
+        // The fork runs the stream-scoped name filter whenever StreamARN is
+        // given, then the ConsumerARN delete whenever that's given; nothing
+        // given stays a silent {}. A ghost StreamARN 500s there
+        // (`stream.consumers` on the None _find_stream_by_arn returned,
+        // models.py:1002-1003); we keep the clean ResourceNotFoundException
+        // and abort like the fork's crash aborted the remaining legs.
+        // [oracledefect]
+        if !stream_arn.is_empty() {
+            let stream = match state.find_stream_by_arn(stream_arn) {
+                Some(s) => s,
+                None => {
+                    return AwsResponse::error(
+                        400,
+                        "ResourceNotFoundException",
+                        &format!("Stream not found: {stream_arn}"),
+                    )
+                }
+            };
+            // Destructive-inversion record: the fork keeps consumers matching
+            // the name and drops every OTHER consumer on the stream
+            // (models.py:1003-1005; with an empty ConsumerName it wipes the
+            // stream). We record, not port, the inversion — we remove the
+            // named consumer(s) and answer {} silently, the fork's wire shape
+            // on both hit and miss.
+            stream.consumers.write().retain(|c| c.name != consumer_name);
+            if !consumer_arn.is_empty() {
+                // Both-args call: the fork also runs the ARN leg. The consumer
+                // ARN embeds its stream name, so clearing it here clears the
+                // same records the fork's all-streams loop would.
                 stream.consumers.write().retain(|c| c.arn != consumer_arn);
             }
             return AwsResponse::json(200, json!({}));
         }
-
-        let stream = match state.find_stream_by_arn(stream_arn) {
-            Some(s) => s,
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!("Stream not found: {stream_arn}"),
-                )
+        // ConsumerARG-only leg — remove every record carrying that ARN. The
+        // fork scans all streams (a noop where the ARN doesn't live,
+        // models.py:1006-1010). A miss is a silent noop there; deregister
+        // never raises (models.py:998-1010), and an all-empty call answers
+        // {} too.
+        if !consumer_arn.is_empty() {
+            for stream in state.streams.read().values() {
+                stream.consumers.write().retain(|c| c.arn != consumer_arn);
             }
-        };
-        // The fork's deregister-by-name filter is inverted: it keeps the
-        // consumers matching the name and drops every OTHER consumer on the
-        // stream (models.py:999-1001). We record, not port, that destructive
-        // inversion — we remove the named consumer(s) and answer {} silently,
-        // the fork's wire shape on both hit and miss.
-        stream.consumers.write().retain(|c| c.name != consumer_name);
+        }
         AwsResponse::json(200, json!({}))
     }
 
