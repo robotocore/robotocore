@@ -1665,7 +1665,7 @@ impl KinesisHandler {
         };
         // The fork never checks for duplicates: a re-register appends a second
         // record with the same ARN (ConsumerARN carries no unique suffix) and a
-        // fresh timestamp (models.py:969-975). Register against a ghost stream
+        // fresh timestamp (models.py:973-979). Register against a ghost stream
         // 500s there (`stream.consumers` on the None returned by
         // _find_stream_by_arn); we keep the clean ResourceNotFoundException.
         // [oracledefect]
@@ -1840,9 +1840,12 @@ impl KinesisHandler {
             // on both hit and miss.
             stream.consumers.write().retain(|c| c.name != consumer_name);
             if !consumer_arn.is_empty() {
-                // Both-args call: the fork also runs the ARN leg. The consumer
-                // ARN embeds its stream name, so clearing it here clears the
-                // same records the fork's all-streams loop would.
+                // Both-args call: the fork also runs its all-streams ARN leg.
+                // The consumer ARN embeds its owning stream's name, so
+                // clearing here covers every ARN that belongs to this
+                // StreamARN; a foreign ConsumerARN (pointing at another
+                // stream) is only deleted by the fork's loop, not here —
+                // exotic call shape, recorded, not ported.
                 stream.consumers.write().retain(|c| c.arn != consumer_arn);
             }
             return AwsResponse::json(200, json!({}));
@@ -2903,7 +2906,7 @@ mod tests {
             }),
         )));
         assert_eq!(reg["Consumer"]["ConsumerName"], json!("c1"));
-        // The fork's ConsumerARN carries no unique suffix (models.py:60-63).
+        // The fork's ConsumerARN carries no unique suffix (models.py:56).
         assert_eq!(
             reg["Consumer"]["ConsumerARN"],
             json!(format!("{arn}/consumer/c1"))
@@ -2914,7 +2917,7 @@ mod tests {
             .unwrap()
             .to_string();
         // A duplicate register answers 200 and appends a second record — no
-        // ResourceInUseException guard in the fork (models.py:969-975).
+        // ResourceInUseException guard in the fork (models.py:973-979).
         handler.handle(make_req(
             "RegisterStreamConsumer",
             json!({
