@@ -47,6 +47,16 @@ impl IamHandler {
         self.dispatch(&req, &op)
     }
 
+    /// The persisted IAM RoleId for a Role ARN — moto's STS
+    /// AssumedRole.user_id resolves the role through the iam backend
+    /// (sts models.py:55-61 `get_role_by_arn(...).id`), falling back to a
+    /// random AROA mint when the role does not exist. Public so the
+    /// gateway's STS arm rides the same state.
+    pub fn role_id_for_arn(&self, account: u64, role_arn: &str) -> Option<String> {
+        let state = self.get_state(account);
+        state.get_role_by_arn(role_arn).map(|r| r.role_id.clone())
+    }
+
     /// Gateway `ENFORCE_IAM` hook: every identity-policy document that
     /// applies to the principal holding `access_key` — the user's inline
     /// and attached policies, plus the inline and attached policies of

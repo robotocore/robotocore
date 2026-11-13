@@ -61,6 +61,18 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **STS: the assumed-role Identity rides the role's persisted Id and
+  the Expiration honors DurationSeconds.** moto's AssumedRole.user_id
+  resolves the role through the iam backend (sts models.py:55-61 —
+  `get_role_by_arn(...).id` + `:session`, a random AROA fallback when
+  the role does not exist): the twin stamped a flat `AROA<account>`
+  mint, so the carried GetCallerIdentity answer never matched its own
+  IAM RoleId. `Expiration = now + duration` replaces the flat
+  +12-hour horizon (sts models.py:46; census S7: a 900s request
+  answered a 3600 expiry). GetSessionToken rides the fork's
+  example-credentials constants and the 43200 default window
+  (sts/responses.py:24-44).
+
 - **KMS: the key/grant member renders ride the fork's wire
   nulls.** The fork's KMS handlers return json-dumped strings
   verbatim (core/responses.py:470-472 — no model serializer runs on

@@ -45,7 +45,9 @@ pub trait ServiceHandler: Send + Sync {
 }
 
 /// Synchronous wrapper for async STS handler
-pub struct StsFunctionHandler;
+pub struct StsFunctionHandler {
+    inner: Arc<iam::DefaultIamHandler>,
+}
 
 impl ServiceHandler for StsFunctionHandler {
     fn handle_sync(
@@ -71,7 +73,7 @@ impl ServiceHandler for StsFunctionHandler {
 
         let waker = unsafe { Waker::from_raw(noop_raw()) };
         let mut cx = Context::from_waker(&waker);
-        let mut fut = std::pin::pin!(sts::handle_sts_request(req));
+        let mut fut = std::pin::pin!(sts::handle_sts_request(req, &self.inner));
         match fut.as_mut().poll(&mut cx) {
             Poll::Ready(result) => result,
             Poll::Pending => Err("STS handler unexpectedly pending".into()),
@@ -1128,7 +1130,9 @@ impl ServiceRegistry {
         // Register STS handler
         adapters.insert(
             "sts".to_string(),
-            Arc::new(StsFunctionHandler) as Arc<dyn ServiceHandler>,
+            Arc::new(StsFunctionHandler {
+                inner: handlers.iam.clone(),
+            }) as Arc<dyn ServiceHandler>,
         );
 
         // Register native handlers (sharing instances with NativeHandlers)
@@ -4303,7 +4307,14 @@ mod tests {
         }
         assert_eq!(hint, Some(915), "docker invoke blanket = Timeout + 15");
         // Non-lambda handlers never raise the blanket.
-        assert_eq!(StsFunctionHandler.request_timeout_secs(&invoke), None);
+        let iam = iam::DefaultIamHandler::new();
+        assert_eq!(
+            StsFunctionHandler {
+                inner: std::sync::Arc::new(iam)
+            }
+            .request_timeout_secs(&invoke),
+            None
+        );
     }
 
     // ------------------------------------------------------------------

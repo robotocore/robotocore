@@ -36,15 +36,16 @@ pub fn is_known_sts_op(action: &str) -> bool {
 /// Handle STS requests.
 pub async fn handle_sts_request(
     req: &ParsedRequest,
+    iam: &iam::DefaultIamHandler,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     match req.operation.as_str() {
         "GetCallerIdentity" => handle_get_caller_identity(req),
         "GetAccessKeyInfo" => handle_get_access_key_info(req),
         "GetSessionToken" => handle_get_session_token(req),
         "GetFederationToken" => handle_get_federation_token(req),
-        "AssumeRole" => handle_assume_role(req, "AssumeRole"),
-        "AssumeRoleWithWebIdentity" => handle_assume_role(req, "AssumeRoleWithWebIdentity"),
-        "AssumeRoleWithSAML" => handle_assume_role(req, "AssumeRoleWithSAML"),
+        "AssumeRole" => handle_assume_role(req, iam, "AssumeRole"),
+        "AssumeRoleWithWebIdentity" => handle_assume_role(req, iam, "AssumeRoleWithWebIdentity"),
+        "AssumeRoleWithSAML" => handle_assume_role(req, iam, "AssumeRoleWithSAML"),
         "AssumeRoot" => handle_assume_root(req),
         "GetDelegatedAccessToken" => handle_get_delegated_access_token(req),
         "GetWebIdentityToken" => handle_get_web_identity_token(req),
@@ -230,18 +231,36 @@ fn session_expiry() -> String {
     t.format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+/// moto's mint rows answer now + the operation duration (sts models.py
+/// :40-42: `now + timedelta(seconds=duration)`); the census S7 rows pin
+/// the fork honoring DurationSeconds on assume legs.
+fn session_expiry_secs(duration_secs: i64) -> String {
+    let t = chrono::Utc::now() + chrono::Duration::seconds(duration_secs);
+    t.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
 /// GetSessionToken operation.
 fn handle_get_session_token(
-    _req: &ParsedRequest,
+    req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    // The fork sts/responses.py:24-44: its session-token constants
+    // (the AWS-docs example creds), `DurationSeconds` honored with the
+    // 43200 default (`_get_int_param("DurationSeconds", 43200)` — the
+    // round-1 review's arithmetic leg).
+    let duration: i64 = req
+        .params
+        .get("DurationSeconds")
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(43200);
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetSessionTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
     <GetSessionTokenResult>
         <Credentials>
-            <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
-            <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
-            <SessionToken>session-token-001</SessionToken>
+            <AccessKeyId>AKIAIOSFODNN7EXAMPLE</AccessKeyId>
+            <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY</SecretAccessKey>
+            <SessionToken>AQoEXAMPLEH4aoAH0gNCAPyJxz4BlCFFxWNE1OPTgk5TthT+FvwqnKwRcOIfrRh3c/LTo6UDdyJwOOvEVPvLXCrrrUtdnniCEXAMPLE/IvU1dYUg2RVAJBanLiHb4IgRmpRV3zrkuWJOgQs8IZZaIv2BXIa2R4OlgkBN9bkUDNCJiBeb/AXlzBBko7b15fjrBs2+cTQtpZ3CYWFXG8C5zqx37wnOE49mRl/+OtkIKGO7fAE</SessionToken>
             <Expiration>{}</Expiration>
         </Credentials>
     </GetSessionTokenResult>
@@ -249,7 +268,7 @@ fn handle_get_session_token(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </GetSessionTokenResponse>"#,
-        session_expiry()
+        session_expiry_secs(duration)
     );
     Ok(xml_response(&body))
 }
@@ -295,6 +314,7 @@ fn handle_get_federation_token(
 /// AssumeRole / AssumeRoleWithWebIdentity / AssumeRoleWithSAML.
 fn handle_assume_role(
     req: &ParsedRequest,
+    iam: &iam::DefaultIamHandler,
     op: &str,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let account = req.account;
@@ -357,7 +377,47 @@ fn handle_assume_role(
         "arn:aws:sts::{}:assumed-role/{}/{}",
         account, role_name, session_name
     );
-    let role_id = format!("AROA{}:{}", account, session_name);
+    // moto AssumedRole (sts models.py:46): Expiration = now + duration —
+    // DurationSeconds rides the arithmetic (census S7: the twin's flat
+    // +3600 horizon answered a 900s request with a 3600 expiry).
+    let duration: i64 = req
+        .params
+        .get("DurationSeconds")
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(3600);
+    // moto AssumedRole.user_id (sts models.py:55-61): the role's
+    // PERSISTED IAM RoleId + ":session" — resolved through the iam
+    // backend; the fallback mints a random AROA id when the role does
+    // not exist. The twin's flat AROA+account mint was census S4.
+    let account_num: u64 = account.parse().unwrap_or(0);
+    // The fork passes the REQUEST RoleArn verbatim into
+    // get_role_by_arn (sts models.py:55-61 user_id → get_role_by_arn):
+    // a pathed service role (…:role/svc/name) resolves through the
+    // full ARN — the twin's path-dropped rebuild missed it (round-1
+    // review wire pin). The fallback rode sts utils.py:8-23: the
+    // account-specific prefix + 9 random uppercase/digits.
+    let role_id = iam
+        .role_id_for_arn(account_num, &role_arn)
+        .unwrap_or_else(|| {
+            const ALPHANUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let mut seed = account_num
+                ^ (session_name.len() as u64)
+                ^ std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as u64)
+                    .unwrap_or(0);
+            let mut seq = String::with_capacity(9);
+            for _ in 0..9 {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let pick = ((seed / 31) % ALPHANUM.len() as u64) as usize;
+                seq.push(ALPHANUM[pick] as char);
+            }
+            format!("AROA3X42LBCD{seq}")
+        });
+    let role_id = format!("{role_id}:{session_name}");
     let minted = format!(
         "session-token-{}",
         uuid::Uuid::new_v4()
@@ -390,7 +450,7 @@ fn handle_assume_role(
         op,
         op,
         minted,
-        session_expiry(),
+        session_expiry_secs(duration),
         xml_escape_text(&arn),
         xml_escape_text(&role_id),
         op,
@@ -647,7 +707,9 @@ mod tests {
             // Parameter errors (Err / 4xx) are fine: they prove the
             // matched arm ran. The drift failure mode is the fallthrough
             // `_` arm answering 404 "Unknown STS operation".
-            match handle_sts_request(&req).await {
+            let iam = iam::DefaultIamHandler::new();
+            let fut = handle_sts_request(&req, &iam);
+            match fut.await {
                 Ok(resp) => {
                     assert_ne!(
                         resp.status,
@@ -728,6 +790,7 @@ mod tests {
     /// `Account` here is the field the resolution must prove.
     #[test]
     fn token_caller_resolves_the_minted_session_identity() {
+        let iam = iam::DefaultIamHandler::new();
         let minted = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(
@@ -735,13 +798,19 @@ mod tests {
                     "hydra-sess",
                     "arn:aws:iam::135792468013:role/hydra-role",
                 ),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
         );
 
         let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
-        assert_eq!(caller.body["UserId"], "AROA135792468013:hydra-sess");
+        // The role is unregistered in the sts tests' iam state: the fork's
+        // fallback mints a random AROA id; assert the "<roleId>:<session>"
+        // compound shape.
+        let user_id = caller.body["UserId"].as_str().unwrap();
+        assert!(user_id.starts_with("AROA"), "{user_id}");
+        assert!(user_id.ends_with(":hydra-sess"), "{user_id}");
         assert_eq!(
             caller.body["Arn"],
             "arn:aws:sts::135792468013:assumed-role/hydra-role/hydra-sess"
@@ -754,6 +823,7 @@ mod tests {
     /// retains its own caller after a second assume).
     #[test]
     fn sequential_assumes_keep_their_own_identities() {
+        let iam = iam::DefaultIamHandler::new();
         let first = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(
@@ -761,6 +831,7 @@ mod tests {
                     "sess-a",
                     "arn:aws:iam::135792468013:role/hydra-role",
                 ),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
@@ -772,6 +843,7 @@ mod tests {
                     "sess-b",
                     "arn:aws:iam::135792468013:role/hydra-role",
                 ),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
@@ -815,6 +887,7 @@ mod tests {
     /// caller 111111111111, RoleArn …:iam::222222222222:role/DeployRole).
     #[test]
     fn cross_account_assume_acts_in_the_rolearn_account() {
+        let iam = iam::DefaultIamHandler::new();
         let minted = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(
@@ -822,13 +895,16 @@ mod tests {
                     "tf",
                     "arn:aws:iam::222222222222:role/DeployRole",
                 ),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
         );
 
         let caller = handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
-        assert_eq!(caller.body["UserId"], "AROA222222222222:tf");
+        let tfid = caller.body["UserId"].as_str().unwrap();
+        assert!(tfid.starts_with("AROA"), "{tfid}");
+        assert!(tfid.ends_with(":tf"), "{tfid}");
         assert_eq!(
             caller.body["Arn"],
             "arn:aws:sts::222222222222:assumed-role/DeployRole/tf"
@@ -843,8 +919,10 @@ mod tests {
     #[test]
     fn rolearn_account_edges_match_moto() {
         // Leading zeros stay verbatim (the repo's own recipes zfill to 12).
+        let iam = iam::DefaultIamHandler::new();
         let resp = handle_assume_role(
             &assume_role_req_arn(111111111111, "z", "arn:aws:iam::000000000123:role/X"),
+            &iam,
             "AssumeRole",
         )
         .unwrap()
@@ -854,6 +932,7 @@ mod tests {
         let minted = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(111111111111, "z", "arn:aws:iam::000000000123:role/X"),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
@@ -870,8 +949,12 @@ mod tests {
             ("arn:aws:sqs:us-east-1:333333333333:queue/q", "non-iam"),
         ] {
             let minted = mint_of(
-                handle_assume_role(&assume_role_req_arn(111111111111, "f", arn), "AssumeRole")
-                    .unwrap(),
+                handle_assume_role(
+                    &assume_role_req_arn(111111111111, "f", arn),
+                    &iam,
+                    "AssumeRole",
+                )
+                .unwrap(),
             );
             let caller =
                 handle_get_caller_identity(&token_req(123456789012, Some(&minted))).unwrap();
@@ -884,6 +967,7 @@ mod tests {
         let minted = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(111111111111, "b", "arn:aws:iam::222222222222"),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
@@ -896,6 +980,7 @@ mod tests {
         let minted = mint_of(
             handle_assume_role(
                 &assume_role_req_arn(111111111111, "c", "arn:aws-cn:iam::222222222222:role/X"),
+                &iam,
                 "AssumeRole",
             )
             .unwrap(),
