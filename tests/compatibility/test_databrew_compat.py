@@ -451,6 +451,7 @@ class TestDataBrewNotFound:
         with pytest.raises(databrew_client.exceptions.ResourceNotFoundException):
             databrew_client.publish_recipe(Name="nonexistent-recipe")
 
+
 @pytest.fixture
 def created_schedule(databrew_client):
     """Create a schedule and clean up after the test."""
