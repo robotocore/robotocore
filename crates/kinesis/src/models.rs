@@ -220,7 +220,7 @@ pub struct KinesisStream {
     #[serde(with = "crate::snapshot::rw")]
     pub key_id: RwLock<String>,
     #[serde(with = "crate::snapshot::rw")]
-    pub consumers: RwLock<BTreeMap<String, ConsumerInfo>>,
+    pub consumers: RwLock<Vec<ConsumerInfo>>,
     #[serde(with = "crate::snapshot::rw")]
     pub shard_level_metrics: RwLock<Vec<String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -246,7 +246,7 @@ impl KinesisStream {
             created: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
             encryption_type: RwLock::new("NONE".to_string()),
             key_id: RwLock::new(String::new()),
-            consumers: RwLock::new(BTreeMap::new()),
+            consumers: RwLock::new(Vec::new()),
             shard_level_metrics: RwLock::new(Vec::new()),
             stream_mode: RwLock::new("PROVISIONED".to_string()),
             shards: RwLock::new(shards),

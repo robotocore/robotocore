@@ -1,10 +1,10 @@
 {
   "service": "kinesis",
-  "generated_at": "2026-11-13T01:57:03.729110+00:00",
+  "generated_at": "2026-11-13T03:41:11.009118+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/kinesis.rs": "absent",
     "rotocore/src/services/kinesis/": "absent",
-    "crates/kinesis/src/": "efedd4033a89654613d68e7f187f586a8f3784c9ad3f9e372df101a872cbaa01"
+    "crates/kinesis/src/": "7cfae2f518cc4bb617d1889d33422f0b607e448cd1ab51adb2aa990cb9b84580"
   },
   "endpoint": "http://localhost:4566",
   "counts": {
