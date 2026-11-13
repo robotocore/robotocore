@@ -61,6 +61,23 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **KMS: the key/grant member renders ride the fork's wire
+  nulls.** The fork's KMS handlers return json-dumped strings
+  verbatim (core/responses.py:470-472 — no model serializer runs on
+  its old-style responses), so unset members ride the wire as
+  `null` and vanish inside botocore's JSON parser
+  (parsers.py:704-708): KeyMetadata's `MultiRegion: null`
+  (models.py:285, the nothing-requested default) and the bare
+  grant rows' `Name`/`RetiringPrincipal` nulls (census K5/K9). The
+  twin omits those members outright — post-parse equal to the
+  fork, raw-wise byte-safe for the SDK. Describe also renders only
+  `DeletionDate` for a PendingDeletion key (models.py:280-296) and
+  the schedule arm's row carries no `PendingWindowInDays`
+  (census K10). The [oracledefect] K4/K6/K8 ghost-key rows keep
+  the twin's sane 400 (the fork 500s on a missing key); the
+  GrantId/GrantToken mints keep the twin's real-AWS-closer length
+  ([awscall] — don't regress).
+
 - **IAM: the role-family wordings and member shapes ride the fork.**
   get_role's ghost wording is "Role {name} not found"
   (models.py:2191) — the twin's real-AWS "The role with name …"

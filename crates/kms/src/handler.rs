@@ -256,8 +256,16 @@ impl KmsHandler {
                 Value::Array(mac.iter().map(|s| json!(s)).collect()),
             );
         }
-        meta.insert("MultiRegion".into(), json!(*key.multi_region.read()));
+        // moto's dotted omit rides the wire directly: the fork's
+        // handler returns a json-dumped string verbatim
+        // (core/responses.py:470-472 — no model serializer runs on
+        // KMS's old-style responses), so `MultiRegion: null` rides on
+        // the wire (models.py:285, Key.__init__(multi_region=None))
+        // and botocore's JSON parser drops the null member
+        // (parsers.py:704-708). Same null-ride on Name/Retiring
+        // Principal "nulls" in the grant rows.
         if *key.multi_region.read() {
+            meta.insert("MultiRegion".into(), json!(true));
             meta.insert(
                 "MultiRegionConfiguration".into(),
                 json!({
@@ -279,20 +287,16 @@ impl KmsHandler {
             );
         }
         if key.key_state.read().as_str() == "PendingDeletion" {
-            let (deletion, window) = (*key.deletion_ms.read(), *key.pending_window_days.read());
-            // moto Describes from the stored schedule (models.py:294-295).
+            let (deletion, _window) = (*key.deletion_ms.read(), *key.pending_window_days.read());
+            // moto Describes from the stored schedule (models.py:294-295)
+            // and renders ONLY the DeletionDate member — the fork's
+            // describe does not carry PendingDeletionWindowInDays (the
+            // census K10 row).
             meta.insert(
                 "DeletionDate".into(),
                 json!(deletion
                     .map(|ms| ms as f64 / 1000.0)
                     .unwrap_or_else(|| now_epoch_f64() + 7.0 * 24.0 * 3600.0)),
-            );
-            // botocore's KeyMetadata member is PendingDeletionWindowInDays;
-            // the ScheduleKeyDeletion RESPONSE keeps its modeled
-            // PendingWindowInDays extra (the schedule arm).
-            meta.insert(
-                "PendingDeletionWindowInDays".into(),
-                json!(window.unwrap_or(30)),
             );
         }
         if *key.origin.read() == "EXTERNAL" && *key.has_imported_material.read() {
@@ -379,13 +383,16 @@ impl KmsHandler {
                 // it from the store — not a per-call recompute.
                 *key.deletion_ms.write() = Some(deletion_ms);
                 *key.pending_window_days.write() = Some(window_days);
+                // moto's schedule arm answers KeyId/DeletionDate/KeyState
+                // — the live census K10 row carried no PendingWindowIn
+                // Days member (the stored window shows on cancel/reset
+                // paths; the fork keeps it internal).
                 AwsResponse::json(
                     200,
                     json!({
                         "KeyId": key.key_id,
                         "KeyState": "PendingDeletion",
                         "DeletionDate": deletion_ms as f64 / 1000.0,
-                        "PendingWindowInDays": window_days,
                     }),
                 )
             }
@@ -1588,15 +1595,23 @@ impl KmsHandler {
     /// `IssuingAccount`/`CreationDate`; `Constraints` is always present
     /// (null when the grant had none).
     fn grant_json(grant: &Grant) -> Value {
-        json!({
+        let mut grant_row = json!({
             "KeyId": grant.key_id,
             "GrantId": grant.grant_id,
-            "Name": grant.name,
             "GranteePrincipal": grant.grantee_principal,
-            "RetiringPrincipal": grant.retiring_principal,
             "Operations": grant.operations,
             "Constraints": grant.constraints,
-        })
+        });
+        // moto's grant rows omit the Name and RetiringPrincipal members
+        // when the grant did not carry them (census K5/K9: "" members
+        // stayed twin-only; set values render on both).
+        if !grant.name.is_empty() {
+            grant_row["Name"] = json!(grant.name);
+        }
+        if !grant.retiring_principal.is_empty() {
+            grant_row["RetiringPrincipal"] = json!(grant.retiring_principal);
+        }
+        grant_row
     }
 
     fn list_grants(&self, req: &AwsRequest) -> AwsResponse {
