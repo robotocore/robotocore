@@ -116,15 +116,11 @@ impl KinesisHandler {
                 .unwrap_or(1) as u32
         };
         let state = self.get_state(req.account, &req.region);
+        // moto create_stream (models.py:607-608): raises
+        // ResourceInUseError(stream_name) — the message is the BARE
+        // stream name per kinesis/exceptions.py:9-11.
         if state.streams.read().contains_key(&name) {
-            return AwsResponse::error(
-                400,
-                "ResourceInUseException",
-                &format!(
-                    "Stream {name} under account {} already exists.",
-                    req.account
-                ),
-            );
+            return AwsResponse::error(400, "ResourceInUseException", &name);
         }
         let stream = Arc::new(KinesisStream::new(
             req.account,
@@ -3344,7 +3340,10 @@ mod tests {
         let handler = KinesisHandler::new();
         handler.handle(make_req("CreateStream", json!({"StreamName": "dup"})));
         let resp = handler.handle(make_req("CreateStream", json!({"StreamName": "dup"})));
-        assert_eq!(resp.body, json!({"__type": "ResourceInUseException", "message": "Stream dup under account 123456789012 already exists."}).to_string());
+        assert_eq!(
+            resp.body,
+            json!({"__type": "ResourceInUseException", "message": "dup"}).to_string()
+        );
         let resp = handler.handle(make_req("DeleteStream", json!({"StreamName": "missing"})));
         assert_eq!(resp.status, 400);
         assert!(resp.body.contains("ResourceNotFoundException"));
