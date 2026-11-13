@@ -1663,25 +1663,21 @@ impl KinesisHandler {
                 )
             }
         };
-        if stream.consumers.read().contains_key(consumer_name) {
-            return AwsResponse::error(
-                400,
-                "ResourceInUseException",
-                &format!("Consumer {consumer_name} already exists on stream {stream_arn}"),
-            );
-        }
+        // The fork never checks for duplicates: a re-register appends a second
+        // record with the same ARN (ConsumerARN carries no unique suffix) and a
+        // fresh timestamp (models.py:969-975). Register against a ghost stream
+        // 500s there (`stream.consumers` on the None returned by
+        // _find_stream_by_arn); we keep the clean ResourceNotFoundException.
+        // [oracledefect]
         let ts = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
-        let arn = format!("{stream_arn}/consumer/{consumer_name}:{}", ts as u64);
+        let arn = format!("{stream_arn}/consumer/{consumer_name}");
         let consumer = ConsumerInfo {
             name: consumer_name.to_string(),
             arn: arn.clone(),
             status: "ACTIVE".to_string(),
             created: ts,
         };
-        stream
-            .consumers
-            .write()
-            .insert(consumer_name.to_string(), consumer.clone());
+        stream.consumers.write().push(consumer.clone());
         AwsResponse::json(200, json!({ "Consumer": consumer.to_value() }))
     }
 
@@ -1690,10 +1686,13 @@ impl KinesisHandler {
         consumer_arn: &str,
     ) -> Option<(Arc<KinesisStream>, ConsumerInfo)> {
         for stream in state.streams.read().values() {
-            for consumer in stream.consumers.read().values() {
-                if consumer.arn == consumer_arn {
-                    return Some((stream.clone(), consumer.clone()));
-                }
+            if let Some(consumer) = stream
+                .consumers
+                .read()
+                .iter()
+                .find(|c| c.arn == consumer_arn)
+            {
+                return Some((stream.clone(), consumer.clone()));
             }
         }
         None
@@ -1717,10 +1716,17 @@ impl KinesisHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
+        // The fork's described consumer always carries StreamARN
+        // (responses.py describe_stream_consumer → to_json(include_stream_arn=
+        // True)). Describing by ConsumerName + StreamARN over a ghost stream
+        // 500s there (`stream.consumers` on a None stream, models.py:979-993);
+        // we keep the clean ResourceNotFoundException. [oracledefect]
         if !consumer_arn.is_empty() {
             return match Self::find_consumer_by_arn(&state, consumer_arn) {
-                Some((_, consumer)) => {
-                    AwsResponse::json(200, json!({ "ConsumerDescription": consumer.to_value() }))
+                Some((stream, consumer)) => {
+                    let mut desc = consumer.to_value();
+                    desc["StreamARN"] = json!(stream.arn);
+                    AwsResponse::json(200, json!({ "ConsumerDescription": desc }))
                 }
                 None => AwsResponse::error(
                     400,
@@ -1732,11 +1738,15 @@ impl KinesisHandler {
 
         for stream in state.streams.read().values() {
             if stream.arn == stream_arn {
-                if let Some(consumer) = stream.consumers.read().get(consumer_name) {
-                    return AwsResponse::json(
-                        200,
-                        json!({ "ConsumerDescription": consumer.to_value() }),
-                    );
+                if let Some(consumer) = stream
+                    .consumers
+                    .read()
+                    .iter()
+                    .find(|c| c.name == consumer_name)
+                {
+                    let mut desc = consumer.to_value();
+                    desc["StreamARN"] = json!(stream.arn);
+                    return AwsResponse::json(200, json!({ "ConsumerDescription": desc }));
                 }
             }
         }
@@ -1764,10 +1774,15 @@ impl KinesisHandler {
                 )
             }
         };
+        // The fork pages this list (@paginate, default cap 10_000, models.py:
+        // 964-967) and derives NextToken from unique consumer ARNs — the pager
+        // breaks on a stream holding duplicate records sharing one ARN
+        // (census C4b). We keep the page-free flat list and leave the pager
+        // recorded, not ported. [oracledefect]
         let consumers: Vec<Value> = stream
             .consumers
             .read()
-            .values()
+            .iter()
             .map(|c| c.to_value())
             .collect();
         AwsResponse::json(200, json!({ "Consumers": consumers }))
@@ -1791,19 +1806,14 @@ impl KinesisHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
 
-        // ConsumerARN-only lookup
+        // ConsumerARN-only lookup: remove every record carrying that ARN. The
+        // fork does the same per stream (a noop where the ARN doesn't live,
+        // models.py:229-231) — ARNs embed their stream name, so removing from
+        // the owning stream is equivalent. A miss is a silent noop there;
+        // deregister never raises (models.py:995-1010).
         if !consumer_arn.is_empty() && stream_arn.is_empty() {
-            if let Some((stream, consumer)) = Self::find_consumer_by_arn(&state, consumer_arn) {
-                let _ = stream.consumers.write().remove(&consumer.name);
-            } else {
-                return AwsResponse::error(
-                    400,
-                    "ResourceNotFoundException",
-                    &format!(
-                        "Consumer {consumer_arn}, account {} not found.",
-                        req.account
-                    ),
-                );
+            if let Some((stream, _)) = Self::find_consumer_by_arn(&state, consumer_arn) {
+                stream.consumers.write().retain(|c| c.arn != consumer_arn);
             }
             return AwsResponse::json(200, json!({}));
         }
@@ -1818,14 +1828,12 @@ impl KinesisHandler {
                 )
             }
         };
-        let mut consumers = stream.consumers.write();
-        if consumers.remove(consumer_name).is_none() {
-            return AwsResponse::error(
-                400,
-                "ResourceNotFoundException",
-                &format!("Consumer {consumer_name} not found on stream {stream_arn}"),
-            );
-        }
+        // The fork's deregister-by-name filter is inverted: it keeps the
+        // consumers matching the name and drops every OTHER consumer on the
+        // stream (models.py:999-1001). We record, not port, that destructive
+        // inversion — we remove the named consumer(s) and answer {} silently,
+        // the fork's wire shape on both hit and miss.
+        stream.consumers.write().retain(|c| c.name != consumer_name);
         AwsResponse::json(200, json!({}))
     }
 
@@ -2872,11 +2880,27 @@ mod tests {
             }),
         )));
         assert_eq!(reg["Consumer"]["ConsumerName"], json!("c1"));
+        // The fork's ConsumerARN carries no unique suffix (models.py:60-63).
+        assert_eq!(
+            reg["Consumer"]["ConsumerARN"],
+            json!(format!("{arn}/consumer/c1"))
+        );
         let consumer_arn = reg["Consumer"]["ConsumerARN"]
             .clone()
             .as_str()
             .unwrap()
             .to_string();
+        // A duplicate register answers 200 and appends a second record — no
+        // ResourceInUseException guard in the fork (models.py:969-975).
+        handler.handle(make_req(
+            "RegisterStreamConsumer",
+            json!({
+                "StreamARN": arn, "ConsumerName": "c1"
+            }),
+        ));
+        let list =
+            parse_body(&handler.handle(make_req("ListStreamConsumers", json!({"StreamARN": arn}))));
+        assert_eq!(list["Consumers"].as_array().unwrap().len(), 2);
         let desc = parse_body(&handler.handle(make_req(
             "DescribeStreamConsumer",
             json!({
@@ -2887,9 +2911,15 @@ mod tests {
             desc["ConsumerDescription"]["ConsumerARN"],
             json!(consumer_arn)
         );
-        let list =
-            parse_body(&handler.handle(make_req("ListStreamConsumers", json!({"StreamARN": arn}))));
-        assert_eq!(list["Consumers"].as_array().unwrap().len(), 1);
+        assert_eq!(desc["ConsumerDescription"]["StreamARN"], json!(arn));
+        handler.handle(make_req(
+            "DeregisterStreamConsumer",
+            json!({
+                "StreamARN": arn, "ConsumerName": "c1"
+            }),
+        ));
+        // A deregister against a missing consumer is a silent noop
+        // (census C6-deregister-twice).
         handler.handle(make_req(
             "DeregisterStreamConsumer",
             json!({

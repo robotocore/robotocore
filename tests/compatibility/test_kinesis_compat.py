@@ -873,20 +873,23 @@ class TestKinesisExtended:
             except ClientError:
                 pass  # best-effort cleanup
 
-    def test_register_duplicate_consumer_error(self, kinesis, stream):
-        """Registering a consumer with the same name raises ResourceInUseException."""
+    def test_register_duplicate_consumer_appends(self, kinesis, stream):
+        """A duplicate register_stream_consumer answers 200 and appends a
+        second record sharing the ARN — the fork has no ResourceInUseException
+        guard and ConsumerARN carries no unique suffix
+        (kinesis-consumers-census rows C1/C2/C4)."""
         stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
         consumer_name = f"dup-consumer-{uuid.uuid4().hex[:8]}"
-        try:
-            kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
-            with pytest.raises(ClientError) as exc_info:
-                kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
-            assert exc_info.value.response["Error"]["Code"] == "ResourceInUseException"
-        finally:
-            try:
-                kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
-            except ClientError:
-                pass  # best-effort cleanup
+        kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
+        dup = kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
+        expected_arn = f"{stream_arn}/consumer/{consumer_name}"
+        assert dup["Consumer"]["ConsumerARN"] == expected_arn
+        listed = kinesis.list_stream_consumers(StreamARN=stream_arn)["Consumers"]
+        matches = [c for c in listed if c["ConsumerARN"] == expected_arn]
+        assert len(matches) >= 2
+        kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
+        listed = kinesis.list_stream_consumers(StreamARN=stream_arn)["Consumers"]
+        assert [c for c in listed if c["ConsumerARN"] == expected_arn] == []
 
     def test_describe_stream_summary_fields(self, kinesis, stream):
         """DescribeStreamSummary contains all expected fields."""
