@@ -25,6 +25,15 @@ impl DefaultIamHandler {
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
     }
+
+    /// The persisted IAM RoleId for a Role ARN — moto's STS
+    /// AssumedRole.user_id resolves the role through the iam backend
+    /// (sts models.py:378-385 `get_role_by_arn(...).id`), falling back
+    /// to a random AROA mint when the role does not exist. Public so
+    /// the gateway's STS arm rides the same state.
+    pub fn role_id_for_arn(&self, account: u64, role_arn: &str) -> Option<String> {
+        self.inner.role_id_for_arn(account, role_arn)
+    }
 }
 
 impl Default for DefaultIamHandler {
