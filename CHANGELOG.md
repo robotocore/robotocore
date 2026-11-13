@@ -63,12 +63,12 @@ under *Changelog discipline*.
 
 - **STS: the assumed-role Identity rides the role's persisted Id and
   the Expiration honors DurationSeconds.** moto's AssumedRole.user_id
-  resolves the role through the iam backend (sts models.py:378-385 —
+  resolves the role through the iam backend (sts models.py:55-61 —
   `get_role_by_arn(...).id` + `:session`, a random AROA fallback when
   the role does not exist): the twin stamped a flat `AROA<account>`
   mint, so the carried GetCallerIdentity answer never matched its own
   IAM RoleId. `Expiration = now + duration` replaces the flat
-  +12-hour horizon (models.py:40-42; census S7: a 900s request
+  +12-hour horizon (sts models.py:46; census S7: a 900s request
   answered a 3600 expiry). GetSessionToken rides the fork's
   example-credentials constants and the 43200 default window
   (sts/responses.py:24-44).

@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-11-13T00:54:53.927875+00:00",
+  "generated_at": "2026-11-13T01:26:22.628013+00:00",
   "impl_fingerprint": {
     "rotocore/src/services/iam.rs": "absent",
     "rotocore/src/services/iam/": "absent",
-    "crates/iam/src/": "e2564d99e0c115a42257d3e0bb6e9bfb66889a737fb188dd29ddf7db3428f3c9"
+    "crates/iam/src/": "2e8824a9cf69c6aca2bb299170eb626a2a9b5c69a714d981084d3bf0b55518f4"
   },
   "endpoint": "http://localhost:4566",
   "counts": {

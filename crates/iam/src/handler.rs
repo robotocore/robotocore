@@ -49,7 +49,7 @@ impl IamHandler {
 
     /// The persisted IAM RoleId for a Role ARN — moto's STS
     /// AssumedRole.user_id resolves the role through the iam backend
-    /// (models.py:378-385 `get_role_by_arn(...).id`), falling back to a
+    /// (sts models.py:55-61 `get_role_by_arn(...).id`), falling back to a
     /// random AROA mint when the role does not exist. Public so the
     /// gateway's STS arm rides the same state.
     pub fn role_id_for_arn(&self, account: u64, role_arn: &str) -> Option<String> {

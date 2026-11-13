@@ -241,12 +241,18 @@ fn session_expiry_secs(duration_secs: i64) -> String {
 
 /// GetSessionToken operation.
 fn handle_get_session_token(
-    _req: &ParsedRequest,
+    req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    // The fork sts/sts_responses.py:24-44: its session-token constants
-    // (the AWS-docs example creds) and now + DurationSeconds (default
-    // 43200).
-    let duration: i64 = 43200;
+    // The fork sts/responses.py:24-44: its session-token constants
+    // (the AWS-docs example creds), `DurationSeconds` honored with the
+    // 43200 default (`_get_int_param("DurationSeconds", 43200)` — the
+    // round-1 review's arithmetic leg).
+    let duration: i64 = req
+        .params
+        .get("DurationSeconds")
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(43200);
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetSessionTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -371,7 +377,7 @@ fn handle_assume_role(
         "arn:aws:sts::{}:assumed-role/{}/{}",
         account, role_name, session_name
     );
-    // moto AssumedRole (sts models.py:47): Expiration = now + duration —
+    // moto AssumedRole (sts models.py:46): Expiration = now + duration —
     // DurationSeconds rides the arithmetic (census S7: the twin's flat
     // +3600 horizon answered a 900s request with a 3600 expiry).
     let duration: i64 = req
@@ -380,17 +386,36 @@ fn handle_assume_role(
         .and_then(|v| v.as_str())
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(3600);
-    // moto AssumedRole.user_id (sts models.py:378-385): the role's
+    // moto AssumedRole.user_id (sts models.py:55-61): the role's
     // PERSISTED IAM RoleId + ":session" — resolved through the iam
     // backend; the fallback mints a random AROA id when the role does
     // not exist. The twin's flat AROA+account mint was census S4.
     let account_num: u64 = account.parse().unwrap_or(0);
-    let role_arn_long = format!("arn:aws:iam::{}:role/{}", account, role_name);
+    // The fork passes the REQUEST RoleArn verbatim into
+    // get_role_by_arn (sts models.py:55-61 user_id → get_role_by_arn):
+    // a pathed service role (…:role/svc/name) resolves through the
+    // full ARN — the twin's path-dropped rebuild missed it (round-1
+    // review wire pin). The fallback rode sts utils.py:8-23: the
+    // account-specific prefix + 9 random uppercase/digits.
     let role_id = iam
-        .role_id_for_arn(account_num, &role_arn_long)
+        .role_id_for_arn(account_num, &role_arn)
         .unwrap_or_else(|| {
-            let mint = uuid::Uuid::new_v4().to_string().replace('-', "");
-            format!("AROA{}", mint.chars().take(20).collect::<String>())
+            const ALPHANUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let mut seed = account_num
+                ^ (session_name.len() as u64)
+                ^ std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as u64)
+                    .unwrap_or(0);
+            let mut seq = String::with_capacity(9);
+            for _ in 0..9 {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let pick = ((seed / 31) % ALPHANUM.len() as u64) as usize;
+                seq.push(ALPHANUM[pick] as char);
+            }
+            format!("AROA3X42LBCD{seq}")
         });
     let role_id = format!("{role_id}:{session_name}");
     let minted = format!(
