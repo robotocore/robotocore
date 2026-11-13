@@ -61,6 +61,17 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **Kinesis: create-duplicate answers the bare stream name.** moto's
+  create_stream raises `ResourceInUseError(stream_name)` whose
+  message is the raw stream name alone (models.py:607-608,
+  exceptions.py:9-11) — the twin's sentence appendage
+  ("…under account … already exists.") rode it. The shard-iterator
+  mint format and the ExclusiveStartStreamName bootstrap 500 stay
+  on the record rows (round: the iterator mint is the [awscall]
+  class — real-AWS iterators are opaque, the twin's JSON blob
+  round-trips state; the ExclusiveStart 500 is the [oracledefect]
+  fork crash).
+
 - **STS: the assumed-role Identity rides the role's persisted Id and
   the Expiration honors DurationSeconds.** moto's AssumedRole.user_id
   resolves the role through the iam backend (sts models.py:55-61 —
