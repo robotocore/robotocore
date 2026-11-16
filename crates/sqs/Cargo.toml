@@ -12,7 +12,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 parking_lot = "0.12"
 bytes = "1.0"
 md5 = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]

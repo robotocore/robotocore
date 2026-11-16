@@ -188,6 +188,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -347,7 +353,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 name = "cloudwatch"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "ciborium",
@@ -536,7 +542,7 @@ dependencies = [
 name = "dynamodb"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "parking_lot",
@@ -564,7 +570,7 @@ dependencies = [
 name = "ecr"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "hex",
@@ -658,7 +664,7 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 name = "firehose"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "parking_lot",
@@ -914,7 +920,7 @@ dependencies = [
 name = "iam"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "parking_lot",
@@ -1097,7 +1103,7 @@ dependencies = [
 name = "kinesis"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "cloudwatch",
@@ -1113,7 +1119,7 @@ name = "kms"
 version = "2.0.2"
 dependencies = [
  "aes-gcm",
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "hmac",
@@ -1133,7 +1139,7 @@ dependencies = [
 name = "lambda"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "events",
@@ -1566,7 +1572,7 @@ name = "robotocore-rust"
 version = "2.0.2"
 dependencies = [
  "axum",
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "clap",
@@ -1614,7 +1620,7 @@ dependencies = [
 name = "rotocore"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "dynamodb",
@@ -1711,7 +1717,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "s3"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "crc",
@@ -1965,7 +1971,7 @@ dependencies = [
 name = "sqs"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "md5",
@@ -2002,7 +2008,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "stepfunctions"
 version = "2.0.2"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "dynamodb",
@@ -2266,7 +2272,7 @@ version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "flate2",
  "log",
  "once_cell",
