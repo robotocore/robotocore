@@ -16,7 +16,7 @@ md5 = "0.8"
 sha1 = "0.10"
 sha2 = "0.10"
 hex = "0.4"
-base64 = "0.22"
+base64 = "0.23"
 # AppRegistry's CFN_STACK recognizer (verbatim moto regex translation).
 regex = "1.10"
 parking_lot = "0.12"

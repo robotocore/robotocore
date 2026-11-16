@@ -12,7 +12,7 @@ bytes = "1.5"
 thiserror = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-base64 = "0.22"
+base64 = "0.23"
 sha2 = "0.10"
 hmac = "0.12"
 md5 = "0.8"
