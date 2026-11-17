@@ -3,7 +3,7 @@
 //! Implements catch-all routing, protocol detection, and service dispatch.
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
@@ -1959,6 +1959,34 @@ pub async fn health_handler() -> impl IntoResponse {
     (StatusCode::OK, axum::Json(health))
 }
 
+/// `GET /_robotocore/ses/messages`: every message accepted by
+/// SendEmail/SendRawEmail/SendTemplatedEmail, with optional `id` and
+/// `email` (source) filters. The body follows LocalStack's
+/// `SesServiceApiResource.on_get` shape.
+pub async fn ses_emails_handler(
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let filter_id = params.get("id").map(String::as_str);
+    let filter_source = params.get("email").map(String::as_str);
+    (
+        StatusCode::OK,
+        axum::Json(rotocore::services::ses::sent_emails_json(
+            filter_id,
+            filter_source,
+        )),
+    )
+}
+
+/// `DELETE /_robotocore/ses/messages`: drop the message with the given
+/// `id`, or all sent messages when no id is given.
+pub async fn ses_emails_delete_handler(
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let filter_id = params.get("id").map(String::as_str);
+    rotocore::services::ses::delete_sent_emails(filter_id);
+    StatusCode::NO_CONTENT
+}
+
 /// Names of every service with a native handler in this build.
 pub const NATIVE_SERVICES: &[&str] = &[
     "sts",
@@ -2758,6 +2786,10 @@ pub fn build_router(
 
     Router::new()
         .route("/_robotocore/health", get(health_handler))
+        .route(
+            "/_robotocore/ses/messages",
+            get(ses_emails_handler).delete(ses_emails_delete_handler),
+        )
         .route(
             "/_robotocore/config",
             get(config_handler).post(config_update_handler),
@@ -4871,6 +4903,36 @@ mod tests {
                 cors_middleware,
             ))
             .with_state(state)
+    }
+
+    /// The SES sent-message endpoint is a named route, not a request the
+    /// catch-all fallback answers with `Could not determine service`.
+    #[tokio::test]
+    async fn ses_messages_route_answers_get_and_delete() {
+        let (registry, handlers) = ServiceRegistry::new_with_handlers();
+        let snapshots = Arc::new(crate::core::state::SnapshotRegistry::new(&handlers));
+        let app = build_router(registry, snapshots);
+
+        let get = axum::http::Request::builder()
+            .method(Method::GET)
+            .uri("/_robotocore/ses/messages?email=nobody@example.com")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app.clone(), get).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["messages"].is_array(), "{json}");
+
+        let delete = axum::http::Request::builder()
+            .method(Method::DELETE)
+            .uri("/_robotocore/ses/messages?id=no-such-id")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, delete).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
     }
 
     // The CORS layer (cors_middleware wired by build_router) uses the
