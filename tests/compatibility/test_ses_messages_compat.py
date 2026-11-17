@@ -5,6 +5,7 @@ SES_MESSAGES_PATH=/_aws/ses. Robotocore uses /_robotocore/ses/messages.
 """
 
 import os
+import re
 import uuid
 
 import pytest
@@ -46,6 +47,7 @@ class SesMessagesDsl:
         for expected_message in expected:
             assert expected_message["Id"] in by_id, messages
             actual = by_id[expected_message["Id"]]
+            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", actual["Timestamp"])
             for key, value in expected_message.items():
                 assert actual[key] == value, actual
 
@@ -87,7 +89,8 @@ def sender(ses, ses_messages):
 
 
 class TestSESSentMessages:
-    def test_send_raw_email_is_inspectable_without_explicit_source(self, ses, ses_messages, sender):
+    @pytest.mark.parametrize("source", [{}, {"Source": " "}], ids=["omitted", "blank"])
+    def test_send_raw_email_falls_back_to_from_header(self, ses, ses_messages, sender, source):
         raw_message = (
             f"From: {sender}\r\n"
             "To: recipient@example.com\r\n"
@@ -97,7 +100,7 @@ class TestSESSentMessages:
             "\r\n"
             "Raw message body.\r\n"
         )
-        response = ses.send_raw_email(RawMessage={"Data": raw_message})
+        response = ses.send_raw_email(RawMessage={"Data": raw_message}, **source)
         ses_messages.verify_messages(
             [
                 {

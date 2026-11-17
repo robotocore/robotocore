@@ -90,22 +90,20 @@ impl Val {
 /// Parse the request's urlencoded pairs (body first, then query string) into
 /// a nested tree using botocore's query encoding (`Rule.Name`, wrapped
 /// `.member.N` lists, flattened `.N` lists).
-fn parse_params(req: &Request) -> (BTreeMap<String, Val>, HashSet<String>) {
+fn parse_params(req: &Request) -> BTreeMap<String, Val> {
     let mut tree = Val::M(BTreeMap::new());
-    let mut raw_keys = HashSet::new();
     let mut pairs = decode_pairs(&req.body);
     pairs.extend(decode_pairs(req.query_string.as_bytes()));
     for (key, value) in pairs {
         if key.is_empty() || key == "Action" || key == "Version" {
             continue;
         }
-        raw_keys.insert(key.clone());
         let segments: Vec<String> = key.split('.').map(str::to_string).collect();
         insert_val(&mut tree, &segments, &Val::S(value));
     }
     match tree {
-        Val::M(m) => (m, raw_keys),
-        _ => (BTreeMap::new(), raw_keys),
+        Val::M(m) => m,
+        _ => BTreeMap::new(),
     }
 }
 
@@ -253,31 +251,41 @@ struct RuleSet {
 /// `raw_data`; `SendEmail` stores `destination` / `subject` / `body`;
 /// `SendTemplatedEmail` stores `destination` / `template` / `template_data`
 /// — the same split LocalStack's `SentEmail` TypedDict makes.
-#[derive(Clone, Default)]
-pub struct SentEmail {
-    pub id: String,
-    pub region: String,
-    pub source: String,
-    pub timestamp: String,
-    pub raw_data: Option<String>,
-    pub destination: Option<serde_json::Value>,
-    pub subject: Option<String>,
-    pub body: Option<SentEmailBody>,
-    pub template: Option<String>,
-    pub template_data: Option<String>,
+#[derive(Default)]
+struct SentEmail {
+    id: String,
+    region: String,
+    source: String,
+    timestamp: String,
+    raw_data: Option<String>,
+    destination: Option<serde_json::Value>,
+    subject: Option<String>,
+    body: Option<SentEmailBody>,
+    template: Option<String>,
+    template_data: Option<String>,
 }
 
 /// LocalStack's `SentEmailBody`: both parts are always serialized, `null`
 /// when the request omitted them.
-#[derive(Clone)]
-pub struct SentEmailBody {
-    pub text_part: Option<String>,
-    pub html_part: Option<String>,
+struct SentEmailBody {
+    text_part: Option<String>,
+    html_part: Option<String>,
 }
 
 impl SentEmail {
+    fn new(id: &str, region: &str, source: String) -> Self {
+        Self {
+            id: id.to_string(),
+            region: region.to_string(),
+            source,
+            // LocalStack's timestamp() formats UTC to whole seconds without a suffix.
+            timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            ..Self::default()
+        }
+    }
+
     /// LocalStack `SesServiceApiResource.on_get` response member shape.
-    pub fn to_json(&self) -> serde_json::Value {
+    fn to_json(&self) -> serde_json::Value {
         let mut object = serde_json::Map::new();
         object.insert("Id".into(), self.id.clone().into());
         object.insert("Region".into(), self.region.clone().into());
@@ -346,33 +354,22 @@ fn slot() -> Slot<SesState> {
 // LocalStack's `/_aws/ses` response shape.
 // ---------------------------------------------------------------------------
 
-/// Every accepted message across all (account, region) scopes. Within a
-/// scope messages keep send order; scopes are ordered by key so the list is
-/// deterministic. LocalStack's `EMAILS` dict is process-global, but its
-/// tests only ever talk to one scope, so per-scope ordering is enough.
-pub fn sent_emails() -> Vec<SentEmail> {
+/// `GET /_robotocore/ses/messages` across all account and region scopes, in
+/// scope key order and then send order. An `id` or `email` (source) filter
+/// matches when absent, empty, or equal.
+pub fn sent_emails_json(filter_id: Option<&str>, filter_source: Option<&str>) -> serde_json::Value {
     let slot = slot();
     let map = slot.read();
-    let mut scopes: Vec<_> = map.keys().collect();
-    scopes.sort();
-    let mut messages = Vec::new();
-    for scope in scopes {
-        if let Some(state) = map.get(scope) {
-            messages.extend(state.sent_messages.iter().cloned());
-        }
-    }
-    messages
-}
-
-/// `GET /_robotocore/ses/messages` body, applying LocalStack's `id` and
-/// `email` (source) filters: a filter matches when absent, empty, or equal.
-pub fn sent_emails_json(filter_id: Option<&str>, filter_source: Option<&str>) -> serde_json::Value {
-    let messages = sent_emails()
+    let mut scopes: Vec<_> = map.iter().collect();
+    scopes.sort_unstable_by_key(|(scope, _)| *scope);
+    let messages = scopes
         .into_iter()
+        .flat_map(|(_, state)| state.sent_messages.iter())
         .filter(|m| matches_filter(filter_id, m.id.as_str()))
         .filter(|m| matches_filter(filter_source, m.source.as_str()))
-        .map(|m| m.to_json())
+        .map(SentEmail::to_json)
         .collect::<Vec<_>>();
+    drop(map);
     serde_json::json!({ "messages": messages })
 }
 
@@ -614,7 +611,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
 /// `None` only for non-SES traffic. Operations the moto fork does not
 /// route raise moto's `NotImplementedError` (canonical 501).
 fn handle(req: &Request, op: &str) -> Option<OpResult> {
-    let (p, raw) = parse_params(req);
+    let p = parse_params(req);
     let slots = slot();
     let mut map = slots.write();
     let state = map.entry((req.account, req.region.clone())).or_default();
@@ -626,7 +623,7 @@ fn handle(req: &Request, op: &str) -> Option<OpResult> {
         "VerifyDomainIdentity" => op_verify_domain_identity(state, &p),
         "VerifyDomainDkim" => op_verify_domain_dkim(state, &p),
         "DeleteIdentity" => op_delete_identity(state, &p),
-        "SendEmail" => op_send_email(state, &p, &raw, &req.region),
+        "SendEmail" => op_send_email(state, &p, &req.region),
         "SendTemplatedEmail" => op_send_templated_email(state, &p, &req.region),
         "SendBulkTemplatedEmail" => op_send_bulk_templated_email(state, &p),
         "SendRawEmail" => op_send_raw_email(state, &p, &req.region),
@@ -1033,26 +1030,7 @@ fn op_get_mail_from_attributes(state: &SesState, p: &BTreeMap<String, Val>) -> O
 // Send operations.
 // ---------------------------------------------------------------------------
 
-/// mimeType-accounting send for SendEmail: verify the SOURCE, validate the
-/// addresses, count recipients.
-fn op_send_email(
-    state: &mut SesState,
-    p: &BTreeMap<String, Val>,
-    raw: &HashSet<String>,
-    region: &str,
-) -> OpResult {
-    // moto takes the Text body, switching to Html when that key was sent.
-    let body_val = match raw.contains("Message.Body.Html.Data") {
-        true => p
-            .get("Message")
-            .and_then(|m| m.get("Body"))
-            .and_then(|b| b.get("Html")),
-        false => p
-            .get("Message")
-            .and_then(|m| m.get("Body"))
-            .and_then(|b| b.get("Text")),
-    };
-    let _body = body_val.and_then(Val::string).unwrap_or_default();
+fn op_send_email(state: &mut SesState, p: &BTreeMap<String, Val>, region: &str) -> OpResult {
     let source = pstring(p, "Source");
     let destinations = p.get("Destination").unwrap_or(&Val::None);
     let addrs = ["ToAddresses", "CcAddresses", "BccAddresses"]
@@ -1085,17 +1063,13 @@ fn op_send_email(
             .map(str::to_string)
     };
     state.sent_messages.push(SentEmail {
-        id: message_id.clone(),
-        region: region.to_string(),
-        source,
-        timestamp: crate::proto::now_iso(),
         destination: Some(destination_json(p)),
         subject: data(message.get("Subject")),
         body: Some(SentEmailBody {
             text_part: data(body.get("Text")),
             html_part: data(body.get("Html")),
         }),
-        ..SentEmail::default()
+        ..SentEmail::new(&message_id, region, source)
     });
     Ok(tag("MessageId", &message_id))
 }
@@ -1152,17 +1126,13 @@ fn op_send_templated_email(
     state.sent_message_count += addrs.len() as u64;
     let message_id = random_message_id();
     state.sent_messages.push(SentEmail {
-        id: message_id.clone(),
-        region: region.to_string(),
-        source,
-        timestamp: crate::proto::now_iso(),
         destination: Some(destination_json(p)),
         template: Some(template),
         template_data: p
             .get("TemplateData")
             .and_then(Val::string)
             .map(str::to_string),
-        ..SentEmail::default()
+        ..SentEmail::new(&message_id, region, source)
     });
     Ok(tag("MessageId", &message_id))
 }
@@ -1241,22 +1211,8 @@ fn raw_header_addresses(raw_data: &str) -> Vec<String> {
     out
 }
 
-fn first_from_header(raw_data: &str) -> Option<String> {
-    for line in raw_data.split('\n') {
-        let line = line.trim_end_matches('\r');
-        if line.is_empty() {
-            break;
-        }
-        if let Some(v) = line.strip_prefix("From:") {
-            return Some(parse_addr(v.trim()));
-        }
-    }
-    None
-}
-
 fn op_send_raw_email(state: &mut SesState, p: &BTreeMap<String, Val>, region: &str) -> OpResult {
     use base64::Engine;
-    let source = p.get("Source").and_then(Val::string).map(str::to_string);
     let raw_data = p
         .get("RawMessage")
         .and_then(|m| m.get("Data"))
@@ -1267,12 +1223,15 @@ fn op_send_raw_email(state: &mut SesState, p: &BTreeMap<String, Val>, region: &s
         .decode(raw_data)
         .unwrap_or_default();
     let raw_msg = String::from_utf8_lossy(&decoded).into_owned();
-    // moto: verify the explicit Source, else the message's From header.
-    let source_address = match &source {
-        Some(s) => parse_addr(s),
-        None => first_from_header(&raw_msg)
-            .ok_or_else(|| SesError::new("MessageRejected", "Source not specified"))?,
-    };
+    // LocalStack falls back to the From header when Source is omitted or blank.
+    let source = p
+        .get("Source")
+        .and_then(Val::string)
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| raw_from_header_value(&raw_msg))
+        .ok_or_else(|| SesError::new("MessageRejected", "Source not specified"))?;
+    let source_address = parse_addr(&source);
     if !is_verified_addr(state, &source_address) {
         state.rejected_messages_count += 1;
         return Err(SesError::new(
@@ -1295,20 +1254,10 @@ fn op_send_raw_email(state: &mut SesState, p: &BTreeMap<String, Val>, region: &s
         }
     }
     state.sent_message_count += destinations.len() as u64;
-    // LocalStack's retrospection source: the explicit Source when present,
-    // else the raw From: header value (not address-parsed).
-    let retrospection_source = source
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| raw_from_header_value(&raw_msg))
-        .unwrap_or_else(|| source_address.clone());
     let message_id = random_message_id();
     state.sent_messages.push(SentEmail {
-        id: message_id.clone(),
-        region: region.to_string(),
-        source: retrospection_source,
-        timestamp: crate::proto::now_iso(),
         raw_data: Some(raw_msg),
-        ..SentEmail::default()
+        ..SentEmail::new(&message_id, region, source)
     });
     Ok(tag("MessageId", &message_id))
 }
