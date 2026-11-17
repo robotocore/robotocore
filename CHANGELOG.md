@@ -11,6 +11,18 @@ under *Changelog discipline*.
 
 ### Added
 
+- **`/_robotocore/ses/messages` lets tests inspect and delete sent SES email.**
+  The python twin's `/_robotocore/ses/messages` never made the 2.0 port,
+  and the SES backend kept only a sent counter, so tests had no way to
+  check what an app sent. `SendRawEmail` now records the decoded MIME as
+  `RawData`, taking the raw `From:` header value as `Source` when the
+  request omits it or supplies a blank value. `SendEmail` records `Destination`,
+  `Subject` and `Body` (`{text_part, html_part}`), and `SendTemplatedEmail` records
+  `Destination` / `Template` / `TemplateData`. The response body and the
+  optional `id` / `email` filters follow LocalStack's `/_aws/ses`, so
+  suites moving from LocalStack only change the URL. A filter matches
+  when absent, empty or equal. `Timestamp` uses UTC to whole seconds with
+  no timezone suffix. `DELETE` drops one `id` or clears all.
 - **`ENFORCE_IAM=1` request enforcement is ported to the Rust gateway.**
   The python twin's `gateway/iam_middleware.py` never made the 2.0 port:
   the IAM-enforcement compat suite could only skip (the runtime-config

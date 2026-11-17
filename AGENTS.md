@@ -452,6 +452,7 @@ for svc, info in sorted(h.get('services', {}).items()):
 | `GET /_robotocore/audit?limit=N` | Recent calls with operation, status code, account, region |
 | `GET /_robotocore/usage/errors` | Error totals grouped by status code, plus recent errors |
 | `GET /_robotocore/config` | Version and runtime config |
+| `GET /_robotocore/ses/messages?id=&email=` | Messages accepted by SES `SendEmail` / `SendRawEmail` / `SendTemplatedEmail`, in LocalStack's `/_aws/ses` shape; `DELETE` clears one `id` or all |
 
 `type: native` in the health output means a Rust backend answers in-process (gateway core handler or a rotocore backend); `type: absent` means requests get `501 NotImplemented`. Both labels are derived from the real handler tables at request time, not from a static table.
 
