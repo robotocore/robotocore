@@ -1,7 +1,7 @@
 ---
 session: "cf5e7d8c"
 timestamp: "2026-11-17T16:40:55Z"
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 author: oneill9
 pr: 554
 reconstructed: true
