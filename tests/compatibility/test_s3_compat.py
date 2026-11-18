@@ -1588,6 +1588,12 @@ class TestS3BucketOperations:
         resp = s3.head_bucket(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_head_bucket_returns_region(self, s3, bucket):
+        # SDK region discovery (e.g. .NET/Java BucketRegionDetector) reads this header.
+        resp = s3.head_bucket(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPHeaders"]["x-amz-bucket-region"] == "us-east-1"
+        assert resp["BucketRegion"] == "us-east-1"
+
     def test_head_bucket_nonexistent(self, s3):
         import uuid
 
