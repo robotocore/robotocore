@@ -2035,15 +2035,21 @@ impl S3Handler {
     fn head_bucket(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let name = req.bucket.clone().unwrap_or_default();
-        if state.get_bucket(&name).is_none() {
+        let Some(bucket) = state.get_bucket(&name) else {
             return AwsResponse::bucket_error(
                 404,
                 "NoSuchBucket",
                 "The specified bucket does not exist",
                 &name,
             );
-        }
-        AwsResponse::no_content(200)
+        };
+        // Real S3 (and moto) always answer HeadBucket with the bucket's
+        // region. SDKs use it for region discovery (BucketRegionDetector),
+        // so a bare 200 leaves them with no region.
+        let mut resp = AwsResponse::no_content(200);
+        resp.headers
+            .push(("x-amz-bucket-region".to_string(), bucket.region.clone()));
+        resp
     }
 
     fn get_bucket_location(&self, req: &AwsRequest) -> AwsResponse {
@@ -7428,6 +7434,41 @@ mod tests {
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
         assert!(String::from_utf8_lossy(&resp.body).contains("my-bucket"));
+    }
+
+    #[test]
+    fn test_head_bucket_returns_bucket_region() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("region-bucket"), None, b""));
+
+        let resp = handler.handle(make_req("HeadBucket", Some("region-bucket"), None, b""));
+        assert_eq!(resp.status, 200);
+        let region = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("x-amz-bucket-region"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(region, Some("us-east-1"));
+    }
+
+    #[test]
+    fn test_head_bucket_returns_location_constraint_region() {
+        let handler = S3Handler::new();
+        let body = b"<CreateBucketConfiguration><LocationConstraint>eu-west-1</LocationConstraint></CreateBucketConfiguration>";
+        let mut req = make_req("CreateBucket", Some("eu-bucket"), None, body);
+        req.region = "eu-west-1".to_string();
+        assert_eq!(handler.handle(req).status, 200);
+
+        let mut req = make_req("HeadBucket", Some("eu-bucket"), None, b"");
+        req.region = "eu-west-1".to_string();
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let region = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("x-amz-bucket-region"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(region, Some("eu-west-1"));
     }
 
     #[test]
