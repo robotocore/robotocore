@@ -1,7 +1,12 @@
 {
   "service": "ses",
-  "generated_at": "2026-11-01T17:08:06.113313+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-11-17T21:08:42.691481+00:00",
+  "impl_fingerprint": {
+    "rotocore/src/services/ses.rs": "absent",
+    "rotocore/src/services/ses/": "aca2b9588b5abba4ab193ff9718657e4e57c7814ffd7cc7b6095eaf8dcfc6d9f",
+    "crates/ses/src/": "absent"
+  },
+  "endpoint": "http://127.0.0.1:14754",
   "counts": {
     "working": 54,
     "needs_params": 0,
@@ -365,10 +370,5 @@
       "status": "working",
       "message": "OK"
     }
-  ],
-  "impl_fingerprint": {
-    "rotocore/src/services/ses.rs": "absent",
-    "rotocore/src/services/ses/": "5e2d14bea925d459da1c6e9f02196ae81c1558861eaeb1cc9cfecce93471b4dd",
-    "crates/ses/src/": "absent"
-  }
+  ]
 }
