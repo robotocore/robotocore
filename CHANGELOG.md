@@ -61,6 +61,12 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **S3 `HeadBucket` returns `x-amz-bucket-region` again.** The 2.0 handler
+  answered a bare 200, so SDK region discovery (the .NET and Java
+  `BucketRegionDetector`, boto3's `BucketRegion`) got no region for an
+  existing bucket. The Python line returned it through moto. The header now
+  carries the bucket's own region (its `LocationConstraint`, or `us-east-1`).
+
 - **Kinesis: create-duplicate answers the bare stream name.** moto's
   create_stream raises `ResourceInUseError(stream_name)` whose
   message is the raw stream name alone (models.py:607-608,
