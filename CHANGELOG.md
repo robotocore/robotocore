@@ -61,6 +61,12 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **SNS: `PublishBatch` keeps per-entry `MessageAttributes`.** Each entry
+  was published with an empty attribute map, so subscribers got no
+  attributes and filter policies never matched. Entries now go through
+  the same attribute parsing and validation as `Publish`, and an invalid
+  attribute fails the whole request before any entry is published, as in
+  moto (#551).
 - **Kinesis: create-duplicate answers the bare stream name.** moto's
   create_stream raises `ResourceInUseError(stream_name)` whose
   message is the raw stream name alone (models.py:607-608,
