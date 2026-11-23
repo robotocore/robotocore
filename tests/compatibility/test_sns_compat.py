@@ -309,6 +309,49 @@ class TestSNSFilterPolicy:
             sqs.delete_queue(QueueUrl=q_url)
             sns.delete_topic(TopicArn=topic_arn)
 
+    def test_subscription_filter_policy_publish_batch(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"filter-batch-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+        topic_arn = sns.create_topic(Name=f"filter-batch-{suffix}")["TopicArn"]
+        try:
+            sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol="sqs",
+                Endpoint=q_arn,
+                Attributes={"FilterPolicy": json.dumps({"color": ["blue"]})},
+            )
+            sns.publish_batch(
+                TopicArn=topic_arn,
+                PublishBatchRequestEntries=[
+                    {
+                        "Id": "red",
+                        "Message": "red msg",
+                        "MessageAttributes": {
+                            "color": {"DataType": "String", "StringValue": "red"}
+                        },
+                    },
+                    {
+                        "Id": "blue",
+                        "Message": "blue msg",
+                        "MessageAttributes": {
+                            "color": {"DataType": "String", "StringValue": "blue"}
+                        },
+                    },
+                ],
+            )
+            recv = sqs.receive_message(QueueUrl=q_url, MaxNumberOfMessages=10, WaitTimeSeconds=3)
+            messages = recv.get("Messages", [])
+            assert len(messages) == 1
+            envelope = json.loads(messages[0]["Body"])
+            assert envelope["Message"] == "blue msg"
+            assert envelope["MessageAttributes"] == {"color": {"Type": "String", "Value": "blue"}}
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
     def test_subscription_filter_policy_prefix(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"filter-pfx-{suffix}")["QueueUrl"]

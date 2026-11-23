@@ -410,13 +410,16 @@ impl SnsHandler {
     /// declared type (:107-113) — while a MISSING StringValue key rides
     /// transform None past the empty check (:100-115) and renders Value
     /// null into the transformed map (:120-128).
-    fn parse_message_attributes(req: &AwsRequest) -> Result<Map<String, Value>, AwsResponse> {
+    fn parse_message_attributes(
+        req: &AwsRequest,
+        prefix: &str,
+    ) -> Result<Map<String, Value>, AwsResponse> {
         let mut out = Map::new();
         let mut i = 1;
-        while let Some(name) = pstr(req, &format!("MessageAttributes.entry.{}.Name", i)) {
+        while let Some(name) = pstr(req, &format!("{prefix}MessageAttributes.entry.{i}.Name")) {
             let raw_data_type = pstr(
                 req,
-                &format!("MessageAttributes.entry.{}.Value.DataType", i),
+                &format!("{prefix}MessageAttributes.entry.{i}.Value.DataType"),
             );
             let Some(data_type) = raw_data_type.filter(|v| !v.is_empty()) else {
                 return Err(AwsResponse::error(
@@ -430,7 +433,7 @@ impl SnsHandler {
             };
             let string_value = pstr(
                 req,
-                &format!("MessageAttributes.entry.{}.Value.StringValue", i),
+                &format!("{prefix}MessageAttributes.entry.{i}.Value.StringValue"),
             );
             let prefix_ok = ["String", "Binary", "Number"]
                 .iter()
@@ -588,7 +591,7 @@ impl SnsHandler {
         // any backend work (responses.py:236 → _transform_message_
         // attributes :72-128) — a bad attribute beats the missing-topic
         // 404 on the wire (the review's S3 row).
-        let attrs = match Self::parse_message_attributes(req) {
+        let attrs = match Self::parse_message_attributes(req, "") {
             Ok(attrs) => attrs,
             Err(resp) => return resp,
         };
@@ -620,6 +623,20 @@ impl SnsHandler {
     fn publish_batch(&self, req: &AwsRequest) -> AwsResponse {
         let arn = pstr(req, "TopicArn").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
+        let mut entry_attrs = Vec::new();
+        loop {
+            let prefix = format!(
+                "PublishBatchRequestEntries.member.{}.",
+                entry_attrs.len() + 1
+            );
+            if pstr(req, &format!("{prefix}Id")).is_none() {
+                break;
+            }
+            match Self::parse_message_attributes(req, &prefix) {
+                Ok(attrs) => entry_attrs.push(attrs),
+                Err(resp) => return resp,
+            }
+        }
         let topic = match state.get_topic(&arn) {
             Some(t) => t,
             None => return Self::not_found(&arn),
@@ -643,7 +660,7 @@ impl SnsHandler {
                     &topic,
                     &message,
                     subject,
-                    &Map::new(),
+                    &entry_attrs[i - 1],
                     None,
                     pstr(
                         req,
