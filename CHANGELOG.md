@@ -61,6 +61,12 @@ under *Changelog discipline*.
   fixed-in-this-branch, the rest are the open fidelity backlog).
 ### Fixed
 
+- **CloudFormation: `AWS::S3::Bucket` deploys outside us-east-1.** The
+  stack mirror created buckets with an empty `PUT`, which the S3 bucket
+  validation added in #446 rejects with `IllegalLocationConstraintException`
+  in any other region, so the stack rolled back with "s3 mirror failed".
+  The mirror now sends a `CreateBucketConfiguration` with the stack's
+  region as `LocationConstraint` (#550).
 - **Kinesis: create-duplicate answers the bare stream name.** moto's
   create_stream raises `ResourceInUseError(stream_name)` whose
   message is the raw stream name alone (models.py:607-608,

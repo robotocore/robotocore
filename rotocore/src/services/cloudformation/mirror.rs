@@ -720,7 +720,16 @@ pub fn delete_ssm_parameter(name: &str, account: &str, region: &str) {
 }
 
 pub fn create_s3_bucket(name: &str, account: &str, region: &str) -> bool {
-    s3_call("PUT", name, account, region).ok()
+    let body = if region == "us-east-1" {
+        String::new()
+    } else {
+        format!("<CreateBucketConfiguration><LocationConstraint>{region}</LocationConstraint></CreateBucketConfiguration>")
+    };
+    let req = with_headers(
+        client().put(&format!("{}/{}", callback_base(), name)),
+        &base_headers(account, region, "s3"),
+    );
+    send(req, body.as_bytes()).ok()
 }
 
 /// Parse the CFN `WebsiteConfiguration` property into the S3 REST XML body.

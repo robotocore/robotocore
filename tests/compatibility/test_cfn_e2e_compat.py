@@ -19,14 +19,14 @@ from botocore.exceptions import ClientError
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
-def _client(service_name: str):
+def _client(service_name: str, region_name: str = "us-east-1"):
     config_kwargs = {}
     if service_name == "s3":
         config_kwargs["s3"] = {"addressing_style": "path"}
     return boto3.client(
         service_name,
         endpoint_url=ENDPOINT_URL,
-        region_name="us-east-1",
+        region_name=region_name,
         aws_access_key_id="testing",
         aws_secret_access_key="testing",
         config=Config(**config_kwargs),
@@ -120,6 +120,33 @@ class TestCfnE2eS3:
                 s3.delete_object(Bucket=bucket_name, Key="test.txt")
             except Exception:
                 pass  # best-effort cleanup
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_create_s3_bucket_outside_us_east_1(self):
+        region = "eu-central-1"
+        cfn = _client("cloudformation", region)
+        s3 = _client("s3", region)
+        uid = _uid()
+        bucket_name = f"cfn-e2e-bucket-eu-{uid}"
+        stack_name = f"e2e-s3-eu-{uid}"
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Bucket": {
+                        "Type": "AWS::S3::Bucket",
+                        "Properties": {"BucketName": bucket_name},
+                    },
+                },
+            }
+        )
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+            location = s3.get_bucket_location(Bucket=bucket_name)
+            assert location["LocationConstraint"] == region
+        finally:
             cfn.delete_stack(StackName=stack_name)
 
 
